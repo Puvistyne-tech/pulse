@@ -1533,6 +1533,21 @@ pub async fn object_key_of(
     .expect("object key")
 }
 
+pub async fn skew_declared_size(
+    state: &AppState,
+    campus_id: CampusId,
+    attachment_id: AttachmentId,
+) {
+    sqlx::query(
+        "UPDATE attachments SET byte_size = byte_size + 1 WHERE campus_id = $1 AND attachment_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(attachment_id.as_uuid())
+    .execute(&state.db)
+    .await
+    .expect("skew declared size");
+}
+
 pub async fn bound_attachment_count(state: &AppState, campus_id: CampusId) -> i64 {
     sqlx::query_scalar::<_, i64>(
         "SELECT count(*) FROM attachments WHERE campus_id = $1 AND message_id IS NOT NULL",

@@ -143,7 +143,7 @@ fn inbox_summaries_queue_index_documents(#[case] frame: ServerFrame, #[case] exp
 }
 
 #[test]
-fn indexed_text_is_the_rendered_message_and_terms_are_sorted_message_ids() {
+fn indexed_text_is_the_rendered_message_and_terms_are_sorted() {
     let mut client = settled_client();
     let mut message = chain_message(ROOM_A, 1);
     message.body = "Zebra apple zebra".to_owned();

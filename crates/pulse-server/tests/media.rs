@@ -4,7 +4,7 @@ use common::{
     ClientSocket, Person, SCENARIO_DEADLINE, Stage, api_error_of, attachment_binding,
     bound_attachment_count, campus_with_owner, count_rows, download_tickets_of, get_bytes,
     message_count, object_key_of, parsed_tickets, put_bytes, request_upload, send_outcome,
-    signed_up, storage_ready, synced_page, upload_request, uploaded,
+    signed_up, skew_declared_size, storage_ready, synced_page, upload_request, uploaded,
 };
 use pulse_protocol::{
     ATTACHMENT_MAX_BYTES, ApiError, ApiErrorCode, AttachmentId, AttachmentKind,
@@ -354,10 +354,7 @@ async fn faulty_attachments_reject_the_send_and_stay_unclaimed(
                     PNG,
                 )
                 .await;
-                sqlx::query("UPDATE attachments SET byte_size = byte_size + 1")
-                    .execute(&stage.state.db)
-                    .await
-                    .expect("skew declared size");
+                skew_declared_size(&stage.state, campus_id, ticket.attachment_id).await;
                 (vec![ticket.attachment_id], Some(ticket.attachment_id))
             }
             Fault::OtherUploader => {

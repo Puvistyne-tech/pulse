@@ -10,7 +10,7 @@ pulse-protocol.workspace = true
 axum.workspace = true
 sqlx.workspace = true
 redis.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 futures-util.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

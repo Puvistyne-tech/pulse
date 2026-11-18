@@ -1,23 +1,15 @@
-use std::io;
-use std::sync::Arc;
-
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated, CampusId, CampusList,
-    ClientSnapshot, CreateCampusRequest, RoomList, SignInRequest, SignUpRequest, api_path,
+    CreateCampusRequest, RoomList, SignInRequest, SignUpRequest, api_path,
 };
 use reqwest::{Method, RequestBuilder};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use tokio::runtime::{Builder, Runtime};
-use tokio::sync::Mutex;
 
 use crate::api::{ApiTransport, decode_api_response};
-use crate::client::{Client, unavailable_snapshot};
-use crate::session::SessionEvent;
 
 pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8080";
 const SERVER_URL_VARIABLE: &str = "PULSE_SERVER_URL";
-const RUNTIME_WORKER_THREADS: usize = 2;
 
 pub fn server_url_from_env() -> String {
     std::env::var(SERVER_URL_VARIABLE).unwrap_or_else(|_| DEFAULT_SERVER_URL.to_owned())
@@ -109,84 +101,5 @@ impl ApiTransport for HttpApiTransport {
     ) -> Result<RoomList, ApiError> {
         let path = api_path::campus_rooms(campus_id);
         Self::call(self.request(Method::GET, &path, Some(&token))).await
-    }
-}
-
-pub struct NativeClient {
-    runtime: Option<Runtime>,
-    inner: Arc<Mutex<(Client, HttpApiTransport)>>,
-}
-
-impl NativeClient {
-    pub fn new(server_url: impl Into<String>) -> io::Result<Self> {
-        let runtime = Builder::new_multi_thread()
-            .worker_threads(RUNTIME_WORKER_THREADS)
-            .enable_all()
-            .build()?;
-        Ok(Self {
-            runtime: Some(runtime),
-            inner: Arc::new(Mutex::new((
-                Client::default(),
-                HttpApiTransport::new(server_url),
-            ))),
-        })
-    }
-
-    pub fn from_env() -> io::Result<Self> {
-        Self::new(server_url_from_env())
-    }
-
-    async fn run(&self, event: Option<SessionEvent>) -> ClientSnapshot {
-        let Some(runtime) = self.runtime.as_ref() else {
-            return unavailable_snapshot();
-        };
-        let inner = Arc::clone(&self.inner);
-        let handle = runtime.spawn(async move {
-            let mut guard = inner.lock().await;
-            let (client, api) = &mut *guard;
-            match event {
-                Some(event) => client.apply(api, event).await,
-                None => client.snapshot(),
-            }
-        });
-        handle.await.unwrap_or_else(|_| unavailable_snapshot())
-    }
-
-    pub async fn snapshot(&self) -> ClientSnapshot {
-        self.run(None).await
-    }
-
-    pub async fn sign_up(&self, request: SignUpRequest) -> ClientSnapshot {
-        self.run(Some(SessionEvent::SignUpRequested(request))).await
-    }
-
-    pub async fn sign_in(&self, request: SignInRequest) -> ClientSnapshot {
-        self.run(Some(SessionEvent::SignInRequested(request))).await
-    }
-
-    pub async fn sign_out(&self) -> ClientSnapshot {
-        self.run(Some(SessionEvent::SignOutRequested)).await
-    }
-
-    pub async fn refresh_campuses(&self) -> ClientSnapshot {
-        self.run(Some(SessionEvent::CampusesRequested)).await
-    }
-
-    pub async fn create_campus(&self, request: CreateCampusRequest) -> ClientSnapshot {
-        self.run(Some(SessionEvent::CreateCampusRequested(request)))
-            .await
-    }
-
-    pub async fn select_campus(&self, campus_id: CampusId) -> ClientSnapshot {
-        self.run(Some(SessionEvent::CampusSelected(campus_id)))
-            .await
-    }
-}
-
-impl Drop for NativeClient {
-    fn drop(&mut self) {
-        if let Some(runtime) = self.runtime.take() {
-            runtime.shutdown_background();
-        }
     }
 }

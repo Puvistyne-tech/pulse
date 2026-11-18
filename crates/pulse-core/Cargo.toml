@@ -7,7 +7,7 @@ publish.workspace = true
 
 [features]
 default = []
-native = ["dep:reqwest", "dep:tokio"]
+native = ["dep:reqwest", "dep:tokio", "dep:tokio-tungstenite", "dep:futures-util"]
 
 [dependencies]
 pulse-protocol.workspace = true
@@ -15,12 +15,17 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 reqwest = { workspace = true, optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "sync"], optional = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "macros", "net"], optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 pulse-protocol = { workspace = true, features = ["fixtures"] }
 rstest.workspace = true
 futures.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
 
 [lints]
 workspace = true

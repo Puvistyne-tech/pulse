@@ -187,7 +187,7 @@ async fn run_command<T: NetworkTransport>(
                 Ok(ServerFrame::HandshakeRejected(rejected)) => {
                     ConnectionEvent::HandshakeRejected(rejected)
                 }
-                Ok(ServerFrame::Pong(_)) | Err(_) => ConnectionEvent::TransportFailed,
+                Ok(_) | Err(_) => ConnectionEvent::TransportFailed,
             })
         }
         ConnectionCommand::CloseTransport => {

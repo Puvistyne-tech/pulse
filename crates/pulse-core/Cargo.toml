@@ -1,0 +1,20 @@
+[package]
+name = "pulse-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+pulse-protocol.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+futures.workspace = true
+
+[lints]
+workspace = true

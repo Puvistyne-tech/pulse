@@ -33,3 +33,4 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Never put a validation limit number in UI copy; the limit lives only in `pulse-protocol`.
 - A `[[test]]` block with `required-features` must land in the same commit as its test file, or Cargo cannot parse the manifest.
 - When frames gain variants, include `pulse-core/src/connection.rs` in the owner's file set; its matches are exhaustive.
+- Reuse the one `campus_role` query (taking `impl PgExecutor`) inside transactions; never inline a second membership query.

@@ -3,12 +3,12 @@ mod fixtures;
 use std::collections::VecDeque;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, RecordedCall, ScriptedApi, auth_session, campus_c, campus_list,
-    campus_summary, create_campus_request, room, room_list, sign_in_request, signed_in_machine,
-    token_a,
+    CAMPUS_A, CAMPUS_B, RecordedCall, ScriptedApi, auth_session, campus_list, campus_summary,
+    create_campus_request, room, room_list, sign_in_request, signed_in_machine, token_a,
 };
 use futures::executor::block_on;
 use pulse_core::{SessionEvent, SessionMachine, drive_session};
+use pulse_protocol::fixtures::CAMPUS_C;
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, CampusList, Role, RoomList,
 };
@@ -37,10 +37,10 @@ fn two_campuses() -> CampusList {
 
 fn gamma_created() -> CampusCreated {
     CampusCreated {
-        campus: campus_summary(campus_c(), "gamma", Role::Owner),
+        campus: campus_summary(CAMPUS_C, "gamma", Role::Owner),
         rooms: ["commons", "courtyard"]
             .iter()
-            .map(|slug| room(campus_c(), slug))
+            .map(|slug| room(CAMPUS_C, slug))
             .collect(),
     }
 }
@@ -142,8 +142,8 @@ fn signed_out_expect() -> Expect {
     script_create_campus(),
     SessionEvent::CreateCampusRequested(create_campus_request()),
     Expect {
-        active: Some(campus_c()),
-        campuses: vec![CAMPUS_A, CAMPUS_B, campus_c()],
+        active: Some(CAMPUS_C),
+        campuses: vec![CAMPUS_A, CAMPUS_B, CAMPUS_C],
         rooms: vec!["commons", "courtyard"],
         calls: vec![RecordedCall::CreateCampus(token_a(), create_campus_request())],
         ..signed_in_expect()

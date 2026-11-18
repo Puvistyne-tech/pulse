@@ -785,6 +785,12 @@ impl TimelineMachine {
                 self.synced.clear();
                 self.logs.values_mut().for_each(|log| log.syncing = false);
                 self.inbox.clear_requests();
+                let unconfirmed = self.thread_view.as_ref().is_some_and(|view| {
+                    view.follow_sent && self.inbox.thread_state(view.root_message_id).is_none()
+                });
+                if unconfirmed && let Some(view) = self.thread_view.as_mut() {
+                    view.pending_follow = true;
+                }
                 Vec::new()
             }
             TimelineEvent::SendRequested {

@@ -229,7 +229,6 @@ impl InboxTracker {
             (Some(current), Some(watermark)) => {
                 summary.revision > current
                     || (summary.revision == current && incoming_watermark >= watermark)
-                    || (summary.revision < current && incoming_watermark > watermark)
             }
             _ => true,
         };

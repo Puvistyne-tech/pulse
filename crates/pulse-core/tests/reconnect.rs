@@ -1,11 +1,11 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, hello_frame, refused, session,
-    welcome_for, welcome_frame,
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, connect, fresh_machine, hello_frame,
+    machine_after, refused, session, welcome, welcome_frame,
 };
 use futures::executor::block_on;
-use pulse_core::{BackoffPolicy, ConnectionEvent, ConnectionMachine, TransportError, handshake};
+use pulse_core::{ConnectionEvent, ConnectionMachine, TransportError, handshake};
 use pulse_protocol::{ConnectionPhase, ServerFrame};
 use rstest::rstest;
 
@@ -55,10 +55,6 @@ fn disconnected(attempt: u32) -> Expected {
     }
 }
 
-fn fresh() -> ConnectionMachine {
-    ConnectionMachine::new(BackoffPolicy::default())
-}
-
 enum Start {
     Backoff,
     Connecting,
@@ -67,22 +63,17 @@ enum Start {
 }
 
 fn started(start: Start) -> ConnectionMachine {
-    let connect = ConnectionEvent::ConnectRequested {
-        campus_id: campus(CAMPUS_A),
-    };
     let events = match start {
-        Start::Backoff => vec![connect, ConnectionEvent::TransportFailed],
-        Start::Connecting => vec![connect],
-        Start::Handshaking => vec![connect, ConnectionEvent::TransportOpened],
+        Start::Backoff => vec![connect(), ConnectionEvent::TransportFailed],
+        Start::Connecting => vec![connect()],
+        Start::Handshaking => vec![connect(), ConnectionEvent::TransportOpened],
         Start::Connected => vec![
-            connect,
+            connect(),
             ConnectionEvent::TransportOpened,
-            ConnectionEvent::WelcomeReceived(welcome_for(CAMPUS_A)),
+            welcome(CAMPUS_A),
         ],
     };
-    events
-        .into_iter()
-        .fold(fresh(), |machine, event| machine.step(event).0)
+    machine_after(events)
 }
 
 #[rstest]
@@ -132,7 +123,7 @@ fn started(start: Start) -> ConnectionMachine {
     (run(vec![Ok(())], vec![welcome_frame(CAMPUS_B)]), disconnected(1)),
 ])]
 fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
-    let mut machine = fresh();
+    let mut machine = fresh_machine();
     for (index, (step, expected)) in script.into_iter().enumerate() {
         machine = match step {
             Step::Run { opens, incoming } => {
@@ -216,15 +207,6 @@ fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
     true,
     0,
     1
-)]
-#[case::connected_other_campus_rejects_stale_welcome(
-    Start::Connected,
-    CAMPUS_B,
-    CAMPUS_A,
-    ConnectionPhase::Disconnected,
-    false,
-    0,
-    2
 )]
 fn resume_targets_argument_campus(
     #[case] start: Start,

@@ -7,12 +7,18 @@ publish.workspace = true
 
 [features]
 default = []
+native = ["dep:reqwest", "dep:tokio"]
 
 [dependencies]
 pulse-protocol.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest = { workspace = true, optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"], optional = true }
 
 [dev-dependencies]
+pulse-protocol = { workspace = true, features = ["fixtures"] }
 rstest.workspace = true
 futures.workspace = true
 

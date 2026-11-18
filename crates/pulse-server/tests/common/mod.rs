@@ -1,16 +1,33 @@
 #![allow(dead_code)]
 
 use std::net::SocketAddr;
+use std::str::FromStr;
+use std::time::Duration;
 
+use axum::body::Body;
+use axum::http::{Method, Request, StatusCode, header};
 use futures_util::{SinkExt, StreamExt};
-use pulse_protocol::{CampusId, ClientFrame, Hello, Ping, ProtocolVersion, ServerFrame};
-use pulse_server::{AppState, Config, router, state};
+use http_body_util::BodyExt;
+use pulse_protocol::fixtures::VALID_PASSWORD;
+use pulse_protocol::{
+    AccountId, AuthSession, AuthToken, CampusCreated, CampusId, ClientFrame, CreateCampusRequest,
+    Hello, Ping, ProtocolVersion, Role, ServerFrame, SignUpRequest, api_path,
+};
+use pulse_server::{AppState, Config, MIGRATOR, router, state};
+use serde::Serialize;
+use serde_json::Value;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tower::ServiceExt;
+use uuid::Uuid;
 
-pub const CAMPUS_A: &str = "0193a5c0-0000-7000-8000-00000000000a";
-pub const CAMPUS_B: &str = "0193a5c0-0000-7000-8000-00000000000b";
+const DEFAULT_DATABASE_URL: &str = "postgres://pulse:pulse@127.0.0.1:5432/pulse";
+const DEFAULT_VALKEY_URL: &str = "redis://127.0.0.1:6379";
+const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+const START_POSTGRES: &str = "start Postgres: docker compose up -d postgres";
 
 pub type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -25,14 +42,11 @@ pub enum Outgoing {
     Raw(String),
 }
 
-pub fn campus(text: &str) -> CampusId {
-    text.parse().expect("valid campus fixture")
-}
-
-pub fn hello(campus_text: &str, version: u16) -> Outgoing {
+pub fn hello(campus_id: CampusId, version: u16, token: &AuthToken) -> Outgoing {
     Outgoing::Frame(ClientFrame::Hello(Hello {
         protocol_version: ProtocolVersion(version),
-        campus_id: campus(campus_text),
+        campus_id,
+        auth_token: token.clone(),
     }))
 }
 
@@ -49,14 +63,146 @@ pub fn lazy_state() -> AppState {
     state::lazy(&config).expect("lazy state")
 }
 
-pub async fn spawn_server() -> SocketAddr {
+pub async fn fresh_state() -> AppState {
+    let database_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_owned());
+    let valkey_url = std::env::var("VALKEY_URL").unwrap_or_else(|_| DEFAULT_VALKEY_URL.to_owned());
+    let options = PgConnectOptions::from_str(&database_url).expect("database url");
+    let admin = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(ACQUIRE_TIMEOUT)
+        .connect_with(options.clone())
+        .await
+        .expect(START_POSTGRES);
+    let name = format!("pulse_test_{}", Uuid::now_v7().simple());
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE \"{name}\"")))
+        .execute(&admin)
+        .await
+        .expect("create test database");
+    admin.close().await;
+    let db = PgPoolOptions::new()
+        .acquire_timeout(ACQUIRE_TIMEOUT)
+        .connect_with(options.database(&name))
+        .await
+        .expect(START_POSTGRES);
+    MIGRATOR.run(&db).await.expect("run migrations");
+    AppState {
+        db,
+        valkey: redis::Client::open(valkey_url.as_str()).expect("valkey client"),
+    }
+}
+
+pub async fn spawn_server_with(state: AppState) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("local addr");
-    let app = router(lazy_state());
+    let app = router(state);
     tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
     addr
+}
+
+pub async fn spawn_server() -> SocketAddr {
+    spawn_server_with(lazy_state()).await
+}
+
+pub async fn api_raw(
+    state: &AppState,
+    method: Method,
+    path: &str,
+    token: Option<&AuthToken>,
+    body: Option<String>,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method(method).uri(path);
+    if let Some(token) = token {
+        builder = builder.header(header::AUTHORIZATION, format!("Bearer {}", token.0));
+    }
+    let request = match body {
+        Some(text) => builder
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(text)),
+        None => builder.body(Body::empty()),
+    }
+    .expect("request");
+    let response = timeout(
+        Duration::from_secs(30),
+        router(state.clone()).oneshot(request),
+    )
+    .await
+    .expect("request deadline")
+    .expect("response");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("json body")
+    };
+    (status, value)
+}
+
+pub async fn api<B: Serialize>(
+    state: &AppState,
+    method: Method,
+    path: &str,
+    token: Option<&AuthToken>,
+    body: Option<&B>,
+) -> (StatusCode, Value) {
+    let text = body.map(|body| serde_json::to_string(body).expect("serialize body"));
+    api_raw(state, method, path, token, text).await
+}
+
+pub async fn signed_up(state: &AppState, email: &str) -> AuthSession {
+    let request = SignUpRequest {
+        email: email.to_owned(),
+        display_name: "Fixture".to_owned(),
+        password: VALID_PASSWORD.to_owned(),
+    };
+    let (status, body) = api(
+        state,
+        Method::POST,
+        api_path::ACCOUNTS,
+        None,
+        Some(&request),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    serde_json::from_value(body).expect("auth session")
+}
+
+pub async fn campus_for(state: &AppState, token: &AuthToken, slug: &str) -> CampusCreated {
+    let request = CreateCampusRequest {
+        slug: slug.to_owned(),
+        display_name: slug.to_owned(),
+    };
+    let (status, body) = api(
+        state,
+        Method::POST,
+        api_path::CAMPUSES,
+        Some(token),
+        Some(&request),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    serde_json::from_value(body).expect("campus created")
+}
+
+pub async fn grant_role(state: &AppState, campus_id: CampusId, account_id: AccountId, role: Role) {
+    sqlx::query(
+        "INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3) \
+         ON CONFLICT (campus_id, account_id) DO UPDATE SET role = EXCLUDED.role",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(account_id.as_uuid())
+    .bind(role.as_str())
+    .execute(&state.db)
+    .await
+    .expect("grant role");
 }
 
 pub async fn connect(addr: SocketAddr) -> ClientSocket {

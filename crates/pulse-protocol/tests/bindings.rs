@@ -1,6 +1,10 @@
 use pulse_protocol::{
-    CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Hello, Ping, Pong, ProtocolVersion,
-    ServerFrame, SessionId, VersionMismatch, Welcome,
+    AccountId, AccountProfile, ApiError, ApiErrorCode, AuthPhase, AuthSession, AuthToken,
+    CampusCreated, CampusId, CampusList, CampusSummary, ClientFrame, ClientSnapshot,
+    ConnectionPhase, ConnectionSnapshot, CreateCampusRequest, CreateRoomRequest, HandshakeRejected,
+    HandshakeRejection, Hello, InputField, Permission, Ping, Pong, ProtocolVersion, Role, Room,
+    RoomId, RoomList, ServerFrame, SessionId, SessionSnapshot, SignInRequest, SignUpRequest,
+    VersionMismatch, Welcome,
 };
 use std::path::PathBuf;
 use ts_rs::{Config, TS};
@@ -10,7 +14,28 @@ fn render_bindings() -> String {
     let declarations = [
         CampusId::decl(&config),
         SessionId::decl(&config),
+        AccountId::decl(&config),
+        RoomId::decl(&config),
         ProtocolVersion::decl(&config),
+        AuthToken::decl(&config),
+        AccountProfile::decl(&config),
+        SignUpRequest::decl(&config),
+        SignInRequest::decl(&config),
+        AuthSession::decl(&config),
+        Role::decl(&config),
+        Permission::decl(&config),
+        Room::decl(&config),
+        CampusSummary::decl(&config),
+        CreateCampusRequest::decl(&config),
+        CampusCreated::decl(&config),
+        CampusList::decl(&config),
+        RoomList::decl(&config),
+        CreateRoomRequest::decl(&config),
+        ApiErrorCode::decl(&config),
+        InputField::decl(&config),
+        ApiError::decl(&config),
+        HandshakeRejection::decl(&config),
+        HandshakeRejected::decl(&config),
         Hello::decl(&config),
         Welcome::decl(&config),
         Ping::decl(&config),
@@ -19,6 +44,9 @@ fn render_bindings() -> String {
         ClientFrame::decl(&config),
         ServerFrame::decl(&config),
         ConnectionPhase::decl(&config),
+        AuthPhase::decl(&config),
+        ConnectionSnapshot::decl(&config),
+        SessionSnapshot::decl(&config),
         ClientSnapshot::decl(&config),
     ];
     let mut rendered = declarations

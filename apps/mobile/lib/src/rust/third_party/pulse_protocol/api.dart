@@ -60,4 +60,5 @@ enum InputField {
   byteSize,
   attachments,
   remindAt,
+  rooms,
 }

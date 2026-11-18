@@ -1,7 +1,7 @@
 use crate::api::{ApiError, InputField};
 use crate::auth::{SignInRequest, SignUpRequest};
 use crate::campus::{CreateCampusRequest, CreateRoomRequest};
-use crate::ids::AttachmentId;
+use crate::ids::{AttachmentId, RoomId};
 use crate::media::{
     ATTACHMENT_MAX_BYTES, CONTENT_TYPE_MAX_CHARS, CreateUploadRequest, FILE_NAME_MAX_CHARS,
     MESSAGE_ATTACHMENTS_MAX,
@@ -10,6 +10,7 @@ use crate::messaging::SendMessage;
 use crate::reaction::React;
 use crate::search::{SEARCH_QUERY_MAX_CHARS, SEARCH_TERMS_MAX, search_terms};
 use crate::shelf::{REMIND_AT_HORIZON_MS, REMIND_AT_PAST_TOLERANCE_MS, ShelfAction, UpdateShelf};
+use crate::steward::STEWARD_ROOMS_MAX;
 use crate::thread::SetTopicTitle;
 
 pub const EMAIL_MAX_CHARS: usize = 254;
@@ -153,6 +154,17 @@ pub fn normalize_attachment_ids(ids: &[AttachmentId]) -> Result<Vec<AttachmentId
         Ok(unique)
     } else {
         Err(InputField::Attachments)
+    }
+}
+
+pub fn normalize_room_ids(room_ids: &[RoomId]) -> Result<Vec<RoomId>, InputField> {
+    let mut sorted = room_ids.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    if sorted.len() <= STEWARD_ROOMS_MAX {
+        Ok(sorted)
+    } else {
+        Err(InputField::Rooms)
     }
 }
 

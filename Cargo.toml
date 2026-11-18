@@ -38,6 +38,8 @@ tauri-build = "2.7"
 flutter_rust_bridge = "=2.13.0"
 argon2 = { version = "0.5", features = ["std"] }
 sha2 = "0.10"
+hmac = "0.12"
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 base64 = "0.22"
 rusqlite = { version = "0.37", features = ["bundled"] }
 rusty-s3 = "0.8"

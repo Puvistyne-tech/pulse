@@ -298,6 +298,31 @@ pub(crate) async fn stamp_activity(
     Ok(())
 }
 
+pub async fn room_history(
+    connection: &mut PgConnection,
+    campus_id: CampusId,
+    room_id: RoomId,
+    before: Option<MessageId>,
+    limit: usize,
+) -> Result<(Vec<RoomMessage>, bool), sqlx::Error> {
+    let page = i64::try_from(limit).unwrap_or(i64::MAX);
+    let mut rows = sqlx::query_as::<_, MessageRow>(select_messages!(
+        "WHERE m.campus_id = $1 AND m.room_id = $2 AND m.thread_root_id IS NULL \
+         AND ($3::uuid IS NULL OR m.message_id < $3) \
+         ORDER BY m.message_id DESC LIMIT $4"
+    ))
+    .bind(campus_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .bind(before.map(|before| before.as_uuid()))
+    .bind(page.saturating_add(1))
+    .fetch_all(&mut *connection)
+    .await?;
+    let has_more = rows.len() > limit;
+    rows.truncate(limit);
+    let messages = hydrate_messages(connection, campus_id, rows).await?;
+    Ok((messages, has_more))
+}
+
 pub(crate) async fn fetch_messages(
     connection: &mut PgConnection,
     campus_id: CampusId,

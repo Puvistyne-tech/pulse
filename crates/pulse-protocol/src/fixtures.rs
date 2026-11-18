@@ -2,8 +2,8 @@ use uuid::Uuid;
 
 use crate::auth::AuthToken;
 use crate::ids::{
-    AccountId, AttachmentId, CampusId, ClientNonce, DraftId, MessageId, RoomId, SessionId,
-    ShelfItemId,
+    AccountId, AttachmentId, CampusId, ClientNonce, DraftId, LoungeId, MessageId, RoomId,
+    SessionId, ShelfItemId, StreamId, ToolCallId,
 };
 
 pub const CAMPUS_A: CampusId = CampusId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_00000000000a));
@@ -34,6 +34,14 @@ pub const SHELF_ITEM_A: ShelfItemId =
     ShelfItemId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000b01));
 pub const DRAFT_A: DraftId = DraftId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000c01));
 
+pub const STREAM_A: StreamId = StreamId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000d01));
+pub const STREAM_B: StreamId = StreamId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000d02));
+pub const LOUNGE_A: LoungeId = LoungeId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000e01));
+pub const LOUNGE_B: LoungeId = LoungeId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000e02));
+pub const STEWARD_A: AccountId = AccountId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000c4));
+pub const TOOL_CALL_A: ToolCallId =
+    ToolCallId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000f01));
+
 pub const LINK_A: &str = "https://example.org/a";
 
 pub const EMOJI_A: &str = "👍";
@@ -41,6 +49,7 @@ pub const EMOJI_B: &str = "🎉";
 
 pub const AUTH_TOKEN_A: &str = "fixture-token-a";
 pub const AUTH_TOKEN_B: &str = "fixture-token-b";
+pub const STEWARD_TOKEN_A: &str = "pst_fixture-steward-a";
 pub const VALID_PASSWORD: &str = "correct-horse-battery";
 
 pub fn auth_token(text: &str) -> AuthToken {

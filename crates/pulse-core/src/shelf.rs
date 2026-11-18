@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use pulse_protocol::{
     ApiError, ApiErrorCode, InputField, MessageId, ReminderPreset, RoomId, RoomMessage,
     ShelfAction, ShelfBucket, ShelfChanged, ShelfEntry, ShelfItem, ShelfItemId, ShelfRejected,
-    ShelfRejection, ShelfSnapshot, ShelfSynced,
+    ShelfRejection, ShelfSnapshot, ShelfSynced, picker_anchor_ms, picker_latest_ms,
 };
 
 use crate::inbox::preview_text;
@@ -315,6 +315,8 @@ impl ShelfTracker {
             due_count,
             latest_reminder,
             presets: ReminderPreset::ALL.to_vec(),
+            picker_anchor_ms: picker_anchor_ms(clock_ms),
+            picker_latest_ms: picker_latest_ms(clock_ms),
             error: self.error,
         }
     }

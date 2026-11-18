@@ -56,6 +56,8 @@ final orderCases = <OrderCase>[
       search: signedOut.search,
       vault: signedOut.vault,
       shelf: signedOut.shelf,
+      lounges: signedOut.lounges,
+      stewards: signedOut.stewards,
     ),
     snapshotAt(signedInWithRooms, 5),
     false,

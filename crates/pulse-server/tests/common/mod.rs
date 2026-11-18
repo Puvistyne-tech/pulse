@@ -176,7 +176,7 @@ pub fn lazy_state() -> AppState {
     state::lazy(&config).expect("lazy state")
 }
 
-pub async fn fresh_state() -> AppState {
+pub async fn blank_state() -> AppState {
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_owned());
     let valkey_url = std::env::var("VALKEY_URL").unwrap_or_else(|_| DEFAULT_VALKEY_URL.to_owned());
@@ -198,11 +198,34 @@ pub async fn fresh_state() -> AppState {
         .connect_with(options.database(&name))
         .await
         .expect(START_POSTGRES);
-    MIGRATOR.run(&db).await.expect("run migrations");
     AppState::new(
         db,
         redis::Client::open(valkey_url.as_str()).expect("valkey client"),
     )
+}
+
+pub async fn fresh_state() -> AppState {
+    let state = blank_state().await;
+    MIGRATOR.run(&state.db).await.expect("run migrations");
+    state
+}
+
+pub async fn state_before(description: &str) -> AppState {
+    let state = blank_state().await;
+    let kept = MIGRATOR
+        .iter()
+        .take_while(|migration| migration.description != description)
+        .cloned()
+        .collect::<Vec<_>>();
+    let partial = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(kept),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    partial
+        .run(&state.db)
+        .await
+        .expect("run earlier migrations");
+    state
 }
 
 pub fn sibling_state(state: &AppState) -> AppState {
@@ -1556,4 +1579,317 @@ pub async fn bound_attachment_count(state: &AppState, campus_id: CampusId) -> i6
     .fetch_one(&state.db)
     .await
     .expect("bound count")
+}
+
+pub mod steward;
+
+use pulse_protocol::{
+    AckWork, CallTool, JoinLounge, LeaveLounge, ListTools, LoungeHeartbeat, LoungeId,
+    ManageSteward, StewardAction, StewardProfile, StreamChunk, SyncLounges, SyncStewards, SyncWork,
+    ToolCallId, mention_token,
+};
+use pulse_server::steward::{StewardOutcome, manage_steward};
+
+pub fn stream_chunk_frame(chunk: StreamChunk) -> Outgoing {
+    Outgoing::Frame(ClientFrame::StreamChunk(chunk))
+}
+
+pub fn list_tools_frame() -> Outgoing {
+    Outgoing::Frame(ClientFrame::ListTools(ListTools {}))
+}
+
+pub fn call_tool_frame(call_id: ToolCallId, name: &str, arguments: &str) -> Outgoing {
+    Outgoing::Frame(ClientFrame::CallTool(CallTool {
+        call_id,
+        name: name.to_owned(),
+        arguments: arguments.to_owned(),
+    }))
+}
+
+pub fn sync_work_frame() -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncWork(SyncWork {}))
+}
+
+pub fn ack_work_frame(through: MessageId) -> Outgoing {
+    Outgoing::Frame(ClientFrame::AckWork(AckWork { through }))
+}
+
+pub fn manage_frame(request: ManageSteward) -> Outgoing {
+    Outgoing::Frame(ClientFrame::ManageSteward(request))
+}
+
+pub fn sync_stewards_frame() -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncStewards(SyncStewards {}))
+}
+
+pub fn sync_lounges_frame() -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncLounges(SyncLounges {}))
+}
+
+pub fn join_lounge_frame(lounge_id: LoungeId) -> Outgoing {
+    Outgoing::Frame(ClientFrame::JoinLounge(JoinLounge { lounge_id }))
+}
+
+pub fn leave_lounge_frame(lounge_id: LoungeId) -> Outgoing {
+    Outgoing::Frame(ClientFrame::LeaveLounge(LeaveLounge { lounge_id }))
+}
+
+pub fn lounge_heartbeat_frame(lounge_id: LoungeId) -> Outgoing {
+    Outgoing::Frame(ClientFrame::LoungeHeartbeat(LoungeHeartbeat { lounge_id }))
+}
+
+pub fn create_steward_request(name: &str, room_ids: &[RoomId]) -> ManageSteward {
+    ManageSteward {
+        request_nonce: ClientNonce::generate(),
+        action: StewardAction::Create,
+        steward_id: None,
+        display_name: Some(name.to_owned()),
+        room_ids: room_ids.to_vec(),
+    }
+}
+
+pub fn steward_request(
+    action: StewardAction,
+    steward_id: AccountId,
+    room_ids: &[RoomId],
+) -> ManageSteward {
+    ManageSteward {
+        request_nonce: ClientNonce::generate(),
+        action,
+        steward_id: Some(steward_id),
+        display_name: None,
+        room_ids: room_ids.to_vec(),
+    }
+}
+
+pub async fn issue_steward(
+    state: &AppState,
+    campus_id: CampusId,
+    actor: AccountId,
+    name: &str,
+    room_ids: &[RoomId],
+) -> (StewardProfile, AuthToken) {
+    match manage_steward(
+        &state.db,
+        campus_id,
+        actor,
+        create_steward_request(name, room_ids),
+    )
+    .await
+    {
+        Ok(StewardOutcome::Issued(profile, token)) => (profile, token),
+        other => panic!("expected an issued steward, got {other:?}"),
+    }
+}
+
+pub async fn manage_as(
+    state: &AppState,
+    campus_id: CampusId,
+    actor: AccountId,
+    request: ManageSteward,
+) -> StewardOutcome {
+    manage_steward(&state.db, campus_id, actor, request)
+        .await
+        .expect("steward management")
+}
+
+pub fn mentioning(steward_id: AccountId, text: &str) -> String {
+    format!("{} {text}", mention_token(steward_id))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StewardRow {
+    pub token_hash: Vec<u8>,
+    pub credential_revision: i64,
+    pub work_cursor: Option<MessageId>,
+    pub revoked: bool,
+}
+
+pub async fn steward_row(
+    state: &AppState,
+    campus_id: CampusId,
+    steward_id: AccountId,
+) -> Option<StewardRow> {
+    sqlx::query_as::<_, (Vec<u8>, i64, Option<Uuid>, bool)>(
+        "SELECT token_hash, credential_revision, work_cursor, revoked_at IS NOT NULL \
+         FROM stewards WHERE campus_id = $1 AND steward_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(steward_id.as_uuid())
+    .fetch_optional(&state.db)
+    .await
+    .expect("steward row")
+    .map(
+        |(token_hash, credential_revision, work_cursor, revoked)| StewardRow {
+            token_hash,
+            credential_revision,
+            work_cursor: work_cursor.map(MessageId),
+            revoked,
+        },
+    )
+}
+
+pub async fn authored_count(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    author_id: AccountId,
+) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM room_messages \
+         WHERE campus_id = $1 AND room_id = $2 AND author_id = $3",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .bind(author_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("authored count")
+}
+
+pub async fn messages_with_nonce(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    client_nonce: ClientNonce,
+) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM room_messages \
+         WHERE campus_id = $1 AND room_id = $2 AND client_nonce = $3",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .bind(client_nonce.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("nonce count")
+}
+
+pub async fn steward_room_rows(
+    state: &AppState,
+    campus_id: CampusId,
+    steward_id: AccountId,
+) -> Vec<RoomId> {
+    sqlx::query_scalar::<_, Uuid>(
+        "SELECT room_id FROM steward_rooms WHERE campus_id = $1 AND steward_id = $2 \
+         ORDER BY room_id",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(steward_id.as_uuid())
+    .fetch_all(&state.db)
+    .await
+    .expect("steward rooms")
+    .into_iter()
+    .map(RoomId)
+    .collect()
+}
+
+pub async fn lounge_rows(state: &AppState, campus_id: CampusId) -> Vec<(LoungeId, Option<RoomId>)> {
+    sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
+        "SELECT lounge_id, room_id FROM lounges WHERE campus_id = $1 \
+         ORDER BY (room_id IS NOT NULL), lounge_id",
+    )
+    .bind(campus_id.as_uuid())
+    .fetch_all(&state.db)
+    .await
+    .expect("lounge rows")
+    .into_iter()
+    .map(|(lounge_id, room_id)| (LoungeId(lounge_id), room_id.map(RoomId)))
+    .collect()
+}
+
+pub async fn presence_size(state: &AppState, campus_id: CampusId, lounge_id: LoungeId) -> usize {
+    let mut connection = state
+        .valkey
+        .get_multiplexed_async_connection()
+        .await
+        .expect("valkey connection");
+    redis::cmd("ZCARD")
+        .arg(pulse_server::lounge::presence_key(campus_id, lounge_id))
+        .query_async::<usize>(&mut connection)
+        .await
+        .expect("presence size")
+}
+
+pub async fn expect_close(socket: &mut ClientSocket) -> u16 {
+    match observe_until(socket, |observed| matches!(observed, Observed::Close(_))).await {
+        Observed::Close(code) => code,
+        other => panic!("expected close, got {other:?}"),
+    }
+}
+
+pub async fn frames_until<T>(
+    socket: &mut ClientSocket,
+    mut pick: impl FnMut(&ServerFrame) -> Option<T>,
+    wanted: usize,
+) -> Vec<T> {
+    let mut found = Vec::new();
+    while found.len() < wanted {
+        let frame = expect_frame(socket).await;
+        if let Some(item) = pick(&frame) {
+            found.push(item);
+        }
+    }
+    found
+}
+
+pub fn agent_chunks_of(frames: &[ServerFrame]) -> Vec<pulse_protocol::AgentStreamChunk> {
+    frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::AgentStreamChunk(chunk) => Some(chunk.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+pub enum Managed {
+    Issued(Box<pulse_protocol::StewardIssued>),
+    Changed(StewardProfile),
+    Rejected(pulse_protocol::StewardRejected),
+}
+
+impl Managed {
+    pub fn issued(self) -> pulse_protocol::StewardIssued {
+        match self {
+            Managed::Issued(issued) => *issued,
+            _ => panic!("expected an issued token"),
+        }
+    }
+
+    pub fn rejected(self) -> pulse_protocol::StewardRejected {
+        match self {
+            Managed::Rejected(rejected) => rejected,
+            _ => panic!("expected a rejection"),
+        }
+    }
+}
+
+pub async fn manage_on(socket: &mut ClientSocket, request: ManageSteward) -> Managed {
+    let nonce = request.request_nonce;
+    let steward_id = request.steward_id;
+    let waits_for_change = matches!(
+        request.action,
+        StewardAction::Revoke | StewardAction::AssignRooms
+    );
+    send(socket, &manage_frame(request)).await;
+    next_of(socket, |frame| match frame {
+        ServerFrame::StewardIssued(issued) if issued.request_nonce == nonce => {
+            Some(Managed::Issued(Box::new(issued.clone())))
+        }
+        ServerFrame::StewardRejected(rejected) if rejected.request_nonce == nonce => {
+            Some(Managed::Rejected(*rejected))
+        }
+        ServerFrame::StewardChanged(changed)
+            if waits_for_change && Some(changed.steward.steward_id) == steward_id =>
+        {
+            Some(Managed::Changed(changed.steward.clone()))
+        }
+        _ => None,
+    })
+    .await
+}
+
+pub async fn owner_socket(addr: SocketAddr, campus: &Campus) -> ClientSocket {
+    joined_socket(addr, campus.id, &campus.owner.token).await.0
 }

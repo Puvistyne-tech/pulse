@@ -20,14 +20,23 @@ enum Permission {
   react,
   pinMessage,
   uploadAttachment,
+  manageStewards,
+  streamReply,
+  useStewardTools,
+  joinLounge,
+  speakInLounge,
 }
 
 enum Role {
   owner,
   admin,
   member,
-  guest;
+  guest,
+  steward;
 
   Future<void> asStr() =>
       RustLib.instance.api.pulseProtocolRbacRoleAsStr(that: this);
+
+  Future<bool> isSteward() =>
+      RustLib.instance.api.pulseProtocolRbacRoleIsSteward(that: this);
 }

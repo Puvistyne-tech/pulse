@@ -17,7 +17,14 @@ async fn main() {
 async fn run() -> Result<(), StartupError> {
     let config = config::from_env()?;
     let storage = Storage::new(config::storage_from_env())?;
-    let app_state = state::lazy(&config)?.with_storage(storage);
+    let lounge = config::lounge_from_env();
+    if lounge.api_secret.len() < 32 {
+        tracing::warn!("livekit api secret is shorter than 32 characters");
+    }
+    let app_state = state::lazy(&config)?
+        .with_storage(storage)
+        .with_lounge(lounge)
+        .with_streams(config::stream_from_env());
     MIGRATOR.run(&app_state.db).await?;
     if let Err(error) = app_state.storage.ensure_bucket().await {
         tracing::warn!(%error, "object storage bucket unavailable");

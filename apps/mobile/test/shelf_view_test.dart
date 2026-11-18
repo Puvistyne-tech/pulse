@@ -66,22 +66,29 @@ class ChoiceCase {
   final String name;
   final bool shelved;
   final String label;
-  final (ShelfAction, ReminderPreset?) expected;
+  final (ShelfAction, ReminderPreset?, BigInt?) expected;
 }
 
 const choiceCases = <ChoiceCase>[
   ChoiceCase('saving an unshelved message', false, 'Save to shelf', (
     ShelfAction.save,
     null,
+    null,
   )),
-  ChoiceCase('removing', true, 'Remove from shelf', (ShelfAction.remove, null)),
+  ChoiceCase('removing', true, 'Remove from shelf', (
+    ShelfAction.remove,
+    null,
+    null,
+  )),
   ChoiceCase('a preset on an unshelved message', false, 'In one hour', (
     ShelfAction.save,
     ReminderPreset.inOneHour,
+    null,
   )),
   ChoiceCase('a preset on a shelved message', true, 'Next week', (
     ShelfAction.reschedule,
     ReminderPreset.nextWeek,
+    null,
   )),
 ];
 
@@ -90,13 +97,18 @@ Future<void> pumpMenu(
   required bool shelved,
   required List<ReminderPreset> presets,
   required List<Object> calls,
+  BigInt? anchorMs,
+  BigInt? latestMs,
 }) => pumpView(
   tester,
   Center(
     child: ShelfMenu(
       presets: presets,
       shelved: shelved,
-      onUpdate: (action, preset) async => calls.add((action, preset)),
+      pickerAnchorMs: anchorMs,
+      pickerLatestMs: latestMs,
+      onUpdate: (action, preset, remindAtMs) async =>
+          calls.add((action, preset, remindAtMs)),
     ),
   ),
 );
@@ -231,8 +243,8 @@ void main() {
         await tester.tap(find.text('Shelf'));
         await tester.pumpAndSettle();
         final items = tester
-            .widgetList<PopupMenuItem<(ShelfAction, ReminderPreset?)>>(
-              find.byType(PopupMenuItem<(ShelfAction, ReminderPreset?)>),
+            .widgetList<PopupMenuItem<(ShelfAction, ReminderPreset?, bool)>>(
+              find.byType(PopupMenuItem<(ShelfAction, ReminderPreset?, bool)>),
             )
             .map((item) => (item.child as Text).data)
             .toList();
@@ -256,6 +268,106 @@ void main() {
         expect(calls, [fixture.expected]);
       });
     }
+
+    for (final (name, shelved, hasAnchor) in [
+      ('unshelved with an anchor', false, true),
+      ('shelved with an anchor', true, true),
+      ('unshelved without an anchor', false, false),
+      ('shelved without an anchor', true, false),
+    ]) {
+      testWidgets('custom time item for $name', (tester) async {
+        await pumpMenu(
+          tester,
+          shelved: shelved,
+          presets: allPresets,
+          calls: <Object>[],
+          anchorMs: hasAnchor ? pickerAnchor : null,
+          latestMs: hasAnchor ? pickerLatest : null,
+        );
+        await tester.tap(find.text('Shelf'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('shelfCustomTime')),
+          hasAnchor ? findsOneWidget : findsNothing,
+        );
+      });
+    }
+
+    for (final (name, shelved, action) in [
+      ('saves an unshelved message', false, ShelfAction.save),
+      ('reschedules a shelved message', true, ShelfAction.reschedule),
+    ]) {
+      testWidgets('picking the anchor date and time $name', (tester) async {
+        final calls = <Object>[];
+        await pumpMenu(
+          tester,
+          shelved: shelved,
+          presets: allPresets,
+          calls: calls,
+          anchorMs: pickerAnchor,
+          latestMs: pickerLatest,
+        );
+        await tester.tap(find.text('Shelf'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('shelfCustomTime')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        expect(calls, [(action, null, pickerAnchor)]);
+      });
+    }
+
+    testWidgets('dismissing the date picker reports nothing', (tester) async {
+      final calls = <Object>[];
+      await pumpMenu(
+        tester,
+        shelved: false,
+        presets: allPresets,
+        calls: calls,
+        anchorMs: pickerAnchor,
+        latestMs: pickerLatest,
+      );
+      await tester.tap(find.text('Shelf'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('shelfCustomTime')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(calls, isEmpty);
+    });
+
+    testWidgets('the shelf view hands the anchor to its entries', (
+      tester,
+    ) async {
+      final recorded = await pumpShelf(
+        tester,
+        shelfOf(
+          upcoming: [shelfEntryOf(ShelfBucket.upcoming, messageCId)],
+          pickerAnchorMs: pickerAnchor,
+          pickerLatestMs: pickerLatest,
+        ),
+      );
+      await tester.tap(find.text('Shelf').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('shelfCustomTime')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(recorded.calls, [
+        (
+          'updateShelf',
+          roomAId,
+          messageCId,
+          ShelfAction.reschedule,
+          null,
+          pickerAnchor,
+        ),
+      ]);
+    });
 
     testWidgets('entries in the shelf view reschedule their own message', (
       tester,

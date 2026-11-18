@@ -4,22 +4,26 @@ use std::ops::Bound;
 use pulse_protocol::{
     AccountProfile, ApiError, ApiErrorCode, AttachmentId, CampusId, ClientFrame, ClientNonce,
     CreateUploadRequest, DeliveryState, DraftId, InboxSnapshot, InboxStep, InputField,
-    MarkThreadRead, MessageId, MessageRejection, PinRejection, REACTION_PALETTE, React,
-    ReactionAction, ReactionRejection, ReactionSummary, RoomCursor, RoomId, RoomMessage,
+    LoungeSnapshot, MarkThreadRead, MessageId, MessageRejection, PinRejection, REACTION_PALETTE,
+    React, ReactionAction, ReactionRejection, ReactionSummary, RoomCursor, RoomId, RoomMessage,
     SEARCH_CANDIDATE_LIMIT, SYNC_MAX_ROOMS, SearchSnapshot, SendMessage, ServerFrame, SetPin,
-    SetThreadSubscription, SetTopicTitle, ShelfSnapshot, ShelfSynced, SubscriptionOrigin,
-    SubscriptionState, SyncInbox, SyncRooms, SyncShelf, SyncThread, ThreadPreview, ThreadRejection,
-    ThreadSnapshot, ThreadSummary, ThreadSynced, TimelineEntry, TimelineSnapshot, UpdateShelf,
-    Validate, VaultSnapshot, VaultSynced, body_segments, mention_token, normalize_message_content,
-    normalize_reaction_emoji, normalize_topic_title, validate_remind_at,
+    SetThreadSubscription, SetTopicTitle, ShelfSnapshot, ShelfSynced, StewardSnapshot,
+    SubscriptionOrigin, SubscriptionState, SyncInbox, SyncLounges, SyncRooms, SyncShelf,
+    SyncStewards, SyncThread, ThreadPreview, ThreadRejection, ThreadSnapshot, ThreadSummary,
+    ThreadSynced, TimelineEntry, TimelineSnapshot, UpdateShelf, Validate, VaultSnapshot,
+    VaultSynced, body_segments, mention_token, normalize_message_content, normalize_reaction_emoji,
+    normalize_topic_title, validate_remind_at,
 };
 
 use crate::effects::{Effect, EffectOutcome, UploadJob};
 use crate::inbox::{InboxTracker, is_newer, reply_preview};
+use crate::lounge::{LoungeIntent, LoungeTracker};
 use crate::media::{MediaIntent, MediaTracker, Readiness};
 use crate::search::{SearchDocument, SearchQuery};
 use crate::search_view::{SearchIntent, SearchTracker};
 use crate::shelf::{ShelfIntent, ShelfTracker};
+use crate::steward_view::{StewardIntent, StewardTracker};
+use crate::stream_view::StreamTracker;
 use crate::thread_view::{THREAD_BURIED_DEPTH, ThreadView};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +89,8 @@ pub enum TimelineEvent {
     Search(SearchIntent),
     Media(MediaIntent),
     Shelf(ShelfIntent),
+    Lounge(LoungeIntent),
+    Steward(StewardIntent),
     EffectFinished(EffectOutcome),
     FocusRequested {
         message_id: MessageId,
@@ -181,6 +187,9 @@ pub struct TimelineMachine {
     search: SearchTracker,
     media: MediaTracker,
     shelf: ShelfTracker,
+    streams: StreamTracker,
+    stewards: StewardTracker,
+    lounge: LoungeTracker,
     focus: Option<MessageId>,
 }
 
@@ -252,6 +261,9 @@ impl TimelineMachine {
             search: SearchTracker::default(),
             media: MediaTracker::default(),
             shelf: ShelfTracker::default(),
+            streams: StreamTracker::default(),
+            stewards: StewardTracker::default(),
+            lounge: LoungeTracker::default(),
             focus: None,
         }
     }
@@ -299,6 +311,14 @@ impl TimelineMachine {
         self.shelf.snapshot(self.clock_ms)
     }
 
+    pub fn lounge_snapshot(&self) -> LoungeSnapshot {
+        self.lounge.snapshot(self.account.account_id, self.clock_ms)
+    }
+
+    pub fn steward_snapshot(&self) -> StewardSnapshot {
+        self.stewards.snapshot()
+    }
+
     pub fn campus_id(&self) -> CampusId {
         self.campus_id
     }
@@ -313,6 +333,8 @@ impl TimelineMachine {
                 .as_ref()
                 .and_then(ThreadView::follow_deadline_ms),
             self.shelf.next_deadline_ms(self.clock_ms),
+            self.streams.next_deadline_ms(),
+            self.lounge.next_deadline_ms(self.clock_ms),
         ]
         .into_iter()
         .flatten()
@@ -447,6 +469,7 @@ impl TimelineMachine {
 
     fn absorb(&mut self, message: &RoomMessage, allow_new: bool) -> bool {
         self.forget_own_outgoing(message);
+        self.streams.confirm(message.client_nonce);
         let first = self.store(message, allow_new);
         self.inbox.observe(message, self.account.account_id);
         let current = self
@@ -738,7 +761,71 @@ impl TimelineMachine {
             ServerFrame::Welcome(_)
             | ServerFrame::Pong(_)
             | ServerFrame::VersionMismatch(_)
-            | ServerFrame::HandshakeRejected(_) => Vec::new(),
+            | ServerFrame::HandshakeRejected(_)
+            | ServerFrame::StreamRejected(_)
+            | ServerFrame::ToolsListed(_)
+            | ServerFrame::ToolResult(_)
+            | ServerFrame::StewardWorkItem(_)
+            | ServerFrame::WorkSynced(_) => Vec::new(),
+            ServerFrame::AgentStreamChunk(chunk) => {
+                if chunk.campus_id == self.campus_id {
+                    self.stewards.observe(chunk.steward_id);
+                    let known = chunk.message_id.is_some_and(|message_id| {
+                        self.logs
+                            .get(&chunk.room_id)
+                            .is_some_and(|log| log.messages.contains_key(&message_id))
+                    });
+                    let nonce = chunk.stream_id.client_nonce();
+                    self.streams.apply(chunk, self.clock_ms);
+                    if known {
+                        self.streams.confirm(nonce);
+                    }
+                }
+                Vec::new()
+            }
+            ServerFrame::StewardsSynced(synced) => {
+                self.stewards.apply_synced(synced);
+                Vec::new()
+            }
+            ServerFrame::StewardChanged(changed) => {
+                self.stewards.apply_changed(changed);
+                Vec::new()
+            }
+            ServerFrame::StewardIssued(issued) => {
+                self.stewards.apply_issued(issued);
+                Vec::new()
+            }
+            ServerFrame::StewardRejected(rejected) => {
+                self.stewards.apply_rejected(&rejected);
+                Vec::new()
+            }
+            ServerFrame::LoungesSynced(synced) => {
+                let campus_id = self.campus_id;
+                self.lounge.apply_synced(
+                    synced
+                        .lounges
+                        .into_iter()
+                        .filter(|lounge| lounge.campus_id == campus_id)
+                        .collect(),
+                );
+                Vec::new()
+            }
+            ServerFrame::LoungeChanged(changed) => {
+                if changed.lounge.campus_id == self.campus_id {
+                    self.lounge.apply_lounge(changed.lounge);
+                }
+                Vec::new()
+            }
+            ServerFrame::LoungeJoined(joined) => {
+                if joined.lounge.campus_id == self.campus_id {
+                    self.lounge.apply_joined(joined, self.clock_ms);
+                }
+                Vec::new()
+            }
+            ServerFrame::LoungeRejected(rejected) => {
+                self.lounge.apply_rejected(rejected);
+                Vec::new()
+            }
         }
     }
 
@@ -801,7 +888,14 @@ impl TimelineMachine {
 
     fn advance_clock(&mut self, now_ms: u64) -> Vec<ClientFrame> {
         self.clock_ms = self.clock_ms.max(now_ms);
+        self.streams.expire(self.clock_ms);
         self.want_tickets(core::iter::empty());
+        let mut frames = self.lounge.heartbeat(self.clock_ms, self.connected);
+        frames.extend(self.follow_due_frames());
+        frames
+    }
+
+    fn follow_due_frames(&mut self) -> Vec<ClientFrame> {
         let due = self
             .thread_view
             .as_ref()
@@ -1142,6 +1236,9 @@ impl TimelineMachine {
         let mut frames = self.begin_sync(&rooms);
         frames.push(ClientFrame::SyncInbox(SyncInbox {}));
         frames.push(ClientFrame::SyncShelf(SyncShelf {}));
+        frames.push(ClientFrame::SyncStewards(SyncStewards {}));
+        frames.push(ClientFrame::SyncLounges(SyncLounges {}));
+        frames.extend(self.lounge.on_connected());
         frames.extend(self.resend_frames());
         let pending = self
             .thread_view
@@ -1181,6 +1278,9 @@ impl TimelineMachine {
                 self.logs.values_mut().for_each(|log| log.syncing = false);
                 self.inbox.clear_requests();
                 self.shelf.clear_pending();
+                self.stewards.clear_pending();
+                self.streams.clear();
+                self.lounge.on_disconnected();
                 let unconfirmed = self.thread_view.as_ref().is_some_and(|view| {
                     view.follow_sent && self.inbox.thread_state(view.root_message_id).is_none()
                 });
@@ -1213,6 +1313,11 @@ impl TimelineMachine {
             }
             TimelineEvent::Media(intent) => self.apply_media(intent),
             TimelineEvent::Shelf(intent) => self.apply_shelf(intent),
+            TimelineEvent::Lounge(intent) => {
+                self.lounge
+                    .apply_intent(intent, self.connected, self.clock_ms)
+            }
+            TimelineEvent::Steward(intent) => self.stewards.apply_intent(intent, self.connected),
             TimelineEvent::EffectFinished(outcome) => self.finish_effect(outcome),
             TimelineEvent::FocusRequested { message_id } => {
                 self.focus = Some(message_id);
@@ -1270,6 +1375,8 @@ impl TimelineMachine {
             pending_drafts: Vec::new(),
             pinned: message.pin.is_some(),
             shelved: shelved.contains(&message.message_id),
+            author_is_steward: self.stewards.is_steward(message.author_id),
+            stream: None,
         }
     }
 
@@ -1296,6 +1403,8 @@ impl TimelineMachine {
             pending_drafts: self.media.claimed_drafts(client_nonce),
             pinned: false,
             shelved: false,
+            author_is_steward: false,
+            stream: None,
         }
     }
 
@@ -1352,7 +1461,14 @@ impl TimelineMachine {
             room_id: Some(view.room_id),
             root_message_id: Some(view.root_message_id),
             root: root.map(|message| self.message_entry(message, None, &shelved)),
-            replies: confirmed.chain(unconfirmed).collect(),
+            replies: confirmed
+                .chain(self.streams.entries_for(
+                    view.room_id,
+                    Some(view.root_message_id),
+                    self.clock_ms,
+                ))
+                .chain(unconfirmed)
+                .collect(),
             topic_title: root.and_then(|message| message.topic_title.clone()),
             subscription: self
                 .inbox
@@ -1389,7 +1505,10 @@ impl TimelineMachine {
             .map(|(client_nonce, outgoing)| self.pending_entry(*client_nonce, outgoing));
         TimelineSnapshot {
             room_id: Some(room_id),
-            entries: confirmed.chain(unconfirmed).collect(),
+            entries: confirmed
+                .chain(self.streams.entries_for(room_id, None, self.clock_ms))
+                .chain(unconfirmed)
+                .collect(),
             syncing: self.logs.get(&room_id).is_some_and(|log| log.syncing),
             error: self.error,
             reaction_palette: reaction_palette(),

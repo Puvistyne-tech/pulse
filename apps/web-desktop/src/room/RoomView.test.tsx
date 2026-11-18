@@ -15,6 +15,8 @@ import {
   MESSAGE_B,
   NONCE_C,
   ROOM_A,
+  ROOM_B,
+  STEWARD_A,
   allPresets,
   attachmentViewOf,
   draftOf,
@@ -29,6 +31,8 @@ import {
   pendingEntry,
   reactedEntry,
   reactionPalette,
+  stewardEntryOf,
+  streamingEntryOf,
   threadedEntry,
   threadPreviewOf,
   timelineOf,
@@ -614,5 +618,61 @@ describe("focus", () => {
       row.getAttribute("data-focused"),
     );
     expect(flags).toEqual(["false", "false"]);
+  });
+});
+
+describe("steward entries", () => {
+  test.each<[string, TimelineEntry, boolean, string | null]>([
+    ["a streaming entry", streamingEntryOf("streaming"), true, "Streaming"],
+    ["a finalizing entry", streamingEntryOf("finalizing"), true, "Finalizing"],
+    [
+      "a finished steward entry",
+      streamingEntryOf("streaming", { stream: null }),
+      true,
+      null,
+    ],
+    ["a human entry", confirmedEntry, false, null],
+  ])("%s", (_name, entry, badge, streamLabel) => {
+    const { container } = renderRoom(timelineOf([entry]));
+    const row = container.querySelector("li");
+    expect(screen.queryByText("Steward") !== null).toBe(badge);
+    expect(row?.getAttribute("data-stream")).toBe(entry.stream);
+    for (const label of ["Streaming", "Finalizing"]) {
+      expect(screen.queryByText(label) !== null).toBe(label === streamLabel);
+    }
+  });
+
+  test("a streaming entry without a message id offers no reply or shelf actions", () => {
+    renderRoom(timelineOf([streamingEntryOf("streaming")]));
+    expect(screen.queryByRole("button", { name: "Reply in thread" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Shelf" })).toBeNull();
+  });
+});
+
+describe("steward mention picker", () => {
+  const stewards = [stewardEntryOf(STEWARD_A, "Scribe")];
+
+  test.each<[string, string, boolean]>([
+    ["assigned room", ROOM_A, true],
+    ["unassigned room", ROOM_B, false],
+  ])("%s", (_name, roomId, offered) => {
+    render(
+      <RoomView
+        timeline={timelineOf([], { room_id: roomId })}
+        intents={noopIntents()}
+        stewards={stewards}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Scribe" }) !== null).toBe(offered);
+  });
+
+  test("picking appends the mention token to the draft", () => {
+    render(
+      <RoomView timeline={timelineOf([])} intents={noopIntents()} stewards={stewards} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Scribe" }));
+    expect((screen.getByLabelText("Message") as HTMLInputElement).value).toBe(
+      `${mentionToken(STEWARD_A)} `,
+    );
   });
 });

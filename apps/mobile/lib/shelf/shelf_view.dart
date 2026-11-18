@@ -33,18 +33,24 @@ class ShelfView extends StatelessWidget {
           label: 'Due',
           entries: shelf.due,
           presets: shelf.presets,
+          pickerAnchorMs: shelf.pickerAnchorMs,
+          pickerLatestMs: shelf.pickerLatestMs,
           intents: intents,
         ),
         _Section(
           label: 'Upcoming',
           entries: shelf.upcoming,
           presets: shelf.presets,
+          pickerAnchorMs: shelf.pickerAnchorMs,
+          pickerLatestMs: shelf.pickerLatestMs,
           intents: intents,
         ),
         _Section(
           label: 'Done',
           entries: shelf.done,
           presets: shelf.presets,
+          pickerAnchorMs: shelf.pickerAnchorMs,
+          pickerLatestMs: shelf.pickerLatestMs,
           intents: intents,
         ),
       ],
@@ -57,12 +63,16 @@ class _Section extends StatelessWidget {
     required this.label,
     required this.entries,
     required this.presets,
+    required this.pickerAnchorMs,
+    required this.pickerLatestMs,
     required this.intents,
   });
 
   final String label;
   final List<ShelfEntry> entries;
   final List<ReminderPreset> presets;
+  final BigInt? pickerAnchorMs;
+  final BigInt? pickerLatestMs;
   final PulseIntents intents;
 
   @override
@@ -110,12 +120,14 @@ class _Section extends StatelessWidget {
               ShelfMenu(
                 presets: presets,
                 shelved: true,
-                onUpdate: (action, preset) => intents.updateShelf(
+                pickerAnchorMs: pickerAnchorMs,
+                pickerLatestMs: pickerLatestMs,
+                onUpdate: (action, preset, remindAtMs) => intents.updateShelf(
                   entry.roomId,
                   entry.messageId,
                   action,
                   preset,
-                  null,
+                  remindAtMs,
                 ),
               ),
             ],

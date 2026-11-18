@@ -2,11 +2,11 @@ mod fixtures;
 
 use fixtures::{
     NONCE_A, ROOM_A, SummarySpec, accepted_frame, chain_message, clock, close_thread,
-    created_frame, inbox_synced_frame, mark_read_frame, message_id, open_thread, own_reply,
-    peer_reply, received, rejected_frame, reply_frame, reply_intent, settled_machine, step_all,
-    subscribe, subscription_frame, sync_frame_at, sync_inbox_frame, sync_shelf_frame,
-    sync_thread_frame, thread_changed_frame, thread_rejected_frame, thread_synced_frame,
-    timeline_connected, title_intent, topic_title_frame, with_replies,
+    connect_burst_at, created_frame, inbox_synced_frame, mark_read_frame, message_id, open_thread,
+    own_reply, peer_reply, received, rejected_frame, reply_frame, reply_intent, settled_machine,
+    step_all, subscribe, subscription_frame, sync_thread_frame, thread_changed_frame,
+    thread_rejected_frame, thread_synced_frame, timeline_connected, title_intent,
+    topic_title_frame, with_replies,
 };
 use pulse_core::{THREAD_BURIED_DEPTH, THREAD_VIEW_FOLLOW_MS, TimelineEvent};
 use pulse_protocol::{
@@ -35,8 +35,8 @@ fn reconnect() -> TimelineEvent {
     timeline_connected(&[ROOM_A])
 }
 
-fn resync() -> ClientFrame {
-    sync_frame_at(&[(ROOM_A, Some(message_id(1)), Some(0))])
+fn reconnect_burst() -> Vec<ClientFrame> {
+    connect_burst_at(&[(ROOM_A, Some(message_id(1)), Some(0))])
 }
 
 fn run(events: Vec<TimelineEvent>) -> (pulse_core::TimelineMachine, Vec<ClientFrame>) {
@@ -134,24 +134,14 @@ fn viewing_follows_after_the_injected_delay(
 #[rstest]
 #[case::follow_due_offline_is_sent_on_connect(
     vec![open_thread(1, 1000), TimelineEvent::Disconnected, clock(4000), reconnect()],
-    vec![
-        sync_thread_frame(1, None),
-        resync(),
-        sync_inbox_frame(), sync_shelf_frame(),
-        follow(1),
-        sync_thread_frame(1, None),
-    ],
+    [vec![sync_thread_frame(1, None)], reconnect_burst(), vec![follow(1),
+        sync_thread_frame(1, None)]].concat(),
 )]
 #[case::unconfirmed_follow_is_resent_after_drop(
     vec![open_thread(1, 1000), clock(4000), TimelineEvent::Disconnected, reconnect()],
-    vec![
-        sync_thread_frame(1, None),
-        follow(1),
-        resync(),
-        sync_inbox_frame(), sync_shelf_frame(),
-        follow(1),
-        sync_thread_frame(1, None),
-    ],
+    [vec![sync_thread_frame(1, None),
+        follow(1)], reconnect_burst(), vec![follow(1),
+        sync_thread_frame(1, None)]].concat(),
 )]
 #[case::confirmed_follow_is_not_resent(
     vec![
@@ -161,13 +151,8 @@ fn viewing_follows_after_the_injected_delay(
         TimelineEvent::Disconnected,
         reconnect(),
     ],
-    vec![
-        sync_thread_frame(1, None),
-        follow(1),
-        resync(),
-        sync_inbox_frame(), sync_shelf_frame(),
-        sync_thread_frame(1, None),
-    ],
+    [vec![sync_thread_frame(1, None),
+        follow(1)], reconnect_burst(), vec![sync_thread_frame(1, None)]].concat(),
 )]
 #[case::pending_follow_is_sent_once(
     vec![
@@ -178,17 +163,9 @@ fn viewing_follows_after_the_injected_delay(
         TimelineEvent::Disconnected,
         reconnect(),
     ],
-    vec![
-        sync_thread_frame(1, None),
-        resync(),
-        sync_inbox_frame(), sync_shelf_frame(),
-        follow(1),
-        sync_thread_frame(1, None),
-        resync(),
-        sync_inbox_frame(), sync_shelf_frame(),
-        follow(1),
-        sync_thread_frame(1, None),
-    ],
+    [vec![sync_thread_frame(1, None)], reconnect_burst(), vec![follow(1),
+        sync_thread_frame(1, None)], reconnect_burst(), vec![follow(1),
+        sync_thread_frame(1, None)]].concat(),
 )]
 #[case::settled_thread_page_is_not_requested_again(
     vec![
@@ -197,15 +174,15 @@ fn viewing_follows_after_the_injected_delay(
         TimelineEvent::Disconnected,
         reconnect(),
     ],
-    vec![sync_thread_frame(1, None), resync(), sync_inbox_frame(), sync_shelf_frame()],
+    [vec![sync_thread_frame(1, None)], reconnect_burst()].concat(),
 )]
 #[case::closed_thread_is_not_requested_after_reconnect(
     vec![open_thread(1, 1000), close_thread(), TimelineEvent::Disconnected, reconnect()],
-    vec![sync_thread_frame(1, None), resync(), sync_inbox_frame(), sync_shelf_frame()],
+    [vec![sync_thread_frame(1, None)], reconnect_burst()].concat(),
 )]
 #[case::open_while_offline_emits_nothing_until_connect(
     vec![TimelineEvent::Disconnected, open_thread(1, 1000), reconnect()],
-    vec![resync(), sync_inbox_frame(), sync_shelf_frame(), sync_thread_frame(1, None)],
+    [reconnect_burst(), vec![sync_thread_frame(1, None)]].concat(),
 )]
 fn reconnect_resumes_the_open_thread_and_pending_follow(
     #[case] events: Vec<TimelineEvent>,
@@ -558,13 +535,11 @@ fn offline_reply_is_queued_and_sent_on_connect() {
     ]);
     assert_eq!(
         frames,
-        vec![
-            resync(),
-            sync_inbox_frame(),
-            sync_shelf_frame(),
-            reply_frame(1, NONCE_A, "later"),
-            sync_thread_frame(1, None),
+        [
+            reconnect_burst(),
+            vec![reply_frame(1, NONCE_A, "later"), sync_thread_frame(1, None),],
         ]
+        .concat()
     );
     assert_eq!(
         thread_state(&machine).0,

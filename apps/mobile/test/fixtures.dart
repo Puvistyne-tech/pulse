@@ -6,6 +6,7 @@ import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/auth.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/campus.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/frames.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/ids.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/lounge.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/mention.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/media.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/messaging.dart';
@@ -108,6 +109,8 @@ TimelineEntry _entry(
   List<DraftAttachmentView> pendingDrafts = const [],
   bool pinned = false,
   bool shelved = false,
+  bool authorIsSteward = false,
+  StreamState? stream,
 }) {
   final author = authorId ?? account.accountId;
   return TimelineEntry(
@@ -128,6 +131,8 @@ TimelineEntry _entry(
     pendingDrafts: pendingDrafts,
     pinned: pinned,
     shelved: shelved,
+    authorIsSteward: authorIsSteward,
+    stream: stream,
   );
 }
 
@@ -154,6 +159,8 @@ TimelineEntry _gracesEntry({
   List<AttachmentView> attachments = const [],
   bool pinned = false,
   bool shelved = false,
+  bool authorIsSteward = false,
+  StreamState? stream,
 }) => _entry(
   DeliveryState.confirmed,
   clientNonce: clientNonce,
@@ -169,12 +176,16 @@ TimelineEntry _gracesEntry({
   attachments: attachments,
   pinned: pinned,
   shelved: shelved,
+  authorIsSteward: authorIsSteward,
+  stream: stream,
 );
 
 TimelineEntry gracesEntryWith({
   List<AttachmentView> attachments = const [],
   bool pinned = false,
   bool shelved = false,
+  bool authorIsSteward = false,
+  StreamState? stream,
   List<BodySegment>? segments,
   String body = 'welcome',
   MessageId? messageId,
@@ -186,6 +197,8 @@ TimelineEntry gracesEntryWith({
   attachments: attachments,
   pinned: pinned,
   shelved: shelved,
+  authorIsSteward: authorIsSteward,
+  stream: stream,
 );
 
 TimelineEntry ownPendingEntryWith(List<DraftAttachmentView> pendingDrafts) =>
@@ -323,6 +336,58 @@ const emptyShelf = ShelfSnapshot(
   presets: [],
 );
 
+final pickerAnchor = BigInt.from(1800000000000);
+final pickerLatest = BigInt.from(1800000000000 + 30 * 86400000);
+
+const emptyLounges = LoungeSnapshot(
+  lounges: [],
+  joining: false,
+  media: LoungeMediaState.idle,
+  canJoin: false,
+  canSpeak: false,
+);
+
+const emptyStewards = StewardSnapshot(
+  open: false,
+  stewards: [],
+  canManage: false,
+  pending: false,
+);
+
+final loungeAId = LoungeId(field0: _uuid('90'));
+final loungeBId = LoungeId(field0: _uuid('91'));
+
+LoungeEntry loungeEntryOf(
+  LoungeId loungeId,
+  LoungeScope scope, {
+  String? roomSlug,
+  List<LoungeParticipantView> participants = const [],
+}) => LoungeEntry(
+  loungeId: loungeId,
+  scope: scope,
+  roomSlug: roomSlug,
+  participants: participants,
+  joined: false,
+);
+
+LoungeParticipantView participantOf(String name, {bool fromSelf = false}) =>
+    LoungeParticipantView(
+      accountId: AccountId(
+        field0: _uuid(name.length.toRadixString(16).padLeft(2, '0')),
+      ),
+      displayName: name,
+      fromSelf: fromSelf,
+      canSpeak: true,
+    );
+
+LoungeSnapshot loungesOf(List<LoungeEntry> entries) => LoungeSnapshot(
+  lounges: entries,
+  joining: false,
+  media: LoungeMediaState.idle,
+  canJoin: true,
+  canSpeak: true,
+);
+
 const allPresets = ReminderPreset.values;
 
 String idTail(MessageId messageId) =>
@@ -447,6 +512,8 @@ ShelfSnapshot shelfOf({
   List<ShelfEntry> done = const [],
   bool open = true,
   ShelfEntry? latestReminder,
+  BigInt? pickerAnchorMs,
+  BigInt? pickerLatestMs,
   ApiError? error,
 }) => ShelfSnapshot(
   open: open,
@@ -456,6 +523,8 @@ ShelfSnapshot shelfOf({
   dueCount: due.length,
   latestReminder: latestReminder,
   presets: allPresets,
+  pickerAnchorMs: pickerAnchorMs,
+  pickerLatestMs: pickerLatestMs,
   error: error,
 );
 
@@ -537,6 +606,7 @@ ClientSnapshot withExtras(
   SearchSnapshot? search,
   VaultSnapshot? vault,
   ShelfSnapshot? shelf,
+  LoungeSnapshot? lounges,
   TimelineSnapshot? timeline,
 }) => ClientSnapshot(
   sequence: snapshot.sequence,
@@ -548,6 +618,8 @@ ClientSnapshot withExtras(
   search: search ?? snapshot.search,
   vault: vault ?? snapshot.vault,
   shelf: shelf ?? snapshot.shelf,
+  lounges: lounges ?? snapshot.lounges,
+  stewards: snapshot.stewards,
 );
 
 ClientSnapshot snapshotAt(ClientSnapshot snapshot, int sequence) =>
@@ -561,6 +633,8 @@ ClientSnapshot snapshotAt(ClientSnapshot snapshot, int sequence) =>
       search: snapshot.search,
       vault: snapshot.vault,
       shelf: snapshot.shelf,
+      lounges: snapshot.lounges,
+      stewards: snapshot.stewards,
     );
 
 ClientSnapshot _snapshot({
@@ -582,6 +656,8 @@ ClientSnapshot _snapshot({
   search: emptySearch,
   vault: emptyVault,
   shelf: emptyShelf,
+  lounges: emptyLounges,
+  stewards: emptyStewards,
   network: network(),
   session: SessionSnapshot(
     auth: auth,

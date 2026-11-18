@@ -6,6 +6,17 @@ import type {
   AttachmentView,
   DraftAttachmentView,
   HighlightSpan,
+  IssuedStewardToken,
+  LoungeEntry,
+  LoungeId,
+  LoungeMediaState,
+  LoungeParticipantView,
+  LoungeScope,
+  LoungeSnapshot,
+  LoungeTicket,
+  StewardEntry,
+  StewardSnapshot,
+  StreamState,
   ReminderPreset,
   SearchHit,
   SearchSnapshot,
@@ -53,6 +64,10 @@ export const MESSAGE_B: MessageId = "0193a5c0-0000-7000-8000-0000000000e2";
 export const MESSAGE_C: MessageId = "0193a5c0-0000-7000-8000-0000000000e3";
 export const MESSAGE_D: MessageId = "0193a5c0-0000-7000-8000-0000000000e4";
 export const GRACE_ID: AccountId = "0193a5c0-0000-7000-8000-0000000000c2";
+export const STEWARD_A: AccountId = "0193a5c0-0000-7000-8000-0000000000c3";
+export const STEWARD_B: AccountId = "0193a5c0-0000-7000-8000-0000000000c4";
+export const LOUNGE_A: LoungeId = "0193a5c0-0000-7000-8000-000000000f01";
+export const LOUNGE_B: LoungeId = "0193a5c0-0000-7000-8000-000000000f02";
 export const mentionToken = (accountId: AccountId) => `<@${accountId}>`;
 export const reactionPalette = ["👍", "❤️", "🎉", "👀", "✅", "🙏"];
 export const NONCE_A: ClientNonce = "0193a5c0-0000-7000-8000-0000000000f1";
@@ -91,7 +106,7 @@ export const rooms: Room[] = [
 ];
 
 export const network: ConnectionSnapshot = {
-  protocol_version: 4,
+  protocol_version: 5,
   connection: "disconnected",
   retry_in_ms: null,
   campus_id: null,
@@ -146,6 +161,8 @@ const entryOf = (
     pending_drafts: [],
     pinned: false,
     shelved: false,
+    author_is_steward: false,
+    stream: null,
     ...overrides,
   };
   return {
@@ -208,6 +225,21 @@ export const mentionEntry = entryOf("confirmed", {
     },
   ],
 });
+
+export const streamingEntryOf = (
+  stream: StreamState,
+  overrides: Partial<TimelineEntry> = {},
+) =>
+  entryOf("confirmed", {
+    client_nonce: NONCE_C,
+    author_id: STEWARD_A,
+    author_display_name: "Scribe",
+    from_self: false,
+    body: "partial answer",
+    author_is_steward: true,
+    stream,
+    ...overrides,
+  });
 
 export const reactedEntry = entryOf("confirmed", {
   client_nonce: NONCE_B,
@@ -370,6 +402,8 @@ export const emptyShelf: ShelfSnapshot = {
   due_count: 0,
   latest_reminder: null,
   presets: [],
+  picker_anchor_ms: null,
+  picker_latest_ms: null,
   error: null,
 };
 
@@ -497,10 +531,124 @@ export const shelfOf = (
     due_count: due.length,
     latest_reminder: null,
     presets: allPresets,
+    picker_anchor_ms: 3_300_000,
+    picker_latest_ms: 90_000_000,
     error: null,
     ...overrides,
   };
 };
+
+export const emptyLounges: LoungeSnapshot = {
+  lounges: [],
+  joined_lounge_id: null,
+  joining: false,
+  ticket: null,
+  media: "idle",
+  can_join: false,
+  can_speak: false,
+  error: null,
+};
+
+export const ticketOf = (
+  overrides: Partial<LoungeTicket> = {},
+): LoungeTicket => ({
+  lounge_id: LOUNGE_A,
+  livekit_url: "ws://127.0.0.1:7880",
+  room_name: "pulse-campus-lounge",
+  token: "ticket-token-a",
+  expires_at_ms: 600_000,
+  ...overrides,
+});
+
+export const participantOf = (
+  display_name: string,
+  overrides: Partial<LoungeParticipantView> = {},
+): LoungeParticipantView => ({
+  account_id: `participant-${display_name.toLowerCase()}`,
+  display_name,
+  from_self: false,
+  can_speak: true,
+  ...overrides,
+});
+
+export const loungeEntryOf = (
+  scope: LoungeScope,
+  overrides: Partial<LoungeEntry> = {},
+): LoungeEntry => ({
+  lounge_id: scope === "campus" ? LOUNGE_A : LOUNGE_B,
+  scope,
+  room_id: scope === "room" ? ROOM_A : null,
+  room_slug: scope === "room" ? "commons" : null,
+  participants: [],
+  joined: false,
+  ...overrides,
+});
+
+export const loungesOf = (
+  lounges: LoungeEntry[],
+  overrides: Partial<LoungeSnapshot> = {},
+): LoungeSnapshot => ({
+  lounges,
+  joined_lounge_id: lounges.find((entry) => entry.joined)?.lounge_id ?? null,
+  joining: false,
+  ticket: null,
+  media: "idle",
+  can_join: true,
+  can_speak: true,
+  error: null,
+  ...overrides,
+});
+
+export const emptyStewards: StewardSnapshot = {
+  open: false,
+  stewards: [],
+  can_manage: false,
+  issued: null,
+  pending: false,
+  error: null,
+};
+
+export const stewardEntryOf = (
+  steward_id: AccountId,
+  display_name: string,
+  overrides: Partial<StewardEntry> = {},
+): StewardEntry => ({
+  steward_id,
+  display_name,
+  mention_token: mentionToken(steward_id),
+  room_ids: [ROOM_A],
+  revoked: false,
+  ...overrides,
+});
+
+export const issuedTokenOf = (
+  overrides: Partial<IssuedStewardToken> = {},
+): IssuedStewardToken => ({
+  steward_id: STEWARD_A,
+  display_name: "Scribe",
+  token: "pst_fixture-steward-a",
+  ...overrides,
+});
+
+export const stewardsOf = (
+  stewards: StewardEntry[],
+  overrides: Partial<StewardSnapshot> = {},
+): StewardSnapshot => ({
+  open: true,
+  stewards,
+  can_manage: true,
+  issued: null,
+  pending: false,
+  error: null,
+  ...overrides,
+});
+
+export const mediaStates: LoungeMediaState[] = [
+  "idle",
+  "connecting",
+  "connected",
+  "failed",
+];
 
 const signedInSession: SessionSnapshot = {
   ...signedOutSession,
@@ -514,6 +662,8 @@ export interface SnapshotExtras {
   search?: SearchSnapshot;
   vault?: VaultSnapshot;
   shelf?: ShelfSnapshot;
+  lounges?: LoungeSnapshot;
+  stewards?: StewardSnapshot;
 }
 
 export const snapshotOf = (
@@ -531,6 +681,8 @@ export const snapshotOf = (
   search: extras.search ?? emptySearch,
   vault: extras.vault ?? emptyVault,
   shelf: extras.shelf ?? emptyShelf,
+  lounges: extras.lounges ?? emptyLounges,
+  stewards: extras.stewards ?? emptyStewards,
 });
 
 export const invalidEmailError: ApiError = {
@@ -574,6 +726,8 @@ export const withExtras = (
   search: extras.search ?? base.search,
   vault: extras.vault ?? base.vault,
   shelf: extras.shelf ?? base.shelf,
+  lounges: extras.lounges ?? base.lounges,
+  stewards: extras.stewards ?? base.stewards,
 });
 
 export const signedOutWithError = snapshotOf({
@@ -657,6 +811,14 @@ export function noopIntents() {
     toggleShelf: vi.fn(async () => {}),
     updateShelf: vi.fn(async () => {}),
     dismissReminder: vi.fn(async () => {}),
+    joinLounge: vi.fn(async () => {}),
+    leaveLounge: vi.fn(async () => {}),
+    toggleStewards: vi.fn(async () => {}),
+    createSteward: vi.fn(async () => {}),
+    rotateStewardToken: vi.fn(async () => {}),
+    revokeSteward: vi.fn(async () => {}),
+    assignStewardRooms: vi.fn(async () => {}),
+    dismissStewardToken: vi.fn(async () => {}),
   } satisfies PulseIntents;
 }
 

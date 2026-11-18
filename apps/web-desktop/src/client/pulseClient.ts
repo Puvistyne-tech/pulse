@@ -5,7 +5,10 @@ import type {
   ClientSnapshot,
   CreateCampusRequest,
   DraftId,
+  AccountId,
   InboxStep,
+  LoungeId,
+  LoungeMediaState,
   MessageId,
   ReactionAction,
   ReminderPreset,
@@ -115,6 +118,21 @@ export const pulseClient = {
       remindAtMs,
     }),
   dismissReminder: () => invoke<ClientSnapshot>("dismiss_reminder"),
+  joinLounge: (loungeId: LoungeId) =>
+    invoke<ClientSnapshot>("join_lounge", { loungeId }),
+  leaveLounge: () => invoke<ClientSnapshot>("leave_lounge"),
+  reportLoungeMedia: (state: LoungeMediaState) =>
+    invoke<ClientSnapshot>("report_lounge_media", { state }),
+  toggleStewards: () => invoke<ClientSnapshot>("toggle_stewards"),
+  createSteward: (displayName: string, roomIds: RoomId[]) =>
+    invoke<ClientSnapshot>("create_steward", { displayName, roomIds }),
+  rotateStewardToken: (stewardId: AccountId) =>
+    invoke<ClientSnapshot>("rotate_steward_token", { stewardId }),
+  revokeSteward: (stewardId: AccountId) =>
+    invoke<ClientSnapshot>("revoke_steward", { stewardId }),
+  assignStewardRooms: (stewardId: AccountId, roomIds: RoomId[]) =>
+    invoke<ClientSnapshot>("assign_steward_rooms", { stewardId, roomIds }),
+  dismissStewardToken: () => invoke<ClientSnapshot>("dismiss_steward_token"),
   watchSnapshots: (onSnapshot: (snapshot: ClientSnapshot) => void) => {
     const channel = new Channel<ClientSnapshot>();
     channel.onmessage = onSnapshot;

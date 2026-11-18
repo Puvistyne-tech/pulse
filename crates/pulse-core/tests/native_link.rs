@@ -8,16 +8,17 @@ use std::time::Duration;
 
 use fixtures::{
     ACCOUNT_A, CAMPUS_A, CAMPUS_B, ROOM_A, ROOM_B, attachment_id, auth_session, campus_list,
-    campus_summary, chain_message, confirmed_key, entry_keys, hello_frame, message_id, pending_key,
-    room_message, send_frame, sign_in_request, subscription_frame, sync_frame, sync_inbox_frame,
-    sync_shelf_frame, sync_thread_frame, token_a, vault_item, vault_synced_frame, welcome_for,
+    campus_summary, chain_message, confirmed_key, connect_burst, entry_keys, hello_frame,
+    message_id, pending_key, room_message, send_frame, sign_in_request, subscription_frame,
+    sync_thread_frame, token_a, vault_item, vault_synced_frame, welcome_for,
 };
 use futures_util::{SinkExt, StreamExt};
 use pulse_core::THREAD_VIEW_FOLLOW_MS;
 use pulse_core::native::{ClientStorage, NativeClient, websocket_url};
 use pulse_protocol::{
-    CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Role, Room, RoomList, ServerFrame,
-    SubscriptionOrigin, SubscriptionState, UploadState, UploadTicket, VaultTab, api_path,
+    CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Role, Room, RoomId, RoomList,
+    ServerFrame, SubscriptionOrigin, SubscriptionState, UploadState, UploadTicket, VaultTab,
+    api_path,
 };
 use rstest::rstest;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -257,6 +258,12 @@ impl FakeServer {
         Self { address, observed }
     }
 
+    async fn expect_burst(&mut self, connection: usize, rooms: &[RoomId]) {
+        for frame in connect_burst(rooms) {
+            assert_eq!(self.next_frame().await, (connection, frame));
+        }
+    }
+
     fn url(&self) -> String {
         format!("http://{}", self.address)
     }
@@ -315,14 +322,11 @@ async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
     let signed_in = within(client.sign_in(sign_in_request())).await;
     assert_eq!(signed_in.session.active_campus_id, Some(CAMPUS_A));
     assert_eq!(signed_in.session.active_room_id, Some(ROOM_A));
-    let all_rooms = sync_frame(&[(ROOM_A, None), (ROOM_B, None)]);
     assert_eq!(
         server.next_frame().await,
         (0, hello_frame(CAMPUS_A, token_a()))
     );
-    assert_eq!(server.next_frame().await, (0, all_rooms.clone()));
-    assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
-    assert_eq!(server.next_frame().await, (0, sync_shelf_frame()));
+    server.expect_burst(0, &[ROOM_A, ROOM_B]).await;
     snapshot_where(&mut snapshots, |snapshot| {
         snapshot.network.connection == ConnectionPhase::Connected
     })
@@ -338,9 +342,7 @@ async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
         server.next_frame().await,
         (1, hello_frame(CAMPUS_A, token_a()))
     );
-    assert_eq!(server.next_frame().await, (1, all_rooms));
-    assert_eq!(server.next_frame().await, (1, sync_inbox_frame()));
-    assert_eq!(server.next_frame().await, (1, sync_shelf_frame()));
+    server.expect_burst(1, &[ROOM_A, ROOM_B]).await;
     assert_eq!(
         server.next_frame().await,
         (1, send_frame(ROOM_A, client_nonce, "hello"))
@@ -378,12 +380,7 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
             && snapshot.network.campus_id == Some(CAMPUS_A)
     })
     .await;
-    assert_eq!(
-        server.next_frame().await,
-        (0, sync_frame(&[(ROOM_A, None), (ROOM_B, None)]))
-    );
-    assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
-    assert_eq!(server.next_frame().await, (0, sync_shelf_frame()));
+    server.expect_burst(0, &[ROOM_A, ROOM_B]).await;
     let switched = within(client.select_campus(CAMPUS_B)).await;
     assert_eq!(switched.session.active_campus_id, Some(CAMPUS_B));
     assert!(switched.timeline.entries.is_empty());
@@ -391,12 +388,7 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
         server.next_frame().await,
         (1, hello_frame(CAMPUS_B, token_a()))
     );
-    assert_eq!(
-        server.next_frame().await,
-        (1, sync_frame(&[(ROOM_B, None)]))
-    );
-    assert_eq!(server.next_frame().await, (1, sync_inbox_frame()));
-    assert_eq!(server.next_frame().await, (1, sync_shelf_frame()));
+    server.expect_burst(1, &[ROOM_B]).await;
     let settled = snapshot_where(&mut snapshots, |snapshot| {
         snapshot.network.connection == ConnectionPhase::Connected
             && snapshot.network.campus_id == Some(CAMPUS_B)
@@ -479,12 +471,7 @@ async fn connected_watching(
         server.next_frame().await,
         (0, hello_frame(CAMPUS_A, token_a()))
     );
-    assert_eq!(
-        server.next_frame().await,
-        (0, sync_frame(&[(ROOM_A, None), (ROOM_B, None)]))
-    );
-    assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
-    assert_eq!(server.next_frame().await, (0, sync_shelf_frame()));
+    server.expect_burst(0, &[ROOM_A, ROOM_B]).await;
     (client, snapshots)
 }
 

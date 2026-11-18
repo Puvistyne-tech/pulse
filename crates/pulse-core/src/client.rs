@@ -1,17 +1,20 @@
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthToken, CampusId, ClientFrame, ClientNonce, ClientSnapshot,
-    ConnectionPhase, DraftId, InboxSnapshot, MessageId, Permission, RoomId, SearchSnapshot,
-    ServerFrame, ShelfSnapshot, ThreadSnapshot, VaultSnapshot, role_permits,
+    ConnectionPhase, DraftId, InboxSnapshot, LoungeEntry, LoungeSnapshot, MessageId, Permission,
+    Role, Room, RoomId, SearchSnapshot, ServerFrame, ShelfSnapshot, StewardSnapshot,
+    ThreadSnapshot, VaultSnapshot, role_permits,
 };
 
 use crate::api::ApiTransport;
 use crate::backoff::BackoffPolicy;
 use crate::connection::{ConnectionCommand, ConnectionEvent, ConnectionMachine};
 use crate::effects::{Effect, EffectOutcome};
+use crate::lounge::LoungeIntent;
 use crate::media::MediaIntent;
 use crate::search_view::SearchIntent;
 use crate::session::{SessionEvent, SessionMachine, drive_session};
 use crate::shelf::ShelfIntent;
+use crate::steward_view::StewardIntent;
 use crate::timeline::{ThreadIntent, TimelineEvent, TimelineMachine, empty_timeline};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,10 +69,18 @@ impl Client {
             .timeline
             .as_ref()
             .map_or_else(InboxSnapshot::default, TimelineMachine::inbox_snapshot);
+        let session = self.session.snapshot();
+        let lounges = self.lounge_snapshot(&session.rooms, role);
+        let mut stewards = self
+            .timeline
+            .as_ref()
+            .map_or_else(StewardSnapshot::default, TimelineMachine::steward_snapshot);
+        stewards.can_manage =
+            role.is_some_and(|role| role_permits(role, Permission::ManageStewards));
         ClientSnapshot {
             sequence: self.sequence,
             network: self.connection.snapshot(),
-            session: self.session.snapshot(),
+            session,
             timeline,
             thread,
             inbox,
@@ -85,7 +96,38 @@ impl Client {
                 .timeline
                 .as_ref()
                 .map_or_else(ShelfSnapshot::default, TimelineMachine::shelf_snapshot),
+            lounges,
+            stewards,
         }
+    }
+
+    fn lounge_snapshot(&self, rooms: &[Room], role: Option<Role>) -> LoungeSnapshot {
+        let mut snapshot = self
+            .timeline
+            .as_ref()
+            .map_or_else(LoungeSnapshot::default, TimelineMachine::lounge_snapshot);
+        snapshot.can_join = role.is_some_and(|role| role_permits(role, Permission::JoinLounge));
+        snapshot.can_speak = role.is_some_and(|role| role_permits(role, Permission::SpeakInLounge));
+        for entry in &mut snapshot.lounges {
+            entry.room_slug = entry.room_id.and_then(|room_id| {
+                rooms
+                    .iter()
+                    .find(|room| room.room_id == room_id)
+                    .map(|room| room.slug.clone())
+            });
+        }
+        let position = |entry: &LoungeEntry| {
+            entry
+                .room_id
+                .and_then(|room_id| rooms.iter().position(|room| room.room_id == room_id))
+        };
+        snapshot.lounges.sort_by_key(|entry| {
+            (
+                entry.room_id.is_some(),
+                position(entry).unwrap_or(usize::MAX),
+            )
+        });
+        snapshot
     }
 
     pub async fn apply<A: ApiTransport>(
@@ -177,6 +219,18 @@ impl Client {
     pub fn shelf_intent(&mut self, intent: ShelfIntent) -> ClientSnapshot {
         self.sequence += 1;
         self.feed_timeline(TimelineEvent::Shelf(intent));
+        self.snapshot()
+    }
+
+    pub fn lounge_intent(&mut self, intent: LoungeIntent) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::Lounge(intent));
+        self.snapshot()
+    }
+
+    pub fn steward_intent(&mut self, intent: StewardIntent) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::Steward(intent));
         self.snapshot()
     }
 

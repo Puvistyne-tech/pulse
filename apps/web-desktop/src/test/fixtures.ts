@@ -5,8 +5,11 @@ import type {
   CampusSummary,
   ClientSnapshot,
   ConnectionSnapshot,
+  CreateCampusRequest,
   Room,
   SessionSnapshot,
+  SignInRequest,
+  SignUpRequest,
 } from "@pulse/protocol";
 import { vi } from "vitest";
 import type { PulseIntents } from "../client/usePulseClient";
@@ -127,6 +130,21 @@ export const networkFixtures: ReadonlyArray<
     "Handshake rejected: campus unavailable",
   ],
 ];
+
+export const signInRequest: SignInRequest = {
+  email: "ada@example.test",
+  password: "correct-horse-battery",
+};
+
+export const signUpRequest: SignUpRequest = {
+  ...signInRequest,
+  display_name: "Ada",
+};
+
+export const createCampusRequest: CreateCampusRequest = {
+  slug: "gamma",
+  display_name: "Gamma Campus",
+};
 
 export function noopIntents() {
   return {

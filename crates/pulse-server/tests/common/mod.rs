@@ -10,9 +10,11 @@ use futures_util::{SinkExt, StreamExt};
 use http_body_util::BodyExt;
 use pulse_protocol::fixtures::VALID_PASSWORD;
 use pulse_protocol::{
-    AccountId, AuthSession, AuthToken, CampusCreated, CampusId, ClientFrame, CreateCampusRequest,
-    Hello, Ping, ProtocolVersion, Role, ServerFrame, SignUpRequest, api_path,
+    AccountId, AuthSession, AuthToken, CampusCreated, CampusId, CampusList, ClientFrame,
+    CreateCampusRequest, Hello, Ping, ProtocolVersion, Role, RoomList, ServerFrame, SignUpRequest,
+    api_path,
 };
+use pulse_server::auth::token_digest;
 use pulse_server::{AppState, Config, MIGRATOR, router, state};
 use serde::Serialize;
 use serde_json::Value;
@@ -236,4 +238,58 @@ pub async fn observe(socket: &mut ClientSocket) -> Observed {
             Some(Err(_)) | None => return Observed::Close(1006),
         }
     }
+}
+
+pub async fn api_get(
+    state: &AppState,
+    path: &str,
+    token: Option<&AuthToken>,
+) -> (StatusCode, Value) {
+    api_raw(state, Method::GET, path, token, None).await
+}
+
+pub async fn sign_in_as(state: &AppState, email: &str) -> AuthSession {
+    let body = serde_json::json!({"email": email, "password": VALID_PASSWORD}).to_string();
+    let (status, body) =
+        api_raw(state, Method::POST, api_path::AUTH_TOKENS, None, Some(body)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    serde_json::from_value(body).expect("auth session")
+}
+
+pub async fn campuses_of(state: &AppState, token: &AuthToken) -> CampusList {
+    let (status, body) = api_get(state, api_path::CAMPUSES, Some(token)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    serde_json::from_value(body).expect("campus list")
+}
+
+pub async fn rooms_of(state: &AppState, token: &AuthToken, campus_id: CampusId) -> RoomList {
+    let (status, body) = api_get(state, &api_path::campus_rooms(campus_id), Some(token)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    serde_json::from_value(body).expect("room list")
+}
+
+pub async fn expire_token(state: &AppState, token: &AuthToken) {
+    let affected = sqlx::query(
+        "UPDATE auth_tokens SET expires_at = now() - interval '1 second' WHERE token_hash = $1",
+    )
+    .bind(token_digest(token))
+    .execute(&state.db)
+    .await
+    .expect("expire token")
+    .rows_affected();
+    assert_eq!(affected, 1);
+}
+
+pub async fn handshake_outcome(
+    addr: SocketAddr,
+    campus_id: CampusId,
+    token: &AuthToken,
+) -> Observed {
+    let mut socket = connect(addr).await;
+    send(
+        &mut socket,
+        &hello(campus_id, ProtocolVersion::CURRENT.0, token),
+    )
+    .await;
+    observe(&mut socket).await
 }

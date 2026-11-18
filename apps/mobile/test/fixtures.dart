@@ -174,3 +174,19 @@ class RecordedIntents {
 
 Future<void> pumpView(WidgetTester tester, Widget child) =>
     tester.pumpWidget(MaterialApp(home: Scaffold(body: child)));
+
+const signInRequest = SignInRequest(
+  email: 'ada@example.test',
+  password: 'correct-horse-battery',
+);
+
+const signUpRequest = SignUpRequest(
+  email: 'ada@example.test',
+  displayName: 'Ada',
+  password: 'correct-horse-battery',
+);
+
+const createCampusRequest = CreateCampusRequest(
+  slug: 'gamma',
+  displayName: 'Gamma Campus',
+);

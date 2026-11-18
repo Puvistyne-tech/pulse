@@ -1,7 +1,10 @@
 use uuid::Uuid;
 
 use crate::auth::AuthToken;
-use crate::ids::{AccountId, CampusId, ClientNonce, MessageId, RoomId, SessionId};
+use crate::ids::{
+    AccountId, AttachmentId, CampusId, ClientNonce, DraftId, MessageId, RoomId, SessionId,
+    ShelfItemId,
+};
 
 pub const CAMPUS_A: CampusId = CampusId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_00000000000a));
 pub const CAMPUS_B: CampusId = CampusId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_00000000000b));
@@ -22,6 +25,16 @@ pub const NONCE_B: ClientNonce =
     ClientNonce(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000f2));
 pub const NONCE_C: ClientNonce =
     ClientNonce(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000f3));
+
+pub const ATTACHMENT_A: AttachmentId =
+    AttachmentId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000a01));
+pub const ATTACHMENT_B: AttachmentId =
+    AttachmentId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000a02));
+pub const SHELF_ITEM_A: ShelfItemId =
+    ShelfItemId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000b01));
+pub const DRAFT_A: DraftId = DraftId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_000000000c01));
+
+pub const LINK_A: &str = "https://example.org/a";
 
 pub const EMOJI_A: &str = "👍";
 pub const EMOJI_B: &str = "🎉";

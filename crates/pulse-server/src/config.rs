@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use crate::error::StartupError;
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
-const DEFAULT_DATABASE_URL: &str = "postgres://pulse:pulse@127.0.0.1:5432/pulse";
+pub const DEFAULT_DATABASE_URL: &str = "postgres://pulse:pulse@127.0.0.1:55432/pulse";
 const DEFAULT_VALKEY_URL: &str = "redis://127.0.0.1:6379";
 
 #[derive(Debug, Clone)]

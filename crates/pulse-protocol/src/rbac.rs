@@ -22,6 +22,8 @@ pub enum Permission {
     ManageCampus,
     PostMessage,
     React,
+    PinMessage,
+    UploadAttachment,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -53,7 +55,7 @@ impl FromStr for Role {
 }
 
 impl Permission {
-    pub const ALL: [Permission; 7] = [
+    pub const ALL: [Permission; 9] = [
         Permission::ViewCampus,
         Permission::ViewRooms,
         Permission::CreateRoom,
@@ -61,13 +63,18 @@ impl Permission {
         Permission::ManageCampus,
         Permission::PostMessage,
         Permission::React,
+        Permission::PinMessage,
+        Permission::UploadAttachment,
     ];
 }
 
 pub const fn role_permits(role: Role, permission: Permission) -> bool {
     match permission {
         Permission::ViewCampus | Permission::ViewRooms | Permission::React => true,
-        Permission::CreateRoom | Permission::PostMessage => !matches!(role, Role::Guest),
+        Permission::CreateRoom
+        | Permission::PostMessage
+        | Permission::PinMessage
+        | Permission::UploadAttachment => !matches!(role, Role::Guest),
         Permission::ManageMembers => matches!(role, Role::Owner | Role::Admin),
         Permission::ManageCampus => matches!(role, Role::Owner),
     }

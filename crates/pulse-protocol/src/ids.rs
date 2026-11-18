@@ -44,5 +44,8 @@ define_ids!(
     AccountId,
     RoomId,
     MessageId,
-    ClientNonce
+    ClientNonce,
+    AttachmentId,
+    ShelfItemId,
+    DraftId
 );

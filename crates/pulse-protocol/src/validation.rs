@@ -1,6 +1,7 @@
 use crate::api::{ApiError, InputField};
 use crate::auth::{SignInRequest, SignUpRequest};
 use crate::campus::{CreateCampusRequest, CreateRoomRequest};
+use crate::messaging::SendMessage;
 
 pub const EMAIL_MAX_CHARS: usize = 254;
 pub const DISPLAY_NAME_MAX_CHARS: usize = 64;
@@ -8,6 +9,7 @@ pub const PASSWORD_MIN_CHARS: usize = 12;
 pub const PASSWORD_MAX_CHARS: usize = 128;
 pub const SLUG_MIN_CHARS: usize = 3;
 pub const SLUG_MAX_CHARS: usize = 32;
+pub const MESSAGE_BODY_MAX_CHARS: usize = 4000;
 
 pub fn normalize_email(raw: &str) -> Result<String, InputField> {
     let email = raw.trim().to_lowercase();
@@ -37,6 +39,20 @@ pub fn normalize_display_name(raw: &str) -> Result<String, InputField> {
         Ok(trimmed.to_owned())
     } else {
         Err(InputField::DisplayName)
+    }
+}
+
+pub fn normalize_message_body(raw: &str) -> Result<String, InputField> {
+    let trimmed = raw.trim();
+    let length = trimmed.chars().count();
+    let valid = (1..=MESSAGE_BODY_MAX_CHARS).contains(&length)
+        && !trimmed
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\t'));
+    if valid {
+        Ok(trimmed.to_owned())
+    } else {
+        Err(InputField::MessageBody)
     }
 }
 
@@ -103,5 +119,13 @@ impl Validate for CreateCampusRequest {
 impl Validate for CreateRoomRequest {
     fn validate(&self) -> Result<(), ApiError> {
         validate_slug(&self.slug).map_err(invalid)
+    }
+}
+
+impl Validate for SendMessage {
+    fn validate(&self) -> Result<(), ApiError> {
+        normalize_message_body(&self.body)
+            .map(|_| ())
+            .map_err(invalid)
     }
 }

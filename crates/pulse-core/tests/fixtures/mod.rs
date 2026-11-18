@@ -1,20 +1,24 @@
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
 
 use std::collections::VecDeque;
 
+use futures::executor::block_on;
 use pulse_core::{
-    ApiTransport, BackoffPolicy, ConnectionEvent, ConnectionMachine, NetworkTransport,
-    SessionEvent, SessionMachine, TransportError,
+    ApiTransport, BackoffPolicy, Client, ConnectionEvent, ConnectionMachine, NetworkTransport,
+    SessionEvent, SessionMachine, TimelineEvent, TimelineMachine, TransportError,
 };
 use pulse_protocol::fixtures::auth_token;
 pub use pulse_protocol::fixtures::{
-    ACCOUNT_A, AUTH_TOKEN_A, AUTH_TOKEN_B, CAMPUS_A, CAMPUS_B, SESSION_A, VALID_PASSWORD,
+    ACCOUNT_A, ACCOUNT_B, AUTH_TOKEN_A, AUTH_TOKEN_B, CAMPUS_A, CAMPUS_B, CAMPUS_C, NONCE_A,
+    NONCE_B, ROOM_A, ROOM_B, SESSION_A, VALID_PASSWORD,
 };
 use pulse_protocol::{
-    AccountProfile, ApiError, AuthSession, AuthToken, CampusCreated, CampusId, CampusList,
-    CampusSummary, ClientFrame, CreateCampusRequest, HandshakeRejected, HandshakeRejection, Hello,
-    ProtocolVersion, Role, Room, RoomId, RoomList, ServerFrame, SignInRequest, SignUpRequest,
-    Welcome,
+    AccountId, AccountProfile, ApiError, AuthSession, AuthToken, CampusCreated, CampusId,
+    CampusList, CampusSummary, ClientFrame, ClientNonce, CreateCampusRequest, DeliveryState,
+    HandshakeRejected, HandshakeRejection, Hello, MessageAccepted, MessageCreated, MessageId,
+    MessageRejected, MessageRejection, ProtocolVersion, Role, Room, RoomCursor, RoomId, RoomList,
+    RoomMessage, RoomSynced, RoomUnavailable, SendMessage, ServerFrame, SessionSnapshot,
+    SignInRequest, SignUpRequest, SyncRooms, TimelineSnapshot, Welcome,
 };
 
 pub fn token_a() -> AuthToken {
@@ -35,11 +39,15 @@ pub fn welcome_for(campus_id: CampusId) -> Welcome {
     }
 }
 
-pub fn connect() -> ConnectionEvent {
+pub fn connect_for(campus_id: CampusId) -> ConnectionEvent {
     ConnectionEvent::ConnectRequested {
-        campus_id: CAMPUS_A,
+        campus_id,
         auth_token: token_a(),
     }
+}
+
+pub fn connect() -> ConnectionEvent {
+    connect_for(CAMPUS_A)
 }
 
 pub fn welcome(campus_id: CampusId) -> ConnectionEvent {
@@ -307,8 +315,8 @@ pub enum Start {
     Connected,
 }
 
-pub fn started(start: Start) -> ConnectionMachine {
-    let events = match start {
+pub fn start_events(start: Start) -> Vec<ConnectionEvent> {
+    match start {
         Start::Fresh => vec![],
         Start::Backoff => vec![connect(), ConnectionEvent::TransportFailed],
         Start::Connecting => vec![connect()],
@@ -318,6 +326,244 @@ pub fn started(start: Start) -> ConnectionMachine {
             ConnectionEvent::TransportOpened,
             welcome(CAMPUS_A),
         ],
-    };
-    machine_after(events)
+    }
+}
+
+pub fn started(start: Start) -> ConnectionMachine {
+    machine_after(start_events(start))
+}
+
+pub fn signed_in_api() -> ScriptedApi {
+    ScriptedApi {
+        sign_ins: VecDeque::from([Ok(auth_session())]),
+        campus_lists: VecDeque::from([Ok(two_campuses())]),
+        room_lists: VecDeque::from([Ok(room_list(CAMPUS_A, &["commons", "courtyard"]))]),
+        ..ScriptedApi::default()
+    }
+}
+
+pub fn signed_in_client() -> (Client, ScriptedApi) {
+    let mut api = signed_in_api();
+    let mut client = Client::default();
+    block_on(client.apply(&mut api, SessionEvent::SignInRequested(sign_in_request())));
+    (client, api)
+}
+
+pub fn connected_client() -> Client {
+    let (mut client, _) = signed_in_client();
+    start_events(Start::Connected)
+        .into_iter()
+        .for_each(|event| {
+            client.connection_step(event);
+        });
+    client
+}
+
+pub fn client_rooms(client: &Client) -> Vec<RoomId> {
+    client
+        .snapshot()
+        .session
+        .rooms
+        .iter()
+        .map(|room| room.room_id)
+        .collect()
+}
+
+fn indexed_id(base: u128, index: u128) -> String {
+    format!("0193a5c0-0000-7000-8000-{:012x}", base + index)
+}
+
+pub fn message_id(index: u128) -> MessageId {
+    indexed_id(0x1000_0000, index).parse().expect("message id")
+}
+
+pub fn nonce(index: u128) -> ClientNonce {
+    indexed_id(0x2000_0000, index).parse().expect("nonce")
+}
+
+pub fn room_message(
+    room_id: RoomId,
+    message_id: MessageId,
+    previous_message_id: Option<MessageId>,
+    author_id: AccountId,
+    client_nonce: ClientNonce,
+    body: &str,
+) -> RoomMessage {
+    RoomMessage {
+        message_id,
+        previous_message_id,
+        campus_id: CAMPUS_A,
+        room_id,
+        author_id,
+        author_display_name: if author_id == ACCOUNT_A {
+            "Ada"
+        } else {
+            "Grace"
+        }
+        .to_owned(),
+        client_nonce,
+        body: body.to_owned(),
+    }
+}
+
+fn previous_in_chain(index: u128) -> Option<MessageId> {
+    index
+        .checked_sub(1)
+        .filter(|previous| *previous > 0)
+        .map(message_id)
+}
+
+pub fn chain_message(room_id: RoomId, index: u128) -> RoomMessage {
+    room_message(
+        room_id,
+        message_id(index),
+        previous_in_chain(index),
+        ACCOUNT_B,
+        nonce(index),
+        &format!("peer {index}"),
+    )
+}
+
+pub fn chain(room_id: RoomId, count: u128) -> Vec<RoomMessage> {
+    (1..=count)
+        .map(|index| chain_message(room_id, index))
+        .collect()
+}
+
+pub fn own_message(room_id: RoomId, index: u128, client_nonce: ClientNonce) -> RoomMessage {
+    room_message(
+        room_id,
+        message_id(index),
+        previous_in_chain(index),
+        ACCOUNT_A,
+        client_nonce,
+        "hi",
+    )
+}
+
+pub fn accepted_frame(message: RoomMessage) -> ServerFrame {
+    ServerFrame::MessageAccepted(MessageAccepted { message })
+}
+
+pub fn created_frame(message: RoomMessage) -> ServerFrame {
+    ServerFrame::MessageCreated(MessageCreated { message })
+}
+
+pub fn synced_frame(room_id: RoomId, messages: Vec<RoomMessage>, has_more: bool) -> ServerFrame {
+    ServerFrame::RoomSynced(RoomSynced {
+        room_id,
+        messages,
+        has_more,
+    })
+}
+
+pub fn rejected_frame(client_nonce: ClientNonce, reason: MessageRejection) -> ServerFrame {
+    ServerFrame::MessageRejected(MessageRejected {
+        client_nonce,
+        reason,
+    })
+}
+
+pub fn unavailable_frame(room_id: RoomId) -> ServerFrame {
+    ServerFrame::RoomUnavailable(RoomUnavailable { room_id })
+}
+
+pub fn sync_frame(cursors: &[(RoomId, Option<MessageId>)]) -> ClientFrame {
+    ClientFrame::SyncRooms(SyncRooms {
+        cursors: cursors
+            .iter()
+            .map(|(room_id, after)| RoomCursor {
+                room_id: *room_id,
+                after: *after,
+            })
+            .collect(),
+    })
+}
+
+pub fn send_frame(room_id: RoomId, client_nonce: ClientNonce, body: &str) -> ClientFrame {
+    ClientFrame::SendMessage(SendMessage {
+        room_id,
+        client_nonce,
+        body: body.to_owned(),
+    })
+}
+
+pub fn received(frame: ServerFrame) -> TimelineEvent {
+    TimelineEvent::FrameReceived(frame)
+}
+
+pub fn timeline_connected(rooms: &[RoomId]) -> TimelineEvent {
+    TimelineEvent::Connected {
+        rooms: rooms.to_vec(),
+    }
+}
+
+pub fn send_requested(room_id: RoomId, client_nonce: ClientNonce, body: &str) -> TimelineEvent {
+    TimelineEvent::SendRequested {
+        room_id,
+        client_nonce,
+        body: body.to_owned(),
+    }
+}
+
+pub fn timeline_run(events: Vec<TimelineEvent>) -> (TimelineMachine, Vec<ClientFrame>) {
+    events.into_iter().fold(
+        (TimelineMachine::new(CAMPUS_A, profile()), Vec::new()),
+        |(machine, mut frames), event| {
+            let (machine, emitted) = machine.step(event);
+            frames.extend(emitted);
+            (machine, frames)
+        },
+    )
+}
+
+pub fn timeline_after(events: Vec<TimelineEvent>) -> TimelineMachine {
+    timeline_run(events).0
+}
+
+pub type EntryKey = (
+    Option<MessageId>,
+    ClientNonce,
+    DeliveryState,
+    Option<MessageRejection>,
+);
+
+pub fn entry_keys(snapshot: &TimelineSnapshot) -> Vec<EntryKey> {
+    snapshot
+        .entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.message_id,
+                entry.client_nonce,
+                entry.delivery,
+                entry.rejection,
+            )
+        })
+        .collect()
+}
+
+pub fn confirmed_key(message: &RoomMessage) -> EntryKey {
+    (
+        Some(message.message_id),
+        message.client_nonce,
+        DeliveryState::Confirmed,
+        None,
+    )
+}
+
+pub fn pending_key(client_nonce: ClientNonce) -> EntryKey {
+    (None, client_nonce, DeliveryState::Pending, None)
+}
+
+pub fn failed_key(client_nonce: ClientNonce, reason: MessageRejection) -> EntryKey {
+    (None, client_nonce, DeliveryState::Failed, Some(reason))
+}
+
+pub fn active_room_slug(snapshot: &SessionSnapshot) -> Option<&str> {
+    snapshot
+        .rooms
+        .iter()
+        .find(|room| Some(room.room_id) == snapshot.active_room_id)
+        .map(|room| room.slug.as_str())
 }

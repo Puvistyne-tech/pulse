@@ -3,6 +3,10 @@ use ts_rs::TS;
 
 use crate::auth::AuthToken;
 use crate::ids::{AccountId, CampusId, SessionId};
+use crate::messaging::{
+    MessageAccepted, MessageCreated, MessageRejected, RoomSynced, RoomUnavailable, SendMessage,
+    SyncRooms,
+};
 use crate::rbac::Role;
 use crate::version::ProtocolVersion;
 
@@ -55,6 +59,8 @@ pub struct HandshakeRejected {
 pub enum ClientFrame {
     Hello(Hello),
     Ping(Ping),
+    SendMessage(SendMessage),
+    SyncRooms(SyncRooms),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -64,6 +70,11 @@ pub enum ServerFrame {
     Pong(Pong),
     VersionMismatch(VersionMismatch),
     HandshakeRejected(HandshakeRejected),
+    MessageAccepted(MessageAccepted),
+    MessageCreated(MessageCreated),
+    MessageRejected(MessageRejected),
+    RoomSynced(RoomSynced),
+    RoomUnavailable(RoomUnavailable),
 }
 
 pub mod close_code {
@@ -71,4 +82,5 @@ pub mod close_code {
     pub const INVALID_PAYLOAD: u16 = 1007;
     pub const POLICY_VIOLATION: u16 = 1008;
     pub const INTERNAL_ERROR: u16 = 1011;
+    pub const TRY_AGAIN_LATER: u16 = 1013;
 }

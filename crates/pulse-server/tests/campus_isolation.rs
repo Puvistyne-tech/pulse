@@ -1,23 +1,25 @@
 mod common;
 
 use std::collections::HashSet;
-use std::time::Duration;
 
 use axum::http::{Method, StatusCode};
 use common::{
-    Observed, api_raw, campus_for, campuses_of, directory_counts, fresh_state, handshake_outcome,
-    rooms_of, signed_up, spawn_server_with, tally_race,
+    Observed, SCENARIO_DEADLINE, api_raw, campus_for, campus_with_owner, campuses_of,
+    created_messages, directory_counts, expect_frame, frames_until_pong, fresh_state,
+    handshake_outcome, joined_socket, message_count, posted, rooms_of, send, send_message,
+    sibling_state, signed_up, spawn_server_with, subscribed_socket, sync_rooms, tally_race,
 };
+use pulse_protocol::fixtures::{CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B};
 use pulse_protocol::{
-    AuthToken, CampusCreated, CampusId, DEFAULT_ROOM_SLUGS, HandshakeRejected, HandshakeRejection,
-    Role, ServerFrame, api_path,
+    AuthToken, CampusCreated, CampusId, ClientNonce, DEFAULT_ROOM_SLUGS, HandshakeRejected,
+    HandshakeRejection, MessageRejected, MessageRejection, Role, RoomUnavailable, ServerFrame,
+    api_path,
 };
+use pulse_server::fanout::campus_channel;
 use rstest::rstest;
 use serde_json::json;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
-
-const DEADLINE: Duration = Duration::from_secs(60);
 
 struct Tenant {
     token: AuthToken,
@@ -30,7 +32,7 @@ struct Tenant {
 #[case::eight_accounts(8)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_accounts_see_only_their_own_campuses_and_rooms(#[case] accounts: usize) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let mut sessions = Vec::new();
         for index in 0..accounts {
@@ -128,7 +130,7 @@ async fn concurrent_accounts_see_only_their_own_campuses_and_rooms(#[case] accou
 #[case::eight_racers(8)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_same_slug_creates_yield_exactly_one_campus(#[case] racers: usize) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let mut sessions = Vec::new();
         for index in 0..racers {
@@ -163,7 +165,7 @@ async fn concurrent_same_slug_creates_yield_exactly_one_campus(#[case] racers: u
 #[case::four_tenants(4)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_handshakes_admit_only_the_owning_campus(#[case] tenants: usize) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let mut roster = Vec::new();
         for index in 0..tenants {
@@ -212,4 +214,117 @@ async fn concurrent_handshakes_admit_only_the_owning_campus(#[case] tenants: usi
     })
     .await
     .expect("scenario deadline");
+}
+
+#[rstest]
+#[case::one_instance(false)]
+#[case::two_instances(true)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn subscriber_in_one_campus_never_observes_another_campus_messages(
+    #[case] cross_instance: bool,
+) {
+    timeout(SCENARIO_DEADLINE, async {
+        let state = fresh_state().await;
+        let north = campus_with_owner(&state, "north@example.org", "north-quad").await;
+        let south = campus_with_owner(&state, "south@example.org", "south-quad").await;
+        let north_addr = spawn_server_with(state.clone()).await;
+        let south_addr = if cross_instance {
+            spawn_server_with(sibling_state(&state)).await
+        } else {
+            north_addr
+        };
+        let mut north_watcher =
+            subscribed_socket(north_addr, north.id, &north.owner.token, &north.rooms).await;
+        let mut south_watcher =
+            subscribed_socket(south_addr, south.id, &south.owner.token, &south.rooms).await;
+        let (mut north_sender, _) = joined_socket(north_addr, north.id, &north.owner.token).await;
+        let (mut south_sender, _) = joined_socket(south_addr, south.id, &south.owner.token).await;
+        let mut north_posts = Vec::new();
+        for index in 0..3 {
+            let body = format!("north {index}");
+            north_posts.push(
+                posted(
+                    &mut north_sender,
+                    north.rooms[0],
+                    ClientNonce::generate(),
+                    &body,
+                )
+                .await,
+            );
+        }
+        let south_post = posted(&mut south_sender, south.rooms[0], NONCE_A, "south").await;
+        assert_eq!(created_messages(&mut north_watcher, 3).await, north_posts);
+        assert_eq!(
+            created_messages(&mut south_watcher, 1).await,
+            vec![south_post]
+        );
+        assert!(frames_until_pong(&mut north_watcher, 1).await.is_empty());
+        assert!(frames_until_pong(&mut south_watcher, 1).await.is_empty());
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[derive(Clone, Copy)]
+enum Forged {
+    OnlyForeignRoom,
+    ForeignBesideOwnRoom,
+}
+
+#[rstest]
+#[case::only_foreign_room(Forged::OnlyForeignRoom)]
+#[case::foreign_beside_own_room(Forged::ForeignBesideOwnRoom)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn forged_foreign_room_in_sync_is_unavailable_and_never_subscribed(#[case] forged: Forged) {
+    timeout(SCENARIO_DEADLINE, async {
+        let state = fresh_state().await;
+        let north = campus_with_owner(&state, "north@example.org", "north-quad").await;
+        let south = campus_with_owner(&state, "south@example.org", "south-quad").await;
+        let addr = spawn_server_with(state.clone()).await;
+        let (mut intruder, _) = joined_socket(addr, south.id, &south.owner.token).await;
+        let foreign_room = north.rooms[0];
+        let cursors = match forged {
+            Forged::OnlyForeignRoom => vec![(foreign_room, None)],
+            Forged::ForeignBesideOwnRoom => vec![(south.rooms[0], None), (foreign_room, None)],
+        };
+        send(&mut intruder, &sync_rooms(&cursors)).await;
+        if matches!(forged, Forged::ForeignBesideOwnRoom) {
+            assert!(matches!(
+                expect_frame(&mut intruder).await,
+                ServerFrame::RoomSynced(_)
+            ));
+        }
+        assert_eq!(
+            expect_frame(&mut intruder).await,
+            ServerFrame::RoomUnavailable(RoomUnavailable {
+                room_id: foreign_room
+            })
+        );
+        let (mut north_sender, _) = joined_socket(addr, north.id, &north.owner.token).await;
+        posted(&mut north_sender, foreign_room, NONCE_A, "private").await;
+        send(
+            &mut intruder,
+            &send_message(foreign_room, NONCE_B, "intrusion"),
+        )
+        .await;
+        assert_eq!(
+            expect_frame(&mut intruder).await,
+            ServerFrame::MessageRejected(MessageRejected {
+                client_nonce: NONCE_B,
+                reason: MessageRejection::UnknownRoom,
+            })
+        );
+        assert!(frames_until_pong(&mut intruder, 2).await.is_empty());
+        assert_eq!(message_count(&state, north.id).await, 1);
+        assert_eq!(message_count(&state, south.id).await, 0);
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[rstest]
+#[case::campus_a(CAMPUS_A, "pulse:campus:0193a5c0-0000-7000-8000-00000000000a:messages")]
+#[case::campus_b(CAMPUS_B, "pulse:campus:0193a5c0-0000-7000-8000-00000000000b:messages")]
+fn campus_channel_embeds_campus_id(#[case] campus_id: CampusId, #[case] expected: &str) {
+    assert_eq!(campus_channel(campus_id), expected);
 }

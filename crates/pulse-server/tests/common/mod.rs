@@ -2,6 +2,7 @@
 
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::body::Body;
@@ -11,8 +12,9 @@ use http_body_util::BodyExt;
 use pulse_protocol::fixtures::VALID_PASSWORD;
 use pulse_protocol::{
     AccountId, AuthSession, AuthToken, CampusCreated, CampusId, CampusList, ClientFrame,
-    CreateCampusRequest, Hello, Ping, ProtocolVersion, Role, RoomList, ServerFrame, SignUpRequest,
-    api_path,
+    ClientNonce, CreateCampusRequest, Hello, MessageId, Ping, Pong, ProtocolVersion, Role,
+    RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced, SendMessage, ServerFrame, SignUpRequest,
+    SyncRooms, Welcome, api_path,
 };
 use pulse_server::auth::token_digest;
 use pulse_server::{AppState, Config, MIGRATOR, router, state};
@@ -20,7 +22,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -57,6 +59,26 @@ pub fn ping(nonce: u32) -> Outgoing {
     Outgoing::Frame(ClientFrame::Ping(Ping { nonce }))
 }
 
+pub fn send_message(room_id: RoomId, client_nonce: ClientNonce, body: &str) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SendMessage(SendMessage {
+        room_id,
+        client_nonce,
+        body: body.to_owned(),
+    }))
+}
+
+pub fn sync_rooms(cursors: &[(RoomId, Option<MessageId>)]) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncRooms(SyncRooms {
+        cursors: cursors
+            .iter()
+            .map(|(room_id, after)| RoomCursor {
+                room_id: *room_id,
+                after: *after,
+            })
+            .collect(),
+    }))
+}
+
 pub fn lazy_state() -> AppState {
     let config = Config {
         bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
@@ -89,10 +111,14 @@ pub async fn fresh_state() -> AppState {
         .await
         .expect(START_POSTGRES);
     MIGRATOR.run(&db).await.expect("run migrations");
-    AppState {
+    AppState::new(
         db,
-        valkey: redis::Client::open(valkey_url.as_str()).expect("valkey client"),
-    }
+        redis::Client::open(valkey_url.as_str()).expect("valkey client"),
+    )
+}
+
+pub fn sibling_state(state: &AppState) -> AppState {
+    AppState::new(state.db.clone(), state.valkey.clone())
 }
 
 pub async fn spawn_server_with(state: AppState) -> SocketAddr {
@@ -239,6 +265,264 @@ pub async fn observe(socket: &mut ClientSocket) -> Observed {
             Some(Err(_)) | None => return Observed::Close(1006),
         }
     }
+}
+
+pub const SCENARIO_DEADLINE: Duration = Duration::from_secs(60);
+pub const AUTH_DEADLINE: Duration = Duration::from_secs(30);
+pub const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
+const OBSERVE_DEADLINE: Duration = Duration::from_secs(20);
+
+pub async fn observe_until(
+    socket: &mut ClientSocket,
+    mut accept: impl FnMut(&Observed) -> bool,
+) -> Observed {
+    timeout(OBSERVE_DEADLINE, async {
+        loop {
+            let observed = observe(socket).await;
+            if accept(&observed) || matches!(observed, Observed::Close(_)) {
+                return observed;
+            }
+        }
+    })
+    .await
+    .expect("observe deadline")
+}
+
+pub async fn expect_frame(socket: &mut ClientSocket) -> ServerFrame {
+    match timeout(OBSERVE_DEADLINE, observe(socket))
+        .await
+        .expect("observe deadline")
+    {
+        Observed::Frame(frame) => frame,
+        Observed::Close(code) => panic!("expected frame, socket closed with {code}"),
+    }
+}
+
+pub async fn joined_socket(
+    addr: SocketAddr,
+    campus_id: CampusId,
+    token: &AuthToken,
+) -> (ClientSocket, Welcome) {
+    let mut socket = connect(addr).await;
+    send(
+        &mut socket,
+        &hello(campus_id, ProtocolVersion::CURRENT.0, token),
+    )
+    .await;
+    match expect_frame(&mut socket).await {
+        ServerFrame::Welcome(welcome) => (socket, welcome),
+        other => panic!("expected welcome, got {other:?}"),
+    }
+}
+
+pub async fn subscribed_socket(
+    addr: SocketAddr,
+    campus_id: CampusId,
+    token: &AuthToken,
+    rooms: &[RoomId],
+) -> ClientSocket {
+    let (mut socket, _) = joined_socket(addr, campus_id, token).await;
+    let cursors = rooms
+        .iter()
+        .map(|room_id| (*room_id, None))
+        .collect::<Vec<_>>();
+    send(&mut socket, &sync_rooms(&cursors)).await;
+    for _ in rooms {
+        match expect_frame(&mut socket).await {
+            ServerFrame::RoomSynced(_) => {}
+            other => panic!("expected room sync, got {other:?}"),
+        }
+    }
+    socket
+}
+
+pub async fn posted(
+    socket: &mut ClientSocket,
+    room_id: RoomId,
+    client_nonce: ClientNonce,
+    body: &str,
+) -> RoomMessage {
+    send(socket, &send_message(room_id, client_nonce, body)).await;
+    let observed = observe_until(socket, |observed| {
+        matches!(observed, Observed::Frame(ServerFrame::MessageAccepted(_)))
+    })
+    .await;
+    match observed {
+        Observed::Frame(ServerFrame::MessageAccepted(accepted)) => accepted.message,
+        other => panic!("expected accepted, got {other:?}"),
+    }
+}
+
+pub struct Campus {
+    pub id: CampusId,
+    pub rooms: Vec<RoomId>,
+    pub owner: AuthSession,
+}
+
+pub async fn campus_with_owner(state: &AppState, email: &str, slug: &str) -> Campus {
+    let owner = signed_up(state, email).await;
+    let created = campus_for(state, &owner.token, slug).await;
+    Campus {
+        id: created.campus.campus_id,
+        rooms: created.rooms.iter().map(|room| room.room_id).collect(),
+        owner,
+    }
+}
+
+pub async fn frames_until_pong(socket: &mut ClientSocket, nonce: u32) -> Vec<ServerFrame> {
+    send(socket, &ping(nonce)).await;
+    let mut frames = Vec::new();
+    loop {
+        let frame = expect_frame(socket).await;
+        if frame == ServerFrame::Pong(Pong { nonce }) {
+            return frames;
+        }
+        frames.push(frame);
+    }
+}
+
+pub async fn stored_bodies(state: &AppState, campus_id: CampusId) -> Vec<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT body FROM room_messages WHERE campus_id = $1 ORDER BY message_id",
+    )
+    .bind(campus_id.as_uuid())
+    .fetch_all(&state.db)
+    .await
+    .expect("stored bodies")
+}
+
+pub async fn synced_page(
+    socket: &mut ClientSocket,
+    room_id: RoomId,
+    after: Option<MessageId>,
+) -> RoomSynced {
+    send(socket, &sync_rooms(&[(room_id, after)])).await;
+    match expect_frame(socket).await {
+        ServerFrame::RoomSynced(page) => page,
+        other => panic!("expected room sync, got {other:?}"),
+    }
+}
+
+pub struct ValkeyProxy {
+    pub addr: SocketAddr,
+    links: Arc<Mutex<Vec<JoinHandle<()>>>>,
+}
+
+impl ValkeyProxy {
+    pub async fn start() -> Self {
+        let valkey_url =
+            std::env::var("VALKEY_URL").unwrap_or_else(|_| DEFAULT_VALKEY_URL.to_owned());
+        let upstream = valkey_url
+            .strip_prefix("redis://")
+            .unwrap_or(valkey_url.as_str())
+            .to_owned();
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind proxy");
+        let addr = listener.local_addr().expect("proxy address");
+        let links = Arc::new(Mutex::new(Vec::new()));
+        let tracked = Arc::clone(&links);
+        tokio::spawn(async move {
+            while let Ok((mut client, _)) = listener.accept().await {
+                let upstream = upstream.clone();
+                let link = tokio::spawn(async move {
+                    if let Ok(mut server) = TcpStream::connect(upstream).await {
+                        let _ = tokio::io::copy_bidirectional(&mut client, &mut server).await;
+                    }
+                });
+                tracked.lock().expect("links").push(link);
+            }
+        });
+        Self { addr, links }
+    }
+
+    pub fn cut(&self) {
+        self.links
+            .lock()
+            .expect("links")
+            .drain(..)
+            .for_each(|link| link.abort());
+    }
+}
+
+pub fn proxied_state(state: &AppState, proxy: &ValkeyProxy) -> AppState {
+    AppState::new(
+        state.db.clone(),
+        redis::Client::open(format!("redis://{}", proxy.addr)).expect("proxied valkey client"),
+    )
+}
+
+pub fn assert_chain(messages: &[RoomMessage], start: Option<MessageId>) {
+    let mut tip = start;
+    for message in messages {
+        assert_eq!(message.previous_message_id, tip);
+        assert!(tip.is_none_or(|tip| message.message_id > tip));
+        tip = Some(message.message_id);
+    }
+}
+
+pub async fn created_messages(socket: &mut ClientSocket, count: usize) -> Vec<RoomMessage> {
+    let mut messages = Vec::new();
+    while messages.len() < count {
+        match expect_frame(socket).await {
+            ServerFrame::MessageCreated(created) => messages.push(created.message),
+            other => panic!("expected created, got {other:?}"),
+        }
+    }
+    messages
+}
+
+pub async fn seed_messages(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    author_id: AccountId,
+    count: usize,
+) -> Vec<MessageId> {
+    let base = Uuid::now_v7().as_u128();
+    let ids = (0..count)
+        .map(|offset| {
+            MessageId(Uuid::from_u128(
+                base + u128::try_from(offset).expect("offset"),
+            ))
+        })
+        .collect::<Vec<_>>();
+    for (index, id) in ids.iter().enumerate() {
+        let previous = index.checked_sub(1).map(|before| ids[before].as_uuid());
+        sqlx::query(
+            "INSERT INTO room_messages \
+             (campus_id, room_id, message_id, previous_message_id, author_id, client_nonce, body) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(room_id.as_uuid())
+        .bind(id.as_uuid())
+        .bind(previous)
+        .bind(author_id.as_uuid())
+        .bind(ClientNonce::generate().as_uuid())
+        .bind(format!("seed {index}"))
+        .execute(&state.db)
+        .await
+        .expect("seed message");
+    }
+    ids
+}
+
+pub async fn message_count(state: &AppState, campus_id: CampusId) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT count(*) FROM room_messages WHERE campus_id = $1")
+        .bind(campus_id.as_uuid())
+        .fetch_one(&state.db)
+        .await
+        .expect("message count")
+}
+
+pub async fn member_session(
+    state: &AppState,
+    email: &str,
+    campus_id: CampusId,
+    role: Role,
+) -> AuthSession {
+    let session = signed_up(state, email).await;
+    grant_role(state, campus_id, session.account.account_id, role).await;
+    session
 }
 
 pub async fn api_get(

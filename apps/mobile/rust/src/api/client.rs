@@ -2,9 +2,13 @@ use std::future::Future;
 use std::io;
 use std::sync::LazyLock;
 
+use crate::frb_generated::StreamSink;
 use pulse_core::native::NativeClient;
 use pulse_core::unavailable_snapshot;
-use pulse_protocol::{CampusId, ClientSnapshot, CreateCampusRequest, SignInRequest, SignUpRequest};
+use pulse_protocol::{
+    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, RoomId, SignInRequest,
+    SignUpRequest,
+};
 
 static CLIENT: LazyLock<io::Result<NativeClient>> = LazyLock::new(NativeClient::from_env);
 
@@ -45,4 +49,25 @@ pub async fn create_campus(request: CreateCampusRequest) -> ClientSnapshot {
 
 pub async fn select_campus(campus_id: CampusId) -> ClientSnapshot {
     with_client(|client| client.select_campus(campus_id)).await
+}
+
+pub async fn select_room(room_id: RoomId) -> ClientSnapshot {
+    with_client(|client| client.select_room(room_id)).await
+}
+
+pub async fn send_message(room_id: RoomId, body: String) -> ClientSnapshot {
+    with_client(|client| client.send_message(room_id, body)).await
+}
+
+pub async fn discard_message(client_nonce: ClientNonce) -> ClientSnapshot {
+    with_client(|client| client.discard_message(client_nonce)).await
+}
+
+pub fn watch_snapshots(sink: StreamSink<ClientSnapshot>) {
+    match &*CLIENT {
+        Ok(client) => client.forward_snapshots(move |snapshot| sink.add(snapshot).is_ok()),
+        Err(_) => {
+            let _ = sink.add(unavailable_snapshot());
+        }
+    }
 }

@@ -6,6 +6,7 @@ import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/auth.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/campus.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/frames.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/ids.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/messaging.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/rbac.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/version.dart';
@@ -18,6 +19,14 @@ UuidValue _uuid(String suffix) =>
 
 final campusAId = CampusId(field0: _uuid('0a'));
 final campusBId = CampusId(field0: _uuid('0b'));
+
+final roomAId = RoomId(field0: _uuid('d1'));
+final roomBId = RoomId(field0: _uuid('d2'));
+final messageAId = MessageId(field0: _uuid('e1'));
+final messageBId = MessageId(field0: _uuid('e2'));
+final nonceA = ClientNonce(field0: _uuid('f1'));
+final nonceB = ClientNonce(field0: _uuid('f2'));
+final nonceC = ClientNonce(field0: _uuid('f3'));
 
 final account = AccountProfile(
   accountId: AccountId(field0: _uuid('c1')),
@@ -40,16 +49,8 @@ final campusB = CampusSummary(
 );
 
 final rooms = <Room>[
-  Room(
-    roomId: RoomId(field0: _uuid('d1')),
-    campusId: campusAId,
-    slug: 'commons',
-  ),
-  Room(
-    roomId: RoomId(field0: _uuid('d2')),
-    campusId: campusAId,
-    slug: 'courtyard',
-  ),
+  Room(roomId: roomAId, campusId: campusAId, slug: 'commons'),
+  Room(roomId: roomBId, campusId: campusAId, slug: 'courtyard'),
 ];
 
 ConnectionSnapshot network({
@@ -67,15 +68,88 @@ ConnectionSnapshot network({
   handshakeRejection: handshakeRejection,
 );
 
+TimelineEntry _entry(
+  DeliveryState delivery, {
+  required ClientNonce clientNonce,
+  MessageId? messageId,
+  AccountId? authorId,
+  String authorDisplayName = 'Ada',
+  bool fromSelf = true,
+  String body = 'hello',
+  MessageRejection? rejection,
+}) => TimelineEntry(
+  clientNonce: clientNonce,
+  messageId: messageId,
+  authorId: authorId ?? account.accountId,
+  authorDisplayName: authorDisplayName,
+  fromSelf: fromSelf,
+  body: body,
+  delivery: delivery,
+  rejection: rejection,
+);
+
+final pendingEntry = _entry(DeliveryState.pending, clientNonce: nonceA);
+
+final confirmedEntry = _entry(
+  DeliveryState.confirmed,
+  clientNonce: nonceB,
+  messageId: messageAId,
+  authorId: AccountId(field0: _uuid('c2')),
+  authorDisplayName: 'Grace',
+  fromSelf: false,
+  body: 'welcome',
+);
+
+final confirmedOwnEntry = _entry(
+  DeliveryState.confirmed,
+  clientNonce: nonceA,
+  messageId: messageBId,
+  body: 'sent',
+);
+
+TimelineEntry failedEntry(MessageRejection rejection) => _entry(
+  DeliveryState.failed,
+  clientNonce: nonceC,
+  body: 'denied',
+  rejection: rejection,
+);
+
+TimelineSnapshot timelineOf(
+  List<TimelineEntry> entries, {
+  RoomId? roomId,
+  bool syncing = false,
+  ApiError? error,
+}) => TimelineSnapshot(
+  roomId: roomId ?? roomAId,
+  entries: entries,
+  syncing: syncing,
+  error: error,
+);
+
+const emptyTimeline = TimelineSnapshot(entries: [], syncing: false);
+
+ClientSnapshot snapshotAt(ClientSnapshot snapshot, int sequence) =>
+    ClientSnapshot(
+      sequence: BigInt.from(sequence),
+      network: snapshot.network,
+      session: snapshot.session,
+      timeline: snapshot.timeline,
+    );
+
 ClientSnapshot _snapshot({
   AuthPhase auth = AuthPhase.signedOut,
   AccountProfile? profile,
   List<CampusSummary> campuses = const [],
   CampusId? activeCampusId,
   List<Room> roomList = const [],
+  RoomId? activeRoomId,
+  TimelineSnapshot timeline = emptyTimeline,
+  int sequence = 1,
   bool busy = false,
   ApiError? error,
 }) => ClientSnapshot(
+  sequence: BigInt.from(sequence),
+  timeline: timeline,
   network: network(),
   session: SessionSnapshot(
     auth: auth,
@@ -83,6 +157,7 @@ ClientSnapshot _snapshot({
     campuses: campuses,
     activeCampusId: activeCampusId,
     rooms: roomList,
+    activeRoomId: activeRoomId,
     busy: busy,
     error: error,
   ),
@@ -107,6 +182,19 @@ final signedInWithRooms = _snapshot(
   campuses: [campusA, campusB],
   activeCampusId: campusAId,
   roomList: rooms,
+  activeRoomId: roomAId,
+  timeline: timelineOf([]),
+);
+
+final signedInWithMessages = _snapshot(
+  auth: AuthPhase.signedIn,
+  profile: account,
+  campuses: [campusA, campusB],
+  activeCampusId: campusAId,
+  roomList: rooms,
+  activeRoomId: roomAId,
+  timeline: timelineOf([confirmedEntry, pendingEntry], syncing: true),
+  sequence: 2,
 );
 
 class NetworkCase {
@@ -165,6 +253,9 @@ class RecordedIntents {
       createCampus: (request) async => calls.add(request),
       selectCampus: (campusId) async => calls.add(campusId),
       refreshCampuses: () async => calls.add('refreshCampuses'),
+      selectRoom: (roomId) async => calls.add(roomId),
+      sendMessage: (roomId, body) async => calls.add((roomId, body)),
+      discardMessage: (clientNonce) async => calls.add(clientNonce),
     );
   }
 

@@ -26,3 +26,11 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Wrap dynamic SQL in `sqlx::AssertSqlSafe(..)` under sqlx 0.9; use `Uuid::now_v7()` since the workspace enables only `v7`.
 - Use `sed -i ''` on macOS and check `git diff --stat` after every scripted edit.
 - Grep every sibling test file for a helper before defining it; a builder, tally loop or count query used by two test files belongs in the crate fixtures module.
+- Postgres has no `max(uuid)`; select the latest UUID with `ORDER BY id DESC LIMIT 1` and `fetch_optional`.
+- Hold the core lock while comparing and applying a link target, and stamp every background link with a generation the shared machine checks; a stale link must never step shared state.
+- Never let a fan-out subscriber hold its own sender clone; closing the upstream must close every local receiver so sockets reconnect and delta-sync.
+- Clear queued outbound frames whenever the connection resets for a campus or sign-in change.
+- Never put a validation limit number in UI copy; the limit lives only in `pulse-protocol`.
+- A `[[test]]` block with `required-features` must land in the same commit as its test file, or Cargo cannot parse the manifest.
+- When frames gain variants, include `pulse-core/src/connection.rs` in the owner's file set; its matches are exhaustive.
+- Reuse the one `campus_role` query (taking `impl PgExecutor`) inside transactions; never inline a second membership query.

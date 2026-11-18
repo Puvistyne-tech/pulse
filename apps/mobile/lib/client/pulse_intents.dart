@@ -10,6 +10,9 @@ class PulseIntents {
     required this.createCampus,
     required this.selectCampus,
     required this.refreshCampuses,
+    required this.selectRoom,
+    required this.sendMessage,
+    required this.discardMessage,
   });
 
   final Future<void> Function(SignUpRequest request) signUp;
@@ -18,4 +21,7 @@ class PulseIntents {
   final Future<void> Function(CreateCampusRequest request) createCampus;
   final Future<void> Function(CampusId campusId) selectCampus;
   final Future<void> Function() refreshCampuses;
+  final Future<void> Function(RoomId roomId) selectRoom;
+  final Future<void> Function(RoomId roomId, String body) sendMessage;
+  final Future<void> Function(ClientNonce clientNonce) discardMessage;
 }

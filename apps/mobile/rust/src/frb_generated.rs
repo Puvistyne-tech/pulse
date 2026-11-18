@@ -33,7 +33,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2029780457;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -181028134;
 
 flutter_rust_bridge::frb_generated_default_handler!();
 
@@ -371,6 +371,72 @@ fn wire__pulse_protocol__api__api_path__campus_rooms_impl(
         },
     )
 }
+fn wire__pulse_protocol__ids__client_nonce_as_uuid_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "client_nonce_as_uuid",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <pulse_protocol::ids::ClientNonce>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Ok::<_, ()>(pulse_protocol::ids::ClientNonce::as_uuid(&api_that))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__pulse_protocol__ids__client_nonce_generate_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "client_nonce_generate",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(pulse_protocol::ids::ClientNonce::generate())?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__client__client_snapshot_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -513,6 +579,144 @@ fn wire__pulse_protocol__campus__create_room_request_validate_impl(
         },
     )
 }
+fn wire__crate__api__client__discard_message_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "discard_message",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client_nonce =
+                <pulse_protocol::ids::ClientNonce>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(
+                            crate::api::client::discard_message(api_client_nonce).await,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__pulse_protocol__ids__message_id_as_uuid_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "message_id_as_uuid",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <pulse_protocol::ids::MessageId>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Ok::<_, ()>(pulse_protocol::ids::MessageId::as_uuid(&api_that))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__pulse_protocol__ids__message_id_generate_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "message_id_generate",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(pulse_protocol::ids::MessageId::generate())?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__pulse_protocol__validation__normalize_display_name_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "normalize_display_name",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_raw = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, pulse_protocol::api::InputField>((move || {
+                    let output_ok = pulse_protocol::validation::normalize_display_name(&api_raw)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__pulse_protocol__validation__normalize_email_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -540,6 +744,39 @@ fn wire__pulse_protocol__validation__normalize_email_impl(
             move |context| {
                 transform_result_sse::<_, pulse_protocol::api::InputField>((move || {
                     let output_ok = pulse_protocol::validation::normalize_email(&api_raw)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__pulse_protocol__validation__normalize_message_body_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "normalize_message_body",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_raw = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, pulse_protocol::api::InputField>((move || {
+                    let output_ok = pulse_protocol::validation::normalize_message_body(&api_raw)?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -749,6 +986,115 @@ fn wire__crate__api__client__select_campus_impl(
                     })()
                     .await,
                 )
+            }
+        },
+    )
+}
+fn wire__crate__api__client__select_room_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "select_room",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_room_id = <pulse_protocol::ids::RoomId>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok =
+                            Ok::<_, ()>(crate::api::client::select_room(api_room_id).await)?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__client__send_message_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "send_message",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_room_id = <pulse_protocol::ids::RoomId>::sse_decode(&mut deserializer);
+            let api_body = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(
+                            crate::api::client::send_message(api_room_id, api_body).await,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__pulse_protocol__messaging__send_message_validate_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "send_message_validate",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <pulse_protocol::messaging::SendMessage>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, pulse_protocol::api::ApiError>((move || {
+                    let output_ok = pulse_protocol::messaging::SendMessage::validate(&api_that)?;
+                    std::result::Result::Ok(output_ok)
+                })())
             }
         },
     )
@@ -1093,6 +1439,44 @@ fn wire__pulse_protocol__validation__validate_slug_impl(
         },
     )
 }
+fn wire__crate__api__client__watch_snapshots_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "watch_snapshots",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_sink = <StreamSink<
+                pulse_protocol::snapshot::ClientSnapshot,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>({
+                        crate::api::client::watch_snapshots(api_sink);
+                    })?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 
 #[allow(clippy::unnecessary_literal_unwrap)]
 const _: fn() = || {
@@ -1123,9 +1507,15 @@ const _: fn() = || {
         let _: pulse_protocol::rbac::Role = CampusSummary.role;
     }
     {
+        let ClientNonce_ = None::<pulse_protocol::ids::ClientNonce>.unwrap();
+        let _: uuid::Uuid = ClientNonce_.0;
+    }
+    {
         let ClientSnapshot = None::<pulse_protocol::snapshot::ClientSnapshot>.unwrap();
+        let _: u64 = ClientSnapshot.sequence;
         let _: pulse_protocol::snapshot::ConnectionSnapshot = ClientSnapshot.network;
         let _: pulse_protocol::snapshot::SessionSnapshot = ClientSnapshot.session;
+        let _: pulse_protocol::snapshot::TimelineSnapshot = ClientSnapshot.timeline;
     }
     {
         let ConnectionSnapshot = None::<pulse_protocol::snapshot::ConnectionSnapshot>.unwrap();
@@ -1149,6 +1539,10 @@ const _: fn() = || {
         let _: String = CreateRoomRequest.slug;
     }
     {
+        let MessageId_ = None::<pulse_protocol::ids::MessageId>.unwrap();
+        let _: uuid::Uuid = MessageId_.0;
+    }
+    {
         let ProtocolVersion_ = None::<pulse_protocol::version::ProtocolVersion>.unwrap();
         let _: u16 = ProtocolVersion_.0;
     }
@@ -1163,6 +1557,12 @@ const _: fn() = || {
         let _: uuid::Uuid = RoomId_.0;
     }
     {
+        let SendMessage = None::<pulse_protocol::messaging::SendMessage>.unwrap();
+        let _: pulse_protocol::ids::RoomId = SendMessage.room_id;
+        let _: pulse_protocol::ids::ClientNonce = SendMessage.client_nonce;
+        let _: String = SendMessage.body;
+    }
+    {
         let SessionId_ = None::<pulse_protocol::ids::SessionId>.unwrap();
         let _: uuid::Uuid = SessionId_.0;
     }
@@ -1173,6 +1573,7 @@ const _: fn() = || {
         let _: Vec<pulse_protocol::campus::CampusSummary> = SessionSnapshot.campuses;
         let _: Option<pulse_protocol::ids::CampusId> = SessionSnapshot.active_campus_id;
         let _: Vec<pulse_protocol::campus::Room> = SessionSnapshot.rooms;
+        let _: Option<pulse_protocol::ids::RoomId> = SessionSnapshot.active_room_id;
         let _: bool = SessionSnapshot.busy;
         let _: Option<pulse_protocol::api::ApiError> = SessionSnapshot.error;
     }
@@ -1188,11 +1589,48 @@ const _: fn() = || {
         let _: String = SignUpRequest.password;
     }
     {
+        let TimelineEntry = None::<pulse_protocol::snapshot::TimelineEntry>.unwrap();
+        let _: pulse_protocol::ids::ClientNonce = TimelineEntry.client_nonce;
+        let _: Option<pulse_protocol::ids::MessageId> = TimelineEntry.message_id;
+        let _: pulse_protocol::ids::AccountId = TimelineEntry.author_id;
+        let _: String = TimelineEntry.author_display_name;
+        let _: bool = TimelineEntry.from_self;
+        let _: String = TimelineEntry.body;
+        let _: pulse_protocol::snapshot::DeliveryState = TimelineEntry.delivery;
+        let _: Option<pulse_protocol::messaging::MessageRejection> = TimelineEntry.rejection;
+    }
+    {
+        let TimelineSnapshot = None::<pulse_protocol::snapshot::TimelineSnapshot>.unwrap();
+        let _: Option<pulse_protocol::ids::RoomId> = TimelineSnapshot.room_id;
+        let _: Vec<pulse_protocol::snapshot::TimelineEntry> = TimelineSnapshot.entries;
+        let _: bool = TimelineSnapshot.syncing;
+        let _: Option<pulse_protocol::api::ApiError> = TimelineSnapshot.error;
+    }
+    {
         let VersionMismatch = None::<pulse_protocol::frames::VersionMismatch>.unwrap();
         let _: pulse_protocol::version::ProtocolVersion = VersionMismatch.supported;
         let _: pulse_protocol::version::ProtocolVersion = VersionMismatch.received;
     }
 };
+
+impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return flutter_rust_bridge::for_generated::anyhow::anyhow!("{}", inner);
+    }
+}
+
+impl SseDecode
+    for StreamSink<
+        pulse_protocol::snapshot::ClientSnapshot,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
 
 impl SseDecode for String {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1295,14 +1733,26 @@ impl SseDecode for pulse_protocol::campus::CampusSummary {
     }
 }
 
+impl SseDecode for pulse_protocol::ids::ClientNonce {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_field0 = <uuid::Uuid>::sse_decode(deserializer);
+        return pulse_protocol::ids::ClientNonce(var_field0);
+    }
+}
+
 impl SseDecode for pulse_protocol::snapshot::ClientSnapshot {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_sequence = <u64>::sse_decode(deserializer);
         let mut var_network =
             <pulse_protocol::snapshot::ConnectionSnapshot>::sse_decode(deserializer);
         let mut var_session = <pulse_protocol::snapshot::SessionSnapshot>::sse_decode(deserializer);
+        let mut var_timeline =
+            <pulse_protocol::snapshot::TimelineSnapshot>::sse_decode(deserializer);
         return pulse_protocol::snapshot::ClientSnapshot {
+            sequence: var_sequence,
             network: var_network,
             session: var_session,
+            timeline: var_timeline,
         };
     }
 }
@@ -1366,6 +1816,18 @@ impl SseDecode for pulse_protocol::campus::CreateRoomRequest {
     }
 }
 
+impl SseDecode for pulse_protocol::snapshot::DeliveryState {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => pulse_protocol::snapshot::DeliveryState::Pending,
+            1 => pulse_protocol::snapshot::DeliveryState::Confirmed,
+            2 => pulse_protocol::snapshot::DeliveryState::Failed,
+            _ => unreachable!("Invalid variant for DeliveryState: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for pulse_protocol::frames::HandshakeRejection {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <i32>::sse_decode(deserializer);
@@ -1391,6 +1853,7 @@ impl SseDecode for pulse_protocol::api::InputField {
             1 => pulse_protocol::api::InputField::DisplayName,
             2 => pulse_protocol::api::InputField::Password,
             3 => pulse_protocol::api::InputField::Slug,
+            4 => pulse_protocol::api::InputField::MessageBody,
             _ => unreachable!("Invalid variant for InputField: {}", inner),
         };
     }
@@ -1428,6 +1891,38 @@ impl SseDecode for Vec<pulse_protocol::campus::Room> {
             ans_.push(<pulse_protocol::campus::Room>::sse_decode(deserializer));
         }
         return ans_;
+    }
+}
+
+impl SseDecode for Vec<pulse_protocol::snapshot::TimelineEntry> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<pulse_protocol::snapshot::TimelineEntry>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for pulse_protocol::ids::MessageId {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_field0 = <uuid::Uuid>::sse_decode(deserializer);
+        return pulse_protocol::ids::MessageId(var_field0);
+    }
+}
+
+impl SseDecode for pulse_protocol::messaging::MessageRejection {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => pulse_protocol::messaging::MessageRejection::Forbidden,
+            1 => pulse_protocol::messaging::MessageRejection::InvalidBody,
+            2 => pulse_protocol::messaging::MessageRejection::UnknownRoom,
+            _ => unreachable!("Invalid variant for MessageRejection: {}", inner),
+        };
     }
 }
 
@@ -1485,6 +1980,38 @@ impl SseDecode for Option<pulse_protocol::api::InputField> {
     }
 }
 
+impl SseDecode for Option<pulse_protocol::ids::MessageId> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<pulse_protocol::ids::MessageId>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<pulse_protocol::messaging::MessageRejection> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<pulse_protocol::messaging::MessageRejection>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<pulse_protocol::ids::RoomId> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<pulse_protocol::ids::RoomId>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<pulse_protocol::ids::SessionId> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
@@ -1526,6 +2053,7 @@ impl SseDecode for pulse_protocol::rbac::Permission {
             2 => pulse_protocol::rbac::Permission::CreateRoom,
             3 => pulse_protocol::rbac::Permission::ManageMembers,
             4 => pulse_protocol::rbac::Permission::ManageCampus,
+            5 => pulse_protocol::rbac::Permission::PostMessage,
             _ => unreachable!("Invalid variant for Permission: {}", inner),
         };
     }
@@ -1571,6 +2099,19 @@ impl SseDecode for pulse_protocol::ids::RoomId {
     }
 }
 
+impl SseDecode for pulse_protocol::messaging::SendMessage {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_roomId = <pulse_protocol::ids::RoomId>::sse_decode(deserializer);
+        let mut var_clientNonce = <pulse_protocol::ids::ClientNonce>::sse_decode(deserializer);
+        let mut var_body = <String>::sse_decode(deserializer);
+        return pulse_protocol::messaging::SendMessage {
+            room_id: var_roomId,
+            client_nonce: var_clientNonce,
+            body: var_body,
+        };
+    }
+}
+
 impl SseDecode for pulse_protocol::ids::SessionId {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_field0 = <uuid::Uuid>::sse_decode(deserializer);
@@ -1588,6 +2129,7 @@ impl SseDecode for pulse_protocol::snapshot::SessionSnapshot {
         let mut var_activeCampusId =
             <Option<pulse_protocol::ids::CampusId>>::sse_decode(deserializer);
         let mut var_rooms = <Vec<pulse_protocol::campus::Room>>::sse_decode(deserializer);
+        let mut var_activeRoomId = <Option<pulse_protocol::ids::RoomId>>::sse_decode(deserializer);
         let mut var_busy = <bool>::sse_decode(deserializer);
         let mut var_error = <Option<pulse_protocol::api::ApiError>>::sse_decode(deserializer);
         return pulse_protocol::snapshot::SessionSnapshot {
@@ -1596,6 +2138,7 @@ impl SseDecode for pulse_protocol::snapshot::SessionSnapshot {
             campuses: var_campuses,
             active_campus_id: var_activeCampusId,
             rooms: var_rooms,
+            active_room_id: var_activeRoomId,
             busy: var_busy,
             error: var_error,
         };
@@ -1626,6 +2169,46 @@ impl SseDecode for pulse_protocol::auth::SignUpRequest {
     }
 }
 
+impl SseDecode for pulse_protocol::snapshot::TimelineEntry {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_clientNonce = <pulse_protocol::ids::ClientNonce>::sse_decode(deserializer);
+        let mut var_messageId = <Option<pulse_protocol::ids::MessageId>>::sse_decode(deserializer);
+        let mut var_authorId = <pulse_protocol::ids::AccountId>::sse_decode(deserializer);
+        let mut var_authorDisplayName = <String>::sse_decode(deserializer);
+        let mut var_fromSelf = <bool>::sse_decode(deserializer);
+        let mut var_body = <String>::sse_decode(deserializer);
+        let mut var_delivery = <pulse_protocol::snapshot::DeliveryState>::sse_decode(deserializer);
+        let mut var_rejection =
+            <Option<pulse_protocol::messaging::MessageRejection>>::sse_decode(deserializer);
+        return pulse_protocol::snapshot::TimelineEntry {
+            client_nonce: var_clientNonce,
+            message_id: var_messageId,
+            author_id: var_authorId,
+            author_display_name: var_authorDisplayName,
+            from_self: var_fromSelf,
+            body: var_body,
+            delivery: var_delivery,
+            rejection: var_rejection,
+        };
+    }
+}
+
+impl SseDecode for pulse_protocol::snapshot::TimelineSnapshot {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_roomId = <Option<pulse_protocol::ids::RoomId>>::sse_decode(deserializer);
+        let mut var_entries =
+            <Vec<pulse_protocol::snapshot::TimelineEntry>>::sse_decode(deserializer);
+        let mut var_syncing = <bool>::sse_decode(deserializer);
+        let mut var_error = <Option<pulse_protocol::api::ApiError>>::sse_decode(deserializer);
+        return pulse_protocol::snapshot::TimelineSnapshot {
+            room_id: var_roomId,
+            entries: var_entries,
+            syncing: var_syncing,
+            error: var_error,
+        };
+    }
+}
+
 impl SseDecode for u16 {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_u16::<NativeEndian>().unwrap()
@@ -1635,6 +2218,12 @@ impl SseDecode for u16 {
 impl SseDecode for u32 {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_u32::<NativeEndian>().unwrap()
+    }
+}
+
+impl SseDecode for u64 {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u64::<NativeEndian>().unwrap()
     }
 }
 
@@ -1693,66 +2282,98 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        12 => wire__crate__api__client__client_snapshot_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__client__create_campus_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__pulse_protocol__campus__create_campus_request_validate_impl(
+        12 => {
+            wire__pulse_protocol__ids__client_nonce_as_uuid_impl(port, ptr, rust_vec_len, data_len)
+        }
+        13 => {
+            wire__pulse_protocol__ids__client_nonce_generate_impl(port, ptr, rust_vec_len, data_len)
+        }
+        14 => wire__crate__api__client__client_snapshot_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__client__create_campus_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__pulse_protocol__campus__create_campus_request_validate_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        15 => wire__pulse_protocol__campus__create_room_request_validate_impl(
+        17 => wire__pulse_protocol__campus__create_room_request_validate_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        16 => wire__pulse_protocol__validation__normalize_email_impl(
+        18 => wire__crate__api__client__discard_message_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__pulse_protocol__ids__message_id_as_uuid_impl(port, ptr, rust_vec_len, data_len),
+        20 => {
+            wire__pulse_protocol__ids__message_id_generate_impl(port, ptr, rust_vec_len, data_len)
+        }
+        21 => wire__pulse_protocol__validation__normalize_display_name_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        17 => wire__crate__api__client__refresh_campuses_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__pulse_protocol__rbac__role_as_str_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__pulse_protocol__rbac__role_permits_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__pulse_protocol__ids__room_id_as_uuid_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__pulse_protocol__ids__room_id_generate_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__client__select_campus_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__pulse_protocol__ids__session_id_as_uuid_impl(port, ptr, rust_vec_len, data_len),
-        24 => {
+        22 => wire__pulse_protocol__validation__normalize_email_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        23 => wire__pulse_protocol__validation__normalize_message_body_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        24 => wire__crate__api__client__refresh_campuses_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__pulse_protocol__rbac__role_as_str_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__pulse_protocol__rbac__role_permits_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__pulse_protocol__ids__room_id_as_uuid_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__pulse_protocol__ids__room_id_generate_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__client__select_campus_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__client__select_room_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__client__send_message_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__pulse_protocol__messaging__send_message_validate_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        33 => wire__pulse_protocol__ids__session_id_as_uuid_impl(port, ptr, rust_vec_len, data_len),
+        34 => {
             wire__pulse_protocol__ids__session_id_generate_impl(port, ptr, rust_vec_len, data_len)
         }
-        25 => wire__crate__api__client__sign_in_impl(port, ptr, rust_vec_len, data_len),
-        26 => wire__pulse_protocol__auth__sign_in_request_validate_impl(
+        35 => wire__crate__api__client__sign_in_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__pulse_protocol__auth__sign_in_request_validate_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        27 => wire__crate__api__client__sign_out_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__client__sign_up_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__pulse_protocol__auth__sign_up_request_validate_impl(
+        37 => wire__crate__api__client__sign_out_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__client__sign_up_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__pulse_protocol__auth__sign_up_request_validate_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        30 => wire__pulse_protocol__validation__validate_display_name_impl(
+        40 => wire__pulse_protocol__validation__validate_display_name_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => wire__pulse_protocol__validation__validate_password_impl(
+        41 => wire__pulse_protocol__validation__validate_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => {
+        42 => {
             wire__pulse_protocol__validation__validate_slug_impl(port, ptr, rust_vec_len, data_len)
         }
+        43 => wire__crate__api__client__watch_snapshots_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1909,11 +2530,29 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::campus::Campus
         self.into()
     }
 }
+impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::ids::ClientNonce> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [self.0.0.into_into_dart().into_dart()].into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<pulse_protocol::ids::ClientNonce>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::ids::ClientNonce>>
+    for pulse_protocol::ids::ClientNonce
+{
+    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::ids::ClientNonce> {
+        self.into()
+    }
+}
 impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::ClientSnapshot> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
+            self.0.sequence.into_into_dart().into_dart(),
             self.0.network.into_into_dart().into_dart(),
             self.0.session.into_into_dart().into_dart(),
+            self.0.timeline.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -2014,6 +2653,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::campus::Create
         self.into()
     }
 }
+impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::DeliveryState> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            pulse_protocol::snapshot::DeliveryState::Pending => 0.into_dart(),
+            pulse_protocol::snapshot::DeliveryState::Confirmed => 1.into_dart(),
+            pulse_protocol::snapshot::DeliveryState::Failed => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<pulse_protocol::snapshot::DeliveryState>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::snapshot::DeliveryState>>
+    for pulse_protocol::snapshot::DeliveryState
+{
+    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::snapshot::DeliveryState> {
+        self.into()
+    }
+}
 impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::frames::HandshakeRejection> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
@@ -2041,6 +2701,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::api::InputFiel
             pulse_protocol::api::InputField::DisplayName => 1.into_dart(),
             pulse_protocol::api::InputField::Password => 2.into_dart(),
             pulse_protocol::api::InputField::Slug => 3.into_dart(),
+            pulse_protocol::api::InputField::MessageBody => 4.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -2056,6 +2717,43 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::api::InputFiel
         self.into()
     }
 }
+impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::ids::MessageId> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [self.0.0.into_into_dart().into_dart()].into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<pulse_protocol::ids::MessageId>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::ids::MessageId>>
+    for pulse_protocol::ids::MessageId
+{
+    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::ids::MessageId> {
+        self.into()
+    }
+}
+impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::messaging::MessageRejection> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            pulse_protocol::messaging::MessageRejection::Forbidden => 0.into_dart(),
+            pulse_protocol::messaging::MessageRejection::InvalidBody => 1.into_dart(),
+            pulse_protocol::messaging::MessageRejection::UnknownRoom => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<pulse_protocol::messaging::MessageRejection>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::messaging::MessageRejection>>
+    for pulse_protocol::messaging::MessageRejection
+{
+    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::messaging::MessageRejection> {
+        self.into()
+    }
+}
 impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::rbac::Permission> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
@@ -2064,6 +2762,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::rbac::Permissi
             pulse_protocol::rbac::Permission::CreateRoom => 2.into_dart(),
             pulse_protocol::rbac::Permission::ManageMembers => 3.into_dart(),
             pulse_protocol::rbac::Permission::ManageCampus => 4.into_dart(),
+            pulse_protocol::rbac::Permission::PostMessage => 5.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -2154,6 +2853,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::ids::RoomId>>
         self.into()
     }
 }
+impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::messaging::SendMessage> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.room_id.into_into_dart().into_dart(),
+            self.0.client_nonce.into_into_dart().into_dart(),
+            self.0.body.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<pulse_protocol::messaging::SendMessage>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::messaging::SendMessage>>
+    for pulse_protocol::messaging::SendMessage
+{
+    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::messaging::SendMessage> {
+        self.into()
+    }
+}
 impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::ids::SessionId> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [self.0.0.into_into_dart().into_dart()].into_dart()
@@ -2178,6 +2898,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::Sess
             self.0.campuses.into_into_dart().into_dart(),
             self.0.active_campus_id.into_into_dart().into_dart(),
             self.0.rooms.into_into_dart().into_dart(),
+            self.0.active_room_id.into_into_dart().into_dart(),
             self.0.busy.into_into_dart().into_dart(),
             self.0.error.into_into_dart().into_dart(),
         ]
@@ -2236,6 +2957,54 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::auth::SignUpRe
         self.into()
     }
 }
+impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::TimelineEntry> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.client_nonce.into_into_dart().into_dart(),
+            self.0.message_id.into_into_dart().into_dart(),
+            self.0.author_id.into_into_dart().into_dart(),
+            self.0.author_display_name.into_into_dart().into_dart(),
+            self.0.from_self.into_into_dart().into_dart(),
+            self.0.body.into_into_dart().into_dart(),
+            self.0.delivery.into_into_dart().into_dart(),
+            self.0.rejection.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<pulse_protocol::snapshot::TimelineEntry>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::snapshot::TimelineEntry>>
+    for pulse_protocol::snapshot::TimelineEntry
+{
+    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::snapshot::TimelineEntry> {
+        self.into()
+    }
+}
+impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::TimelineSnapshot> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.room_id.into_into_dart().into_dart(),
+            self.0.entries.into_into_dart().into_dart(),
+            self.0.syncing.into_into_dart().into_dart(),
+            self.0.error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<pulse_protocol::snapshot::TimelineSnapshot>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::snapshot::TimelineSnapshot>>
+    for pulse_protocol::snapshot::TimelineSnapshot
+{
+    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::snapshot::TimelineSnapshot> {
+        self.into()
+    }
+}
 impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::frames::VersionMismatch> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -2254,6 +3023,23 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::frames::Versio
 {
     fn into_into_dart(self) -> FrbWrapper<pulse_protocol::frames::VersionMismatch> {
         self.into()
+    }
+}
+
+impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(format!("{:?}", self), serializer);
+    }
+}
+
+impl SseEncode
+    for StreamSink<
+        pulse_protocol::snapshot::ClientSnapshot,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
     }
 }
 
@@ -2347,10 +3133,18 @@ impl SseEncode for pulse_protocol::campus::CampusSummary {
     }
 }
 
+impl SseEncode for pulse_protocol::ids::ClientNonce {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <uuid::Uuid>::sse_encode(self.0, serializer);
+    }
+}
+
 impl SseEncode for pulse_protocol::snapshot::ClientSnapshot {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.sequence, serializer);
         <pulse_protocol::snapshot::ConnectionSnapshot>::sse_encode(self.network, serializer);
         <pulse_protocol::snapshot::SessionSnapshot>::sse_encode(self.session, serializer);
+        <pulse_protocol::snapshot::TimelineSnapshot>::sse_encode(self.timeline, serializer);
     }
 }
 
@@ -2401,6 +3195,22 @@ impl SseEncode for pulse_protocol::campus::CreateRoomRequest {
     }
 }
 
+impl SseEncode for pulse_protocol::snapshot::DeliveryState {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                pulse_protocol::snapshot::DeliveryState::Pending => 0,
+                pulse_protocol::snapshot::DeliveryState::Confirmed => 1,
+                pulse_protocol::snapshot::DeliveryState::Failed => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
 impl SseEncode for pulse_protocol::frames::HandshakeRejection {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(
@@ -2430,6 +3240,7 @@ impl SseEncode for pulse_protocol::api::InputField {
                 pulse_protocol::api::InputField::DisplayName => 1,
                 pulse_protocol::api::InputField::Password => 2,
                 pulse_protocol::api::InputField::Slug => 3,
+                pulse_protocol::api::InputField::MessageBody => 4,
                 _ => {
                     unimplemented!("");
                 }
@@ -2463,6 +3274,37 @@ impl SseEncode for Vec<pulse_protocol::campus::Room> {
         for item in self {
             <pulse_protocol::campus::Room>::sse_encode(item, serializer);
         }
+    }
+}
+
+impl SseEncode for Vec<pulse_protocol::snapshot::TimelineEntry> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <pulse_protocol::snapshot::TimelineEntry>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for pulse_protocol::ids::MessageId {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <uuid::Uuid>::sse_encode(self.0, serializer);
+    }
+}
+
+impl SseEncode for pulse_protocol::messaging::MessageRejection {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                pulse_protocol::messaging::MessageRejection::Forbidden => 0,
+                pulse_protocol::messaging::MessageRejection::InvalidBody => 1,
+                pulse_protocol::messaging::MessageRejection::UnknownRoom => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 
@@ -2511,6 +3353,33 @@ impl SseEncode for Option<pulse_protocol::api::InputField> {
     }
 }
 
+impl SseEncode for Option<pulse_protocol::ids::MessageId> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <pulse_protocol::ids::MessageId>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<pulse_protocol::messaging::MessageRejection> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <pulse_protocol::messaging::MessageRejection>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<pulse_protocol::ids::RoomId> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <pulse_protocol::ids::RoomId>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<pulse_protocol::ids::SessionId> {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.is_some(), serializer);
@@ -2547,6 +3416,7 @@ impl SseEncode for pulse_protocol::rbac::Permission {
                 pulse_protocol::rbac::Permission::CreateRoom => 2,
                 pulse_protocol::rbac::Permission::ManageMembers => 3,
                 pulse_protocol::rbac::Permission::ManageCampus => 4,
+                pulse_protocol::rbac::Permission::PostMessage => 5,
                 _ => {
                     unimplemented!("");
                 }
@@ -2593,6 +3463,14 @@ impl SseEncode for pulse_protocol::ids::RoomId {
     }
 }
 
+impl SseEncode for pulse_protocol::messaging::SendMessage {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <pulse_protocol::ids::RoomId>::sse_encode(self.room_id, serializer);
+        <pulse_protocol::ids::ClientNonce>::sse_encode(self.client_nonce, serializer);
+        <String>::sse_encode(self.body, serializer);
+    }
+}
+
 impl SseEncode for pulse_protocol::ids::SessionId {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <uuid::Uuid>::sse_encode(self.0, serializer);
@@ -2606,6 +3484,7 @@ impl SseEncode for pulse_protocol::snapshot::SessionSnapshot {
         <Vec<pulse_protocol::campus::CampusSummary>>::sse_encode(self.campuses, serializer);
         <Option<pulse_protocol::ids::CampusId>>::sse_encode(self.active_campus_id, serializer);
         <Vec<pulse_protocol::campus::Room>>::sse_encode(self.rooms, serializer);
+        <Option<pulse_protocol::ids::RoomId>>::sse_encode(self.active_room_id, serializer);
         <bool>::sse_encode(self.busy, serializer);
         <Option<pulse_protocol::api::ApiError>>::sse_encode(self.error, serializer);
     }
@@ -2626,6 +3505,31 @@ impl SseEncode for pulse_protocol::auth::SignUpRequest {
     }
 }
 
+impl SseEncode for pulse_protocol::snapshot::TimelineEntry {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <pulse_protocol::ids::ClientNonce>::sse_encode(self.client_nonce, serializer);
+        <Option<pulse_protocol::ids::MessageId>>::sse_encode(self.message_id, serializer);
+        <pulse_protocol::ids::AccountId>::sse_encode(self.author_id, serializer);
+        <String>::sse_encode(self.author_display_name, serializer);
+        <bool>::sse_encode(self.from_self, serializer);
+        <String>::sse_encode(self.body, serializer);
+        <pulse_protocol::snapshot::DeliveryState>::sse_encode(self.delivery, serializer);
+        <Option<pulse_protocol::messaging::MessageRejection>>::sse_encode(
+            self.rejection,
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for pulse_protocol::snapshot::TimelineSnapshot {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<pulse_protocol::ids::RoomId>>::sse_encode(self.room_id, serializer);
+        <Vec<pulse_protocol::snapshot::TimelineEntry>>::sse_encode(self.entries, serializer);
+        <bool>::sse_encode(self.syncing, serializer);
+        <Option<pulse_protocol::api::ApiError>>::sse_encode(self.error, serializer);
+    }
+}
+
 impl SseEncode for u16 {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_u16::<NativeEndian>(self).unwrap();
@@ -2635,6 +3539,12 @@ impl SseEncode for u16 {
 impl SseEncode for u32 {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_u32::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for u64 {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u64::<NativeEndian>(self).unwrap();
     }
 }
 

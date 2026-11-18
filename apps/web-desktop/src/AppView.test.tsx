@@ -6,6 +6,7 @@ import {
   authenticating,
   noopIntents,
   signedInNoCampus,
+  signedInWithMessages,
   signedInWithRooms,
   signedOut,
   signedOutWithError,
@@ -65,6 +66,14 @@ const cases: ReadonlyArray<[string, Case]> = [
         "#courtyard",
       ],
       absent: [],
+    },
+  ],
+  [
+    "signed in with messages",
+    {
+      snapshot: signedInWithMessages,
+      present: ["Grace", "welcome", "You", "hello", "Sending", "Syncing", "Send"],
+      absent: ["Discard"],
     },
   ],
 ];

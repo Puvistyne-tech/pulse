@@ -2,18 +2,16 @@ mod common;
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::time::Duration;
 
 use common::{
-    Observed, campus_for, connect, fresh_state, hello, observe, ping, send, signed_up,
-    spawn_server_with,
+    HANDSHAKE_DEADLINE, Observed, campus_for, connect, fresh_state, hello, observe, ping, send,
+    signed_up, spawn_server_with,
 };
 use pulse_protocol::{AuthToken, CampusId, Pong, ProtocolVersion, ServerFrame, SessionId};
 use tokio::time::timeout;
 
 const CLIENTS: u32 = 16;
 const PINGS_PER_CLIENT: u32 = 4;
-const DEADLINE: Duration = Duration::from_secs(10);
 
 struct Tenant {
     campus_id: CampusId,
@@ -83,7 +81,7 @@ async fn concurrent_clients_keep_campus_session_and_nonce_isolation() {
         .map(|index| {
             let tenant = tenant_for(&tenants, index);
             let work = run_client(addr, index, tenant.campus_id, tenant.token.clone());
-            tokio::spawn(timeout(DEADLINE, work))
+            tokio::spawn(timeout(HANDSHAKE_DEADLINE, work))
         })
         .collect();
     let mut sessions = HashSet::new();

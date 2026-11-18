@@ -4,6 +4,7 @@ import '../campus/campus_picker.dart';
 import '../campus/create_campus_view.dart';
 import '../campus/room_list_view.dart';
 import '../client/pulse_intents.dart';
+import '../room/room_view.dart';
 import '../session/auth_view.dart';
 import '../session/error_notice.dart';
 import '../snapshot/snapshot_view.dart';
@@ -49,7 +50,16 @@ class HomeView extends StatelessWidget {
             busy: session.busy,
             createCampus: intents.createCampus,
           ),
-          RoomListView(rooms: session.rooms),
+          RoomListView(
+            rooms: session.rooms,
+            activeRoomId: session.activeRoomId,
+            selectRoom: intents.selectRoom,
+          ),
+          RoomView(
+            timeline: snapshot.timeline,
+            sendMessage: intents.sendMessage,
+            discardMessage: intents.discardMessage,
+          ),
           SnapshotView(network: snapshot.network),
         ],
       ),

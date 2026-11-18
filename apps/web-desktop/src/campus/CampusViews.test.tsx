@@ -3,6 +3,8 @@ import { afterEach, expect, test } from "vitest";
 import {
   CAMPUS_A,
   CAMPUS_B,
+  ROOM_A,
+  ROOM_B,
   campusA,
   campusB,
   noopIntents,
@@ -62,7 +64,44 @@ test.each([
   ["reversed snapshot order", [...rooms].reverse(), ["#courtyard", "#commons"]],
   ["no rooms", [], []],
 ])("room list renders %s", (_name, list, expected) => {
-  render(<RoomList rooms={list} />);
+  render(
+    <RoomList
+      rooms={list}
+      activeRoomId={null}
+      selectRoom={noopIntents().selectRoom}
+    />,
+  );
   const labels = screen.queryAllByRole("listitem").map((item) => item.textContent);
   expect(labels).toEqual(expected);
+});
+
+test.each([
+  ["#commons", ROOM_A],
+  ["#courtyard", ROOM_B],
+])("clicking %s selects its room id", (label, roomId) => {
+  const intents = noopIntents();
+  render(
+    <RoomList rooms={rooms} activeRoomId={null} selectRoom={intents.selectRoom} />,
+  );
+  fireEvent.click(screen.getByText(label));
+  expect(intents.selectRoom).toHaveBeenCalledExactlyOnceWith(roomId);
+});
+
+test.each([
+  ["first room", ROOM_A, "#commons"],
+  ["second room", ROOM_B, "#courtyard"],
+  ["no active room", null, null],
+])("active room marking for %s", (_name, activeRoomId, marked) => {
+  render(
+    <RoomList
+      rooms={rooms}
+      activeRoomId={activeRoomId}
+      selectRoom={noopIntents().selectRoom}
+    />,
+  );
+  const current = screen
+    .getAllByRole("button")
+    .filter((button) => button.getAttribute("aria-current") === "true")
+    .map((button) => button.textContent);
+  expect(current).toEqual(marked === null ? [] : [marked]);
 });

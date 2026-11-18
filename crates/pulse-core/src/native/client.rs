@@ -3,18 +3,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use pulse_protocol::{
-    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep, MessageId,
-    ReactionAction, ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest,
-    SubscriptionState, VaultTab,
+    AccountId, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep,
+    LoungeId, LoungeMediaState, MessageId, ReactionAction, ReminderPreset, RoomId, ShelfAction,
+    SignInRequest, SignUpRequest, SubscriptionState, VaultTab,
 };
 use tokio::runtime::{Builder, Runtime};
 
 use crate::client::unavailable_snapshot;
+use crate::lounge::LoungeIntent;
 use crate::media::MediaIntent;
 use crate::search::MemorySearchIndex;
 use crate::search_view::SearchIntent;
 use crate::session::SessionEvent;
 use crate::shelf::ShelfIntent;
+use crate::steward_view::StewardIntent;
 use crate::timeline::ThreadIntent;
 
 use super::http::server_url_from_env;
@@ -51,6 +53,8 @@ enum Intent {
         bytes: Vec<u8>,
     },
     Shelf(ShelfIntent),
+    Lounge(LoungeIntent),
+    Steward(StewardIntent),
     OpenSearchHit(Option<MessageId>),
 }
 
@@ -132,6 +136,8 @@ impl NativeClient {
                         })
                     }
                     Intent::Shelf(intent) => client.shelf_intent(intent),
+                    Intent::Lounge(intent) => client.lounge_intent(intent),
+                    Intent::Steward(intent) => client.steward_intent(intent),
                     Intent::OpenSearchHit(target) => {
                         match target.or_else(|| client.selected_search_hit()) {
                             Some(message_id) => {
@@ -407,6 +413,71 @@ impl NativeClient {
 
     pub async fn dismiss_reminder(&self) -> ClientSnapshot {
         self.run(Intent::Shelf(ShelfIntent::ReminderDismissed))
+            .await
+    }
+
+    pub async fn join_lounge(&self, lounge_id: LoungeId) -> ClientSnapshot {
+        self.run(Intent::Lounge(LoungeIntent::JoinRequested { lounge_id }))
+            .await
+    }
+
+    pub async fn leave_lounge(&self) -> ClientSnapshot {
+        self.run(Intent::Lounge(LoungeIntent::LeaveRequested)).await
+    }
+
+    pub async fn report_lounge_media(&self, state: LoungeMediaState) -> ClientSnapshot {
+        self.run(Intent::Lounge(LoungeIntent::MediaReported(state)))
+            .await
+    }
+
+    pub async fn toggle_stewards(&self) -> ClientSnapshot {
+        self.run(Intent::Steward(StewardIntent::Toggled)).await
+    }
+
+    pub async fn create_steward(
+        &self,
+        display_name: String,
+        room_ids: Vec<RoomId>,
+    ) -> ClientSnapshot {
+        self.run(Intent::Steward(StewardIntent::CreateRequested {
+            request_nonce: ClientNonce::generate(),
+            display_name,
+            room_ids,
+        }))
+        .await
+    }
+
+    pub async fn rotate_steward_token(&self, steward_id: AccountId) -> ClientSnapshot {
+        self.run(Intent::Steward(StewardIntent::RotateRequested {
+            request_nonce: ClientNonce::generate(),
+            steward_id,
+        }))
+        .await
+    }
+
+    pub async fn revoke_steward(&self, steward_id: AccountId) -> ClientSnapshot {
+        self.run(Intent::Steward(StewardIntent::RevokeRequested {
+            request_nonce: ClientNonce::generate(),
+            steward_id,
+        }))
+        .await
+    }
+
+    pub async fn assign_steward_rooms(
+        &self,
+        steward_id: AccountId,
+        room_ids: Vec<RoomId>,
+    ) -> ClientSnapshot {
+        self.run(Intent::Steward(StewardIntent::RoomsAssigned {
+            request_nonce: ClientNonce::generate(),
+            steward_id,
+            room_ids,
+        }))
+        .await
+    }
+
+    pub async fn dismiss_steward_token(&self) -> ClientSnapshot {
+        self.run(Intent::Steward(StewardIntent::IssuedTokenDismissed))
             .await
     }
 

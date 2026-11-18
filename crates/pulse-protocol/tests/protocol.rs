@@ -7,8 +7,9 @@ use pulse_protocol::{
     ConnectionSnapshot, CreateCampusRequest, CreateRoomRequest, HandshakeRejected,
     HandshakeRejection, Hello, IdParseError, InputField, Permission, Ping, Pong, ProtocolVersion,
     Role, Room, RoomId, RoomList, ServerFrame, SessionId, SessionSnapshot, SignInRequest,
-    SignUpRequest, Validate, VersionMismatch, Welcome, api_path, close_code, normalize_email,
-    role_permits, validate_display_name, validate_password, validate_slug,
+    SignUpRequest, Validate, VersionMismatch, Welcome, api_path, close_code,
+    normalize_display_name, normalize_email, role_permits, validate_display_name,
+    validate_password, validate_slug,
 };
 use rstest::rstest;
 use serde::Serialize;
@@ -454,16 +455,19 @@ fn email_length_boundary() {
 }
 
 #[rstest]
-#[case::single_char("A", true)]
-#[case::padded("  Ada  ", true)]
-#[case::at_limit(&"a".repeat(64), true)]
-#[case::over_limit(&"a".repeat(65), false)]
-#[case::empty("", false)]
-#[case::blank("   ", false)]
-#[case::control("Ada\nLovelace", false)]
-#[case::multibyte_at_limit(&"é".repeat(64), true)]
-fn display_name_rules(#[case] raw: &str, #[case] valid: bool) {
-    assert_eq!(validate_display_name(raw).is_ok(), valid);
+#[case::single_char("A", Some("A".to_owned()))]
+#[case::padded("  Ada  ", Some("Ada".to_owned()))]
+#[case::padded_campus("  North  ", Some("North".to_owned()))]
+#[case::at_limit(&"a".repeat(64), Some("a".repeat(64)))]
+#[case::over_limit(&"a".repeat(65), None)]
+#[case::empty("", None)]
+#[case::blank("   ", None)]
+#[case::control("Ada\nLovelace", None)]
+#[case::multibyte_at_limit(&"é".repeat(64), Some("é".repeat(64)))]
+fn display_name_rules(#[case] raw: &str, #[case] normalized: Option<String>) {
+    let expected = normalized.ok_or(InputField::DisplayName);
+    assert_eq!(normalize_display_name(raw), expected);
+    assert_eq!(validate_display_name(raw).is_ok(), expected.is_ok());
 }
 
 #[rstest]
@@ -521,6 +525,8 @@ fn sign_up_validation_order(#[case] request: SignUpRequest, #[case] field: Optio
 #[case::valid("ada@example.org", "x", None)]
 #[case::email_first("bad", "", Some(InputField::Email))]
 #[case::empty_password("ada@example.org", "", Some(InputField::Password))]
+#[case::password_at_max("ada@example.org", &"p".repeat(128), None)]
+#[case::password_over_max("ada@example.org", &"p".repeat(129), Some(InputField::Password))]
 fn sign_in_validation(
     #[case] email: &str,
     #[case] password: &str,

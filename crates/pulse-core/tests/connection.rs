@@ -1,17 +1,16 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, connect, hello_frame, machine_after, refused,
-    rejected, token_a, token_b, welcome, welcome_frame,
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, Start, connect, hello_frame, machine_after,
+    refused, rejected, started, token_a, token_b, welcome, welcome_frame,
 };
 use futures::executor::block_on;
 use pulse_core::{
-    BackoffPolicy, ConnectionCommand, ConnectionEvent, ConnectionMachine, TransportError,
-    handshake, initial_snapshot,
+    BackoffPolicy, ConnectionCommand, ConnectionEvent, TransportError, handshake, initial_snapshot,
 };
 use pulse_protocol::{
-    AuthPhase, ClientFrame, ConnectionPhase, HandshakeRejection, Hello, Pong, ProtocolVersion,
-    ServerFrame, VersionMismatch,
+    AuthPhase, AuthToken, ClientFrame, ConnectionPhase, HandshakeRejection, Hello, Pong,
+    ProtocolVersion, ServerFrame, VersionMismatch,
 };
 use rstest::rstest;
 
@@ -167,29 +166,28 @@ fn step_follows_transition_table(
     }
 }
 
-#[test]
-fn version_rejection_is_recorded_and_cleared_on_next_connect() {
-    let rejected = machine_after(vec![
-        connect(),
-        ConnectionEvent::TransportOpened,
-        ConnectionEvent::VersionRejected(mismatch()),
-    ]);
-    assert_eq!(rejected.snapshot().rejection, Some(mismatch()));
-    let (retried, _) = rejected.step(connect());
-    assert_eq!(retried.snapshot().rejection, None);
-}
-
 #[rstest]
-#[case::unauthenticated(HandshakeRejection::Unauthenticated)]
-#[case::campus_unavailable(HandshakeRejection::CampusUnavailable)]
-fn handshake_rejection_is_recorded_and_cleared_on_next_connect(#[case] reason: HandshakeRejection) {
-    let denied = machine_after(vec![
-        connect(),
-        ConnectionEvent::TransportOpened,
-        ConnectionEvent::HandshakeRejected(rejected(reason)),
-    ]);
-    assert_eq!(denied.snapshot().handshake_rejection, Some(reason));
+#[case::version_mismatch(ConnectionEvent::VersionRejected(mismatch()), Some(mismatch()), None)]
+#[case::unauthenticated(
+    ConnectionEvent::HandshakeRejected(rejected(HandshakeRejection::Unauthenticated)),
+    None,
+    Some(HandshakeRejection::Unauthenticated)
+)]
+#[case::campus_unavailable(
+    ConnectionEvent::HandshakeRejected(rejected(HandshakeRejection::CampusUnavailable)),
+    None,
+    Some(HandshakeRejection::CampusUnavailable)
+)]
+fn rejection_is_recorded_and_cleared_on_next_connect(
+    #[case] event: ConnectionEvent,
+    #[case] expected_version: Option<VersionMismatch>,
+    #[case] expected_handshake: Option<HandshakeRejection>,
+) {
+    let denied = machine_after(vec![connect(), ConnectionEvent::TransportOpened, event]);
+    assert_eq!(denied.snapshot().rejection, expected_version);
+    assert_eq!(denied.snapshot().handshake_rejection, expected_handshake);
     let (retried, _) = denied.step(connect());
+    assert_eq!(retried.snapshot().rejection, None);
     assert_eq!(retried.snapshot().handshake_rejection, None);
 }
 
@@ -226,6 +224,8 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
 
 #[rstest]
 #[case::welcome(
+    Start::Fresh,
+    token_a(),
     ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_A)]),
     ConnectionPhase::Connected,
     true,
@@ -233,6 +233,8 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::handshake_rejected(
+    Start::Fresh,
+    token_a(),
     ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::HandshakeRejected(rejected(HandshakeRejection::CampusUnavailable)))]),
     ConnectionPhase::Disconnected,
     false,
@@ -240,6 +242,8 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::version_mismatch(
+    Start::Fresh,
+    token_a(),
     ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
     ConnectionPhase::Disconnected,
     false,
@@ -247,6 +251,8 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::open_failure(
+    Start::Fresh,
+    token_a(),
     ScriptedTransport::scripted(vec![refused()], vec![]),
     ConnectionPhase::Backoff,
     false,
@@ -254,6 +260,8 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     vec![],
 )]
 #[case::receive_failure(
+    Start::Fresh,
+    token_a(),
     ScriptedTransport::scripted(vec![], vec![Err(TransportError::Closed)]),
     ConnectionPhase::Backoff,
     false,
@@ -261,6 +269,8 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::unexpected_frame(
+    Start::Fresh,
+    token_a(),
     ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
     ConnectionPhase::Backoff,
     false,
@@ -268,25 +278,69 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::wrong_campus(
+    Start::Fresh,
+    token_a(),
     ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_B)]),
     ConnectionPhase::Disconnected,
     false,
     1,
     vec![hello_frame(CAMPUS_A, token_a())],
 )]
+#[case::token_change_from_connecting(
+    Start::Connecting,
+    token_b(),
+    ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]),
+    ConnectionPhase::Connected,
+    true,
+    1,
+    vec![hello_frame(CAMPUS_A, token_b())],
+)]
+#[case::token_change_from_handshaking(
+    Start::Handshaking,
+    token_b(),
+    ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]),
+    ConnectionPhase::Connected,
+    true,
+    1,
+    vec![hello_frame(CAMPUS_A, token_b())],
+)]
+#[case::token_change_from_backoff(
+    Start::Backoff,
+    token_b(),
+    ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]),
+    ConnectionPhase::Connected,
+    true,
+    1,
+    vec![hello_frame(CAMPUS_A, token_b())],
+)]
+#[case::token_change_from_connected(
+    Start::Connected,
+    token_b(),
+    ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]),
+    ConnectionPhase::Connected,
+    true,
+    1,
+    vec![hello_frame(CAMPUS_A, token_b())],
+)]
+#[case::unchanged_when_connected(
+    Start::Connected,
+    token_a(),
+    ScriptedTransport::default(),
+    ConnectionPhase::Connected,
+    true,
+    0,
+    vec![],
+)]
 fn handshake_scenarios(
+    #[case] start: Start,
+    #[case] token: AuthToken,
     #[case] mut transport: ScriptedTransport,
     #[case] expected_phase: ConnectionPhase,
     #[case] has_session: bool,
     #[case] expected_closes: u32,
     #[case] expected_sent: Vec<ClientFrame>,
 ) {
-    let machine = block_on(handshake(
-        ConnectionMachine::new(BackoffPolicy::default()),
-        &mut transport,
-        CAMPUS_A,
-        token_a(),
-    ));
+    let machine = block_on(handshake(started(start), &mut transport, CAMPUS_A, token));
     let snapshot = machine.snapshot();
     assert_eq!(snapshot.connection, expected_phase);
     let expected_retry = (expected_phase == ConnectionPhase::Backoff).then_some(500);
@@ -295,36 +349,4 @@ fn handshake_scenarios(
     assert_eq!(transport.closes, expected_closes);
     assert_eq!(transport.sent, expected_sent);
     assert_eq!(snapshot.campus_id, Some(CAMPUS_A));
-}
-
-#[test]
-fn handshake_with_different_token_restarts_connected_machine() {
-    let connected = machine_after(vec![
-        connect(),
-        ConnectionEvent::TransportOpened,
-        welcome(CAMPUS_A),
-    ]);
-    let mut transport = ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]);
-    let restarted = block_on(handshake(connected, &mut transport, CAMPUS_A, token_b()));
-    assert_eq!(restarted.snapshot().connection, ConnectionPhase::Connected);
-    assert_eq!(transport.closes, 1);
-    assert_eq!(transport.sent, vec![hello_frame(CAMPUS_A, token_b())]);
-}
-
-#[test]
-fn handshake_leaves_connected_machine_untouched() {
-    let connected = machine_after(vec![
-        connect(),
-        ConnectionEvent::TransportOpened,
-        welcome(CAMPUS_A),
-    ]);
-    let mut transport = ScriptedTransport::default();
-    let unchanged = block_on(handshake(
-        connected.clone(),
-        &mut transport,
-        CAMPUS_A,
-        token_a(),
-    ));
-    assert_eq!(unchanged, connected);
-    assert!(transport.sent.is_empty());
 }

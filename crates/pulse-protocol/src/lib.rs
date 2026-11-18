@@ -27,7 +27,7 @@ pub use snapshot::{
 };
 pub use validation::{
     DISPLAY_NAME_MAX_CHARS, EMAIL_MAX_CHARS, PASSWORD_MAX_CHARS, PASSWORD_MIN_CHARS,
-    SLUG_MAX_CHARS, SLUG_MIN_CHARS, Validate, normalize_email, validate_display_name,
-    validate_password, validate_slug,
+    SLUG_MAX_CHARS, SLUG_MIN_CHARS, Validate, normalize_display_name, normalize_email,
+    validate_display_name, validate_password, validate_slug,
 };
 pub use version::ProtocolVersion;

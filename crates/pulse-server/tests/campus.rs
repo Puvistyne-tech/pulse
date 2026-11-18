@@ -358,3 +358,27 @@ async fn duplicate_slug_conflicts_and_leaves_no_partial_rows() {
     .expect("counts");
     assert_eq!(counts, (1, 1, 2));
 }
+
+#[rstest]
+#[case::padded("  North  ", "North")]
+#[case::clean("North", "North")]
+#[tokio::test]
+async fn campus_creation_stores_trimmed_display_name(#[case] raw: &str, #[case] stored: &str) {
+    let state = fresh_state().await;
+    let owner = signed_up(&state, "owner@example.org").await;
+    let (status, body) = api_raw(
+        &state,
+        Method::POST,
+        api_path::CAMPUSES,
+        Some(&owner.token),
+        Some(json!({"slug": "north-quad", "display_name": raw}).to_string()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["campus"]["display_name"], json!(stored));
+    let persisted = sqlx::query_scalar::<_, String>("SELECT display_name FROM campuses")
+        .fetch_one(&state.db)
+        .await
+        .expect("campus row");
+    assert_eq!(persisted, stored);
+}

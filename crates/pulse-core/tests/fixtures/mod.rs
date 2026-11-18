@@ -263,12 +263,6 @@ pub fn signed_in_machine() -> SessionMachine {
     ])
 }
 
-pub fn campus_c() -> CampusId {
-    "0193a5c0-0000-7000-8000-00000000000c"
-        .parse()
-        .expect("valid campus fixture")
-}
-
 pub fn invalid_sign_in_request() -> SignInRequest {
     SignInRequest {
         email: "not-an-email".to_owned(),
@@ -295,4 +289,28 @@ pub fn create_campus_request() -> CreateCampusRequest {
         slug: "gamma".to_owned(),
         display_name: "Gamma".to_owned(),
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Start {
+    Fresh,
+    Backoff,
+    Connecting,
+    Handshaking,
+    Connected,
+}
+
+pub fn started(start: Start) -> ConnectionMachine {
+    let events = match start {
+        Start::Fresh => vec![],
+        Start::Backoff => vec![connect(), ConnectionEvent::TransportFailed],
+        Start::Connecting => vec![connect()],
+        Start::Handshaking => vec![connect(), ConnectionEvent::TransportOpened],
+        Start::Connected => vec![
+            connect(),
+            ConnectionEvent::TransportOpened,
+            welcome(CAMPUS_A),
+        ],
+    };
+    machine_after(events)
 }

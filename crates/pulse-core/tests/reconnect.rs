@@ -1,11 +1,11 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, connect, fresh_machine, hello_frame,
-    machine_after, refused, token_a, welcome, welcome_frame,
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, Start, fresh_machine, hello_frame, refused,
+    started, token_a, welcome_frame,
 };
 use futures::executor::block_on;
-use pulse_core::{ConnectionEvent, ConnectionMachine, TransportError, handshake};
+use pulse_core::{ConnectionEvent, TransportError, handshake};
 use pulse_protocol::{CampusId, ConnectionPhase, ServerFrame};
 use rstest::rstest;
 
@@ -53,27 +53,6 @@ fn disconnected(attempt: u32) -> Expected {
         attempt,
         has_session: false,
     }
-}
-
-enum Start {
-    Backoff,
-    Connecting,
-    Handshaking,
-    Connected,
-}
-
-fn started(start: Start) -> ConnectionMachine {
-    let events = match start {
-        Start::Backoff => vec![connect(), ConnectionEvent::TransportFailed],
-        Start::Connecting => vec![connect()],
-        Start::Handshaking => vec![connect(), ConnectionEvent::TransportOpened],
-        Start::Connected => vec![
-            connect(),
-            ConnectionEvent::TransportOpened,
-            welcome(CAMPUS_A),
-        ],
-    };
-    machine_after(events)
 }
 
 #[rstest]

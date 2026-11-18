@@ -1,11 +1,12 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, auth_session, campus_c, campus_list, campus_summary, create_campus_request,
+    CAMPUS_A, CAMPUS_B, auth_session, campus_list, campus_summary, create_campus_request,
     invalid_create_campus_request, invalid_sign_in_request, room, room_list, session_after,
     short_password_sign_up_request, sign_in_request, sign_up_request, token_a,
 };
 use pulse_core::{SessionCommand, SessionEvent, decode_api_response};
+use pulse_protocol::fixtures::CAMPUS_C;
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, CampusList, InputField, Role,
 };
@@ -215,10 +216,10 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
 )]
 #[case::campus_created(
     ready_events(),
-    created(campus_c(), "gamma", &["commons", "courtyard"]),
+    created(CAMPUS_C, "gamma", &["commons", "courtyard"]),
     Expect {
-        campuses: vec![CAMPUS_A, CAMPUS_B, campus_c()],
-        active: Some(campus_c()),
+        campuses: vec![CAMPUS_A, CAMPUS_B, CAMPUS_C],
+        active: Some(CAMPUS_C),
         ..ready()
     },
 )]
@@ -251,7 +252,7 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
 )]
 #[case::campus_selected_unknown_ignored(
     ready_events(),
-    SessionEvent::CampusSelected(campus_c()),
+    SessionEvent::CampusSelected(CAMPUS_C),
     ready()
 )]
 #[case::rooms_loaded_for_active(

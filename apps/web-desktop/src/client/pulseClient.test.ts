@@ -4,6 +4,7 @@ import type { ClientSnapshot } from "@pulse/protocol";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   CAMPUS_B,
+  MESSAGE_A,
   NONCE_B,
   ROOM_B,
   createCampusRequest,
@@ -85,6 +86,74 @@ describe("pulseClient", () => {
       () => pulseClient.discardMessage(NONCE_B),
       "discard_message",
       { clientNonce: NONCE_B },
+    ],
+    [
+      "sendReply",
+      () => pulseClient.sendReply(ROOM_B, MESSAGE_A, "reply"),
+      "send_reply",
+      { roomId: ROOM_B, rootMessageId: MESSAGE_A, body: "reply" },
+    ],
+    [
+      "react add",
+      () => pulseClient.react(ROOM_B, MESSAGE_A, "👍", "add"),
+      "react",
+      { roomId: ROOM_B, messageId: MESSAGE_A, emoji: "👍", action: "add" },
+    ],
+    [
+      "react remove",
+      () => pulseClient.react(ROOM_B, MESSAGE_A, "🎉", "remove"),
+      "react",
+      { roomId: ROOM_B, messageId: MESSAGE_A, emoji: "🎉", action: "remove" },
+    ],
+    [
+      "setTopicTitle",
+      () => pulseClient.setTopicTitle(ROOM_B, MESSAGE_A, "Plans"),
+      "set_topic_title",
+      { roomId: ROOM_B, rootMessageId: MESSAGE_A, topicTitle: "Plans" },
+    ],
+    [
+      "setThreadSubscription",
+      () => pulseClient.setThreadSubscription(ROOM_B, MESSAGE_A, "muted"),
+      "set_thread_subscription",
+      { roomId: ROOM_B, rootMessageId: MESSAGE_A, state: "muted" },
+    ],
+    [
+      "openThread",
+      () => pulseClient.openThread(ROOM_B, MESSAGE_A),
+      "open_thread",
+      { roomId: ROOM_B, rootMessageId: MESSAGE_A },
+    ],
+    ["closeThread", () => pulseClient.closeThread(), "close_thread", undefined],
+    ["toggleInbox", () => pulseClient.toggleInbox(), "toggle_inbox", undefined],
+    [
+      "moveInboxSelection next",
+      () => pulseClient.moveInboxSelection("next"),
+      "move_inbox_selection",
+      { step: "next" },
+    ],
+    [
+      "moveInboxSelection previous",
+      () => pulseClient.moveInboxSelection("previous"),
+      "move_inbox_selection",
+      { step: "previous" },
+    ],
+    [
+      "archiveInboxSelection",
+      () => pulseClient.archiveInboxSelection(),
+      "archive_inbox_selection",
+      undefined,
+    ],
+    [
+      "startInboxReply",
+      () => pulseClient.startInboxReply(),
+      "start_inbox_reply",
+      undefined,
+    ],
+    [
+      "cancelInboxReply",
+      () => pulseClient.cancelInboxReply(),
+      "cancel_inbox_reply",
+      undefined,
     ],
   ])("%s invokes the matching command", async (_name, call, command, args) => {
     const invocations = recordInvocations(signedInWithRooms);

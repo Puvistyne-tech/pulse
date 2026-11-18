@@ -34,3 +34,6 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - A `[[test]]` block with `required-features` must land in the same commit as its test file, or Cargo cannot parse the manifest.
 - When frames gain variants, include `pulse-core/src/connection.rs` in the owner's file set; its matches are exhaustive.
 - Reuse the one `campus_role` query (taking `impl PgExecutor`) inside transactions; never inline a second membership query.
+- Read a watermark and the counts derived from it in one REPEATABLE READ snapshot; separate reads race with concurrent writers.
+- An intent-call assertion used by two test files lives in the app's fixtures module; view tests cover key wiring only, the mapping table lives with the mapper.
+- Never assume Postgres on 5432 is Pulse's; other projects may hold it. Run tests against a dedicated database via `DATABASE_URL` when credentials fail.

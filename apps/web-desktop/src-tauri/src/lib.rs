@@ -1,7 +1,7 @@
 use pulse_core::native::NativeClient;
 use pulse_protocol::{
-    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, RoomId, SignInRequest,
-    SignUpRequest,
+    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, InboxStep, MessageId,
+    ReactionAction, RoomId, SignInRequest, SignUpRequest, SubscriptionState,
 };
 use tauri::{Manager, State};
 
@@ -68,6 +68,90 @@ async fn discard_message(
 }
 
 #[tauri::command]
+async fn send_reply(
+    client: State<'_, NativeClient>,
+    room_id: RoomId,
+    root_message_id: MessageId,
+    body: String,
+) -> CommandResult {
+    Ok(client.send_reply(room_id, root_message_id, body).await)
+}
+
+#[tauri::command]
+async fn react(
+    client: State<'_, NativeClient>,
+    room_id: RoomId,
+    message_id: MessageId,
+    emoji: String,
+    action: ReactionAction,
+) -> CommandResult {
+    Ok(client.react(room_id, message_id, emoji, action).await)
+}
+
+#[tauri::command]
+async fn set_topic_title(
+    client: State<'_, NativeClient>,
+    room_id: RoomId,
+    root_message_id: MessageId,
+    topic_title: String,
+) -> CommandResult {
+    Ok(client
+        .set_topic_title(room_id, root_message_id, topic_title)
+        .await)
+}
+
+#[tauri::command]
+async fn set_thread_subscription(
+    client: State<'_, NativeClient>,
+    room_id: RoomId,
+    root_message_id: MessageId,
+    state: SubscriptionState,
+) -> CommandResult {
+    Ok(client
+        .set_thread_subscription(room_id, root_message_id, state)
+        .await)
+}
+
+#[tauri::command]
+async fn open_thread(
+    client: State<'_, NativeClient>,
+    room_id: RoomId,
+    root_message_id: MessageId,
+) -> CommandResult {
+    Ok(client.open_thread(room_id, root_message_id).await)
+}
+
+#[tauri::command]
+async fn close_thread(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.close_thread().await)
+}
+
+#[tauri::command]
+async fn toggle_inbox(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.toggle_inbox().await)
+}
+
+#[tauri::command]
+async fn move_inbox_selection(client: State<'_, NativeClient>, step: InboxStep) -> CommandResult {
+    Ok(client.move_inbox_selection(step).await)
+}
+
+#[tauri::command]
+async fn archive_inbox_selection(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.archive_inbox_selection().await)
+}
+
+#[tauri::command]
+async fn start_inbox_reply(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.start_inbox_reply().await)
+}
+
+#[tauri::command]
+async fn cancel_inbox_reply(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.cancel_inbox_reply().await)
+}
+
+#[tauri::command]
 async fn watch_snapshots(
     client: State<'_, NativeClient>,
     on_snapshot: tauri::ipc::Channel<ClientSnapshot>,
@@ -93,6 +177,17 @@ pub fn run() {
             select_room,
             send_message,
             discard_message,
+            send_reply,
+            react,
+            set_topic_title,
+            set_thread_subscription,
+            open_thread,
+            close_thread,
+            toggle_inbox,
+            move_inbox_selection,
+            archive_inbox_selection,
+            start_inbox_reply,
+            cancel_inbox_reply,
             watch_snapshots
         ])
         .run(tauri::generate_context!());

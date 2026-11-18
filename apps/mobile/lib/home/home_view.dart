@@ -4,7 +4,9 @@ import '../campus/campus_picker.dart';
 import '../campus/create_campus_view.dart';
 import '../campus/room_list_view.dart';
 import '../client/pulse_intents.dart';
+import '../inbox/inbox_view.dart';
 import '../room/room_view.dart';
+import '../room/thread_view.dart';
 import '../session/auth_view.dart';
 import '../session/error_notice.dart';
 import '../snapshot/snapshot_view.dart';
@@ -35,9 +37,17 @@ class HomeView extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(session.account?.displayName ?? ''),
-              TextButton(
-                onPressed: intents.signOut,
-                child: const Text('Sign out'),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: intents.toggleInbox,
+                    child: Text('Inbox ${snapshot.inbox.unreadThreads}'),
+                  ),
+                  TextButton(
+                    onPressed: intents.signOut,
+                    child: const Text('Sign out'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -55,11 +65,15 @@ class HomeView extends StatelessWidget {
             activeRoomId: session.activeRoomId,
             selectRoom: intents.selectRoom,
           ),
-          RoomView(
-            timeline: snapshot.timeline,
-            sendMessage: intents.sendMessage,
-            discardMessage: intents.discardMessage,
-          ),
+          if (snapshot.inbox.open)
+            InboxView(inbox: snapshot.inbox, intents: intents),
+          RoomView(timeline: snapshot.timeline, intents: intents),
+          if (snapshot.thread.rootMessageId != null)
+            ThreadView(
+              thread: snapshot.thread,
+              palette: snapshot.timeline.reactionPalette,
+              intents: intents,
+            ),
           SnapshotView(network: snapshot.network),
         ],
       ),

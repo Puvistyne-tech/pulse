@@ -6,6 +6,8 @@ const invalidFieldMessages: Record<InputField, string> = {
   password: "Enter a valid password",
   slug: "Use lowercase letters, digits and hyphens for the slug",
   message_body: "Message is empty or too long",
+  topic_title: "Enter a shorter topic title without control characters",
+  reaction_emoji: "Choose a single emoji reaction",
 };
 
 const conflictFieldMessages: Record<InputField, string> = {
@@ -14,6 +16,8 @@ const conflictFieldMessages: Record<InputField, string> = {
   password: "That password cannot be used",
   slug: "That slug is already taken",
   message_body: "That message cannot be used",
+  topic_title: "That topic title cannot be used",
+  reaction_emoji: "You have reacted with enough different emoji",
 };
 
 const codeMessages: Record<ApiErrorCode, string> = {

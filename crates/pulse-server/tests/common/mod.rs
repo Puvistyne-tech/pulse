@@ -12,9 +12,11 @@ use http_body_util::BodyExt;
 use pulse_protocol::fixtures::VALID_PASSWORD;
 use pulse_protocol::{
     AccountId, AuthSession, AuthToken, CampusCreated, CampusId, CampusList, ClientFrame,
-    ClientNonce, CreateCampusRequest, Hello, MessageId, Ping, Pong, ProtocolVersion, Role,
-    RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced, SendMessage, ServerFrame, SignUpRequest,
-    SyncRooms, Welcome, api_path,
+    ClientNonce, CreateCampusRequest, Hello, InboxSynced, MarkThreadRead, MessageId, Ping, Pong,
+    ProtocolVersion, React, ReactionAction, Role, RoomCursor, RoomId, RoomList, RoomMessage,
+    RoomSynced, SendMessage, ServerFrame, SetThreadSubscription, SetTopicTitle, SignUpRequest,
+    SubscriptionOrigin, SubscriptionState, SyncInbox, SyncRooms, SyncThread, ThreadSummary,
+    ThreadSynced, Welcome, api_path,
 };
 use pulse_server::auth::token_digest;
 use pulse_server::{AppState, Config, MIGRATOR, router, state};
@@ -37,6 +39,7 @@ const START_POSTGRES: &str = "start Postgres: docker compose up -d postgres";
 pub type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 #[derive(Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Observed {
     Frame(ServerFrame),
     Close(u16),
@@ -64,18 +67,99 @@ pub fn send_message(room_id: RoomId, client_nonce: ClientNonce, body: &str) -> O
         room_id,
         client_nonce,
         body: body.to_owned(),
+        thread_root_id: None,
+    }))
+}
+
+pub fn send_reply(
+    room_id: RoomId,
+    root: MessageId,
+    client_nonce: ClientNonce,
+    body: &str,
+) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SendMessage(SendMessage {
+        room_id,
+        client_nonce,
+        body: body.to_owned(),
+        thread_root_id: Some(root),
     }))
 }
 
 pub fn sync_rooms(cursors: &[(RoomId, Option<MessageId>)]) -> Outgoing {
+    sync_rooms_at(
+        &cursors
+            .iter()
+            .map(|(room_id, after)| (*room_id, *after, None))
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub fn sync_rooms_at(cursors: &[(RoomId, Option<MessageId>, Option<u64>)]) -> Outgoing {
     Outgoing::Frame(ClientFrame::SyncRooms(SyncRooms {
         cursors: cursors
             .iter()
-            .map(|(room_id, after)| RoomCursor {
+            .map(|(room_id, after, activity_after)| RoomCursor {
                 room_id: *room_id,
                 after: *after,
+                activity_after: *activity_after,
             })
             .collect(),
+    }))
+}
+
+pub fn react(
+    room_id: RoomId,
+    message_id: MessageId,
+    emoji: &str,
+    action: ReactionAction,
+) -> Outgoing {
+    Outgoing::Frame(ClientFrame::React(React {
+        room_id,
+        message_id,
+        emoji: emoji.to_owned(),
+        action,
+    }))
+}
+
+pub fn set_title(room_id: RoomId, root: MessageId, title: &str) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SetTopicTitle(SetTopicTitle {
+        room_id,
+        root_message_id: root,
+        topic_title: title.to_owned(),
+    }))
+}
+
+pub fn set_subscription(
+    room_id: RoomId,
+    root: MessageId,
+    state: SubscriptionState,
+    origin: SubscriptionOrigin,
+) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SetThreadSubscription(SetThreadSubscription {
+        room_id,
+        root_message_id: root,
+        state,
+        origin,
+    }))
+}
+
+pub fn mark_read(room_id: RoomId, root: MessageId, read_through: MessageId) -> Outgoing {
+    Outgoing::Frame(ClientFrame::MarkThreadRead(MarkThreadRead {
+        room_id,
+        root_message_id: root,
+        read_through,
+    }))
+}
+
+pub fn sync_inbox() -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncInbox(SyncInbox {}))
+}
+
+pub fn sync_thread(room_id: RoomId, root: MessageId, after: Option<MessageId>) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncThread(SyncThread {
+        room_id,
+        root_message_id: root,
+        after,
     }))
 }
 
@@ -608,4 +692,473 @@ pub async fn handshake_outcome(
     )
     .await;
     observe(&mut socket).await
+}
+
+pub async fn next_of<T>(
+    socket: &mut ClientSocket,
+    mut pick: impl FnMut(&ServerFrame) -> Option<T>,
+) -> T {
+    timeout(OBSERVE_DEADLINE, async {
+        loop {
+            match observe(socket).await {
+                Observed::Frame(frame) => {
+                    if let Some(found) = pick(&frame) {
+                        return found;
+                    }
+                }
+                Observed::Close(code) => panic!("socket closed with {code}"),
+            }
+        }
+    })
+    .await
+    .expect("observe deadline")
+}
+
+pub async fn replied(
+    socket: &mut ClientSocket,
+    room_id: RoomId,
+    root: MessageId,
+    client_nonce: ClientNonce,
+    body: &str,
+) -> RoomMessage {
+    send(socket, &send_reply(room_id, root, client_nonce, body)).await;
+    next_of(socket, |frame| match frame {
+        ServerFrame::MessageAccepted(accepted) if accepted.message.client_nonce == client_nonce => {
+            Some(accepted.message.clone())
+        }
+        _ => None,
+    })
+    .await
+}
+
+pub async fn inbox_of(socket: &mut ClientSocket) -> Vec<ThreadSummary> {
+    send(socket, &sync_inbox()).await;
+    let InboxSynced { threads } = next_of(socket, |frame| match frame {
+        ServerFrame::InboxSynced(synced) => Some(synced.clone()),
+        _ => None,
+    })
+    .await;
+    threads
+}
+
+pub async fn thread_page(
+    socket: &mut ClientSocket,
+    room_id: RoomId,
+    root: MessageId,
+    after: Option<MessageId>,
+) -> ThreadSynced {
+    send(socket, &sync_thread(room_id, root, after)).await;
+    next_of(socket, |frame| match frame {
+        ServerFrame::ThreadSynced(synced) => Some(synced.clone()),
+        _ => None,
+    })
+    .await
+}
+
+pub async fn synced_page_at(
+    socket: &mut ClientSocket,
+    room_id: RoomId,
+    after: Option<MessageId>,
+    activity_after: Option<u64>,
+) -> RoomSynced {
+    send(socket, &sync_rooms_at(&[(room_id, after, activity_after)])).await;
+    next_of(socket, |frame| match frame {
+        ServerFrame::RoomSynced(page) if page.room_id == room_id => Some(page.clone()),
+        _ => None,
+    })
+    .await
+}
+
+pub async fn frames_through_created(
+    socket: &mut ClientSocket,
+    client_nonce: ClientNonce,
+) -> Vec<ServerFrame> {
+    let mut frames = Vec::new();
+    loop {
+        let frame = expect_frame(socket).await;
+        let done = matches!(
+            &frame,
+            ServerFrame::MessageCreated(created) if created.message.client_nonce == client_nonce
+        );
+        frames.push(frame);
+        if done {
+            return frames;
+        }
+    }
+}
+
+pub async fn sentinel_frames(
+    socket: &mut ClientSocket,
+    poster: &mut ClientSocket,
+    room_id: RoomId,
+) -> Vec<ServerFrame> {
+    let nonce = ClientNonce::generate();
+    posted(poster, room_id, nonce, "sentinel").await;
+    frames_through_created(socket, nonce).await
+}
+
+pub struct Stage {
+    pub state: AppState,
+    pub addr: SocketAddr,
+    pub campus: Campus,
+    pub room: RoomId,
+    pub ada: AuthSession,
+    pub grace: AuthSession,
+    pub linus: AuthSession,
+    pub guest: AuthSession,
+}
+
+impl Stage {
+    pub async fn open() -> Self {
+        let state = fresh_state().await;
+        let campus = campus_with_owner(&state, "owner@example.org", "north-quad").await;
+        let ada = member_session(&state, "ada@example.org", campus.id, Role::Member).await;
+        let grace = member_session(&state, "grace@example.org", campus.id, Role::Member).await;
+        let linus = member_session(&state, "linus@example.org", campus.id, Role::Member).await;
+        let guest = member_session(&state, "guest@example.org", campus.id, Role::Guest).await;
+        let addr = spawn_server_with(state.clone()).await;
+        let room = campus.rooms[0];
+        Self {
+            state,
+            addr,
+            campus,
+            room,
+            ada,
+            grace,
+            linus,
+            guest,
+        }
+    }
+
+    pub async fn socket(&self, session: &AuthSession) -> ClientSocket {
+        subscribed_socket(self.addr, self.campus.id, &session.token, &[self.room]).await
+    }
+
+    pub async fn root(&self, socket: &mut ClientSocket, body: &str) -> RoomMessage {
+        posted(socket, self.room, ClientNonce::generate(), body).await
+    }
+
+    pub fn account(session: &AuthSession) -> AccountId {
+        session.account.account_id
+    }
+
+    pub async fn subscription(
+        &self,
+        root: MessageId,
+        session: &AuthSession,
+    ) -> Option<(String, Option<MessageId>, i64)> {
+        subscription_row(&self.state, self.campus.id, root, Self::account(session)).await
+    }
+}
+
+pub async fn subscription_row(
+    state: &AppState,
+    campus_id: CampusId,
+    root: MessageId,
+    account_id: AccountId,
+) -> Option<(String, Option<MessageId>, i64)> {
+    sqlx::query_as::<_, (String, Option<Uuid>, i64)>(
+        "SELECT state, read_through, revision FROM thread_subscriptions \
+         WHERE campus_id = $1 AND root_message_id = $2 AND account_id = $3",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(root.as_uuid())
+    .bind(account_id.as_uuid())
+    .fetch_optional(&state.db)
+    .await
+    .expect("subscription row")
+    .map(|(state, read, revision)| (state, read.map(MessageId), revision))
+}
+
+pub async fn count_rows(state: &AppState, table: &'static str, campus_id: CampusId) -> i64 {
+    sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(format!(
+        "SELECT count(*) FROM {table} WHERE campus_id = $1"
+    )))
+    .bind(campus_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("row count")
+}
+
+pub async fn reaction_rows(
+    state: &AppState,
+    campus_id: CampusId,
+    message_id: MessageId,
+) -> Vec<(String, AccountId)> {
+    sqlx::query_as::<_, (String, Uuid)>(
+        "SELECT emoji, account_id FROM message_reactions \
+         WHERE campus_id = $1 AND message_id = $2 ORDER BY emoji, account_id",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(message_id.as_uuid())
+    .fetch_all(&state.db)
+    .await
+    .expect("reaction rows")
+    .into_iter()
+    .map(|(emoji, account_id)| (emoji, AccountId(account_id)))
+    .collect()
+}
+
+pub async fn mention_rows(
+    state: &AppState,
+    campus_id: CampusId,
+    message_id: MessageId,
+) -> Vec<AccountId> {
+    sqlx::query_scalar::<_, Uuid>(
+        "SELECT account_id FROM message_mentions \
+         WHERE campus_id = $1 AND message_id = $2 ORDER BY account_id",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(message_id.as_uuid())
+    .fetch_all(&state.db)
+    .await
+    .expect("mention rows")
+    .into_iter()
+    .map(AccountId)
+    .collect()
+}
+
+pub async fn room_activity(state: &AppState, campus_id: CampusId, room_id: RoomId) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT activity_seq FROM rooms WHERE campus_id = $1 AND room_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("room activity")
+}
+
+pub fn summary_of(summaries: &[ThreadSummary], root: MessageId) -> &ThreadSummary {
+    summaries
+        .iter()
+        .find(|summary| summary.root.message_id == root)
+        .expect("summary for root")
+}
+
+pub fn changed_summaries(frames: &[ServerFrame]) -> Vec<ThreadSummary> {
+    frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::ThreadChanged(changed) => Some(changed.summary.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+pub async fn seed_replies(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    root: MessageId,
+    author_id: AccountId,
+    tip: MessageId,
+    count: usize,
+) -> Vec<MessageId> {
+    let mut previous = tip;
+    let mut ids = Vec::new();
+    for index in 0..count {
+        let id = MessageId(Uuid::from_u128(previous.as_uuid().as_u128() + 1));
+        sqlx::query(
+            "INSERT INTO room_messages \
+             (campus_id, room_id, message_id, previous_message_id, author_id, client_nonce, body, \
+             thread_root_id) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(room_id.as_uuid())
+        .bind(id.as_uuid())
+        .bind(previous.as_uuid())
+        .bind(author_id.as_uuid())
+        .bind(ClientNonce::generate().as_uuid())
+        .bind(format!("seeded reply {index}"))
+        .bind(root.as_uuid())
+        .execute(&state.db)
+        .await
+        .expect("seed reply");
+        ids.push(id);
+        previous = id;
+    }
+    ids
+}
+
+pub async fn title_outcome(socket: &mut ClientSocket) -> ServerFrame {
+    next_of(socket, |frame| match frame {
+        ServerFrame::ThreadRejected(_) | ServerFrame::MessageUpdated(_) => Some(frame.clone()),
+        _ => None,
+    })
+    .await
+}
+
+pub async fn reaction_outcome(socket: &mut ClientSocket) -> ServerFrame {
+    next_of(socket, |frame| match frame {
+        ServerFrame::ReactionRejected(_) | ServerFrame::MessageUpdated(_) => Some(frame.clone()),
+        _ => None,
+    })
+    .await
+}
+
+pub async fn plain_socket(stage: &Stage, session: &AuthSession) -> ClientSocket {
+    joined_socket(stage.addr, stage.campus.id, &session.token)
+        .await
+        .0
+}
+
+pub async fn settled_frames(
+    socket: &mut ClientSocket,
+    poster: &mut ClientSocket,
+    room_id: RoomId,
+) -> Vec<ServerFrame> {
+    let mut frames = frames_until_pong(socket, 9).await;
+    frames.extend(sentinel_frames(socket, poster, room_id).await);
+    frames
+}
+
+pub fn rejections_of(frames: &[ServerFrame]) -> Vec<pulse_protocol::ThreadRejection> {
+    frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::ThreadRejected(rejected) => Some(rejected.reason),
+            _ => None,
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Person {
+    Ada,
+    Grace,
+    Linus,
+    Guest,
+}
+
+impl Stage {
+    pub fn session(&self, person: Person) -> &AuthSession {
+        match person {
+            Person::Ada => &self.ada,
+            Person::Grace => &self.grace,
+            Person::Linus => &self.linus,
+            Person::Guest => &self.guest,
+        }
+    }
+
+    pub fn id_of(&self, person: Person) -> AccountId {
+        Self::account(self.session(person))
+    }
+
+    pub async fn plain(&self, person: Person) -> ClientSocket {
+        plain_socket(self, self.session(person)).await
+    }
+
+    pub async fn watching(&self, person: Person) -> ClientSocket {
+        self.socket(self.session(person)).await
+    }
+
+    pub async fn poster(&self) -> ClientSocket {
+        plain_socket(self, &self.campus.owner).await
+    }
+
+    pub async fn row_of(
+        &self,
+        root: MessageId,
+        person: Person,
+    ) -> Option<(String, Option<MessageId>, i64)> {
+        self.subscription(root, self.session(person)).await
+    }
+}
+
+impl Stage {
+    pub async fn root_in(
+        &self,
+        socket: &mut ClientSocket,
+        room_id: RoomId,
+        body: &str,
+    ) -> RoomMessage {
+        posted(socket, room_id, ClientNonce::generate(), body).await
+    }
+}
+
+pub async fn settle_all(
+    sockets: &mut [ClientSocket],
+    poster: &mut ClientSocket,
+    room_id: RoomId,
+) -> Vec<Vec<ServerFrame>> {
+    let mut frames = Vec::new();
+    for socket in sockets.iter_mut() {
+        frames.push(frames_until_pong(socket, 11).await);
+    }
+    let nonce = ClientNonce::generate();
+    posted(poster, room_id, nonce, "sentinel").await;
+    for (socket, seen) in sockets.iter_mut().zip(frames.iter_mut()) {
+        seen.extend(frames_through_created(socket, nonce).await);
+    }
+    frames
+}
+
+pub async fn extra_members(
+    state: &AppState,
+    campus_id: CampusId,
+    count: usize,
+) -> Vec<AuthSession> {
+    let mut sessions = Vec::new();
+    for index in 0..count {
+        sessions.push(
+            member_session(
+                state,
+                &format!("extra-{index}@example.org"),
+                campus_id,
+                Role::Member,
+            )
+            .await,
+        );
+    }
+    sessions
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Aim {
+    Top,
+    Reply,
+    Unknown,
+    Sibling,
+}
+
+pub fn aimed(aim: Aim, top: MessageId, reply: MessageId, sibling: MessageId) -> MessageId {
+    match aim {
+        Aim::Top => top,
+        Aim::Reply => reply,
+        Aim::Unknown => MessageId::generate(),
+        Aim::Sibling => sibling,
+    }
+}
+
+pub struct Roots {
+    pub top: MessageId,
+    pub reply: MessageId,
+    pub sibling: MessageId,
+}
+
+impl Roots {
+    pub fn pick(&self, aim: Aim) -> MessageId {
+        aimed(aim, self.top, self.reply, self.sibling)
+    }
+}
+
+impl Stage {
+    pub async fn roots(&self) -> Roots {
+        let mut ada = self.plain(Person::Ada).await;
+        let top = self.root(&mut ada, "root").await.message_id;
+        let reply = replied(&mut ada, self.room, top, ClientNonce::generate(), "reply")
+            .await
+            .message_id;
+        let sibling = self
+            .root_in(&mut ada, self.campus.rooms[1], "elsewhere")
+            .await
+            .message_id;
+        Roots {
+            top,
+            reply,
+            sibling,
+        }
+    }
 }

@@ -2,6 +2,8 @@ use crate::api::{ApiError, InputField};
 use crate::auth::{SignInRequest, SignUpRequest};
 use crate::campus::{CreateCampusRequest, CreateRoomRequest};
 use crate::messaging::SendMessage;
+use crate::reaction::React;
+use crate::thread::SetTopicTitle;
 
 pub const EMAIL_MAX_CHARS: usize = 254;
 pub const DISPLAY_NAME_MAX_CHARS: usize = 64;
@@ -10,6 +12,8 @@ pub const PASSWORD_MAX_CHARS: usize = 128;
 pub const SLUG_MIN_CHARS: usize = 3;
 pub const SLUG_MAX_CHARS: usize = 32;
 pub const MESSAGE_BODY_MAX_CHARS: usize = 4000;
+pub const TOPIC_TITLE_MAX_CHARS: usize = 120;
+pub const REACTION_EMOJI_MAX_CHARS: usize = 16;
 
 pub fn normalize_email(raw: &str) -> Result<String, InputField> {
     let email = raw.trim().to_lowercase();
@@ -53,6 +57,34 @@ pub fn normalize_message_body(raw: &str) -> Result<String, InputField> {
         Ok(trimmed.to_owned())
     } else {
         Err(InputField::MessageBody)
+    }
+}
+
+pub fn normalize_topic_title(raw: &str) -> Result<Option<String>, InputField> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let valid =
+        trimmed.chars().count() <= TOPIC_TITLE_MAX_CHARS && !trimmed.chars().any(char::is_control);
+    if valid {
+        Ok(Some(trimmed.to_owned()))
+    } else {
+        Err(InputField::TopicTitle)
+    }
+}
+
+pub fn normalize_reaction_emoji(raw: &str) -> Result<String, InputField> {
+    let trimmed = raw.trim();
+    let length = trimmed.chars().count();
+    let valid = (1..=REACTION_EMOJI_MAX_CHARS).contains(&length)
+        && trimmed.chars().all(|character| {
+            !character.is_ascii() && !character.is_whitespace() && !character.is_control()
+        });
+    if valid {
+        Ok(trimmed.to_owned())
+    } else {
+        Err(InputField::ReactionEmoji)
     }
 }
 
@@ -125,6 +157,22 @@ impl Validate for CreateRoomRequest {
 impl Validate for SendMessage {
     fn validate(&self) -> Result<(), ApiError> {
         normalize_message_body(&self.body)
+            .map(|_| ())
+            .map_err(invalid)
+    }
+}
+
+impl Validate for React {
+    fn validate(&self) -> Result<(), ApiError> {
+        normalize_reaction_emoji(&self.emoji)
+            .map(|_| ())
+            .map_err(invalid)
+    }
+}
+
+impl Validate for SetTopicTitle {
+    fn validate(&self) -> Result<(), ApiError> {
+        normalize_topic_title(&self.topic_title)
             .map(|_| ())
             .map_err(invalid)
     }

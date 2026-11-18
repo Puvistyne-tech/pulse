@@ -5,8 +5,10 @@ pub mod error;
 pub mod fanout;
 pub mod message;
 pub mod migrate;
+pub mod reaction;
 pub mod routes;
 pub mod state;
+pub mod thread;
 pub mod ws;
 
 pub use config::Config;

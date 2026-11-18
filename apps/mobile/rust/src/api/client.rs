@@ -6,8 +6,8 @@ use crate::frb_generated::StreamSink;
 use pulse_core::native::NativeClient;
 use pulse_core::unavailable_snapshot;
 use pulse_protocol::{
-    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, RoomId, SignInRequest,
-    SignUpRequest,
+    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, InboxStep, MessageId,
+    ReactionAction, RoomId, SignInRequest, SignUpRequest, SubscriptionState,
 };
 
 static CLIENT: LazyLock<io::Result<NativeClient>> = LazyLock::new(NativeClient::from_env);
@@ -61,6 +61,67 @@ pub async fn send_message(room_id: RoomId, body: String) -> ClientSnapshot {
 
 pub async fn discard_message(client_nonce: ClientNonce) -> ClientSnapshot {
     with_client(|client| client.discard_message(client_nonce)).await
+}
+
+pub async fn send_reply(
+    room_id: RoomId,
+    root_message_id: MessageId,
+    body: String,
+) -> ClientSnapshot {
+    with_client(|client| client.send_reply(room_id, root_message_id, body)).await
+}
+
+pub async fn react(
+    room_id: RoomId,
+    message_id: MessageId,
+    emoji: String,
+    action: ReactionAction,
+) -> ClientSnapshot {
+    with_client(|client| client.react(room_id, message_id, emoji, action)).await
+}
+
+pub async fn set_topic_title(
+    room_id: RoomId,
+    root_message_id: MessageId,
+    topic_title: String,
+) -> ClientSnapshot {
+    with_client(|client| client.set_topic_title(room_id, root_message_id, topic_title)).await
+}
+
+pub async fn set_thread_subscription(
+    room_id: RoomId,
+    root_message_id: MessageId,
+    state: SubscriptionState,
+) -> ClientSnapshot {
+    with_client(|client| client.set_thread_subscription(room_id, root_message_id, state)).await
+}
+
+pub async fn open_thread(room_id: RoomId, root_message_id: MessageId) -> ClientSnapshot {
+    with_client(|client| client.open_thread(room_id, root_message_id)).await
+}
+
+pub async fn close_thread() -> ClientSnapshot {
+    with_client(|client| client.close_thread()).await
+}
+
+pub async fn toggle_inbox() -> ClientSnapshot {
+    with_client(|client| client.toggle_inbox()).await
+}
+
+pub async fn move_inbox_selection(step: InboxStep) -> ClientSnapshot {
+    with_client(|client| client.move_inbox_selection(step)).await
+}
+
+pub async fn archive_inbox_selection() -> ClientSnapshot {
+    with_client(|client| client.archive_inbox_selection()).await
+}
+
+pub async fn start_inbox_reply() -> ClientSnapshot {
+    with_client(|client| client.start_inbox_reply()).await
+}
+
+pub async fn cancel_inbox_reply() -> ClientSnapshot {
+    with_client(|client| client.cancel_inbox_reply()).await
 }
 
 pub fn watch_snapshots(sink: StreamSink<ClientSnapshot>) {

@@ -1,13 +1,13 @@
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthToken, CampusId, ClientFrame, ClientNonce, ClientSnapshot,
-    ConnectionPhase, RoomId, ServerFrame, TimelineSnapshot,
+    ConnectionPhase, InboxSnapshot, RoomId, ServerFrame, ThreadSnapshot,
 };
 
 use crate::api::ApiTransport;
 use crate::backoff::BackoffPolicy;
 use crate::connection::{ConnectionCommand, ConnectionEvent, ConnectionMachine};
 use crate::session::{SessionEvent, SessionMachine, drive_session};
-use crate::timeline::{TimelineEvent, TimelineMachine};
+use crate::timeline::{ThreadIntent, TimelineEvent, TimelineMachine, empty_timeline};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkTarget {
@@ -44,19 +44,24 @@ impl Client {
     pub fn snapshot(&self) -> ClientSnapshot {
         let active_room_id = self.session.snapshot().active_room_id;
         let timeline = self.timeline.as_ref().map_or_else(
-            || TimelineSnapshot {
-                room_id: None,
-                entries: Vec::new(),
-                syncing: false,
-                error: None,
-            },
+            || empty_timeline(None),
             |machine| machine.snapshot(active_room_id),
         );
+        let thread = self
+            .timeline
+            .as_ref()
+            .map_or_else(ThreadSnapshot::default, TimelineMachine::thread_snapshot);
+        let inbox = self
+            .timeline
+            .as_ref()
+            .map_or_else(InboxSnapshot::default, TimelineMachine::inbox_snapshot);
         ClientSnapshot {
             sequence: self.sequence,
             network: self.connection.snapshot(),
             session: self.session.snapshot(),
             timeline,
+            thread,
+            inbox,
         }
     }
 
@@ -126,6 +131,18 @@ impl Client {
         self.sequence += 1;
         self.feed_timeline(TimelineEvent::DiscardRequested { client_nonce });
         self.snapshot()
+    }
+
+    pub fn thread_intent(&mut self, intent: ThreadIntent) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::Thread(intent));
+        self.snapshot()
+    }
+
+    pub fn next_deadline_ms(&self) -> Option<u64> {
+        self.timeline
+            .as_ref()
+            .and_then(TimelineMachine::next_deadline_ms)
     }
 
     pub fn drain_outbound(&mut self) -> Vec<ClientFrame> {

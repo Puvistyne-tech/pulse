@@ -1,15 +1,19 @@
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated, CampusId, CampusList,
-    CreateCampusRequest, RoomList, SignInRequest, SignUpRequest, api_path,
+    CreateCampusRequest, CreateUploadRequest, DownloadTickets, DownloadTicketsRequest, RoomId,
+    RoomList, SignInRequest, SignUpRequest, UploadTicket, api_path,
 };
+use reqwest::header::CONTENT_TYPE;
 use reqwest::{Method, RequestBuilder};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::api::{ApiTransport, decode_api_response};
+use crate::media::MediaTransport;
 
 pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8080";
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+const UPLOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 const SERVER_URL_VARIABLE: &str = "PULSE_SERVER_URL";
 
 pub fn server_url_from_env() -> String {
@@ -105,5 +109,45 @@ impl ApiTransport for HttpApiTransport {
     ) -> Result<RoomList, ApiError> {
         let path = api_path::campus_rooms(campus_id);
         Self::call(self.request(Method::GET, &path, Some(&token))).await
+    }
+}
+
+impl MediaTransport for HttpApiTransport {
+    async fn create_upload(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        room_id: RoomId,
+        request: CreateUploadRequest,
+    ) -> Result<UploadTicket, ApiError> {
+        let path = api_path::campus_room_uploads(campus_id, room_id);
+        let builder = self.request(Method::POST, &path, Some(&token));
+        Self::call_with_body(builder, &request).await
+    }
+
+    async fn put_object(&mut self, ticket: UploadTicket, bytes: Vec<u8>) -> Result<(), ApiError> {
+        let builder = self
+            .http
+            .put(&ticket.put_url)
+            .timeout(UPLOAD_TIMEOUT)
+            .header(CONTENT_TYPE, ticket.content_type)
+            .body(bytes);
+        let (status, _) = Self::execute(builder).await?;
+        if (200..300).contains(&status) {
+            Ok(())
+        } else {
+            Err(ApiError::new(ApiErrorCode::from_http_status(status)))
+        }
+    }
+
+    async fn download_tickets(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        request: DownloadTicketsRequest,
+    ) -> Result<DownloadTickets, ApiError> {
+        let path = api_path::campus_downloads(campus_id);
+        let builder = self.request(Method::POST, &path, Some(&token));
+        Self::call_with_body(builder, &request).await
     }
 }

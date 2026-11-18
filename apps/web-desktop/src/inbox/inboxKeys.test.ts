@@ -1,6 +1,11 @@
 import type { InboxSnapshot } from "@pulse/protocol";
 import { describe, expect, test } from "vitest";
-import { emptyInbox, noopIntents } from "../test/fixtures";
+import {
+  emptyInbox,
+  expectOnlyCalled,
+  noopIntents,
+  type IntentName,
+} from "../test/fixtures";
 import {
   inboxKeyIntent,
   runInboxKeyIntent,
@@ -75,9 +80,7 @@ describe("inboxKeyIntent", () => {
   });
 });
 
-type Call = keyof ReturnType<typeof noopIntents>;
-
-const runs: ReadonlyArray<[InboxKeyIntent, Call, unknown[]]> = [
+const runs: ReadonlyArray<[InboxKeyIntent, IntentName, unknown[]]> = [
   ["toggle_inbox", "toggleInbox", []],
   ["next", "moveInboxSelection", ["next"]],
   ["previous", "moveInboxSelection", ["previous"]],
@@ -90,12 +93,6 @@ describe("runInboxKeyIntent", () => {
   test.each(runs)("%s calls %s once", async (intent, call, args) => {
     const intents = noopIntents();
     await runInboxKeyIntent(intent, intents);
-    expect(intents[call]).toHaveBeenCalledExactlyOnceWith(...args);
-    const others = (Object.keys(intents) as Call[]).filter(
-      (name) => name !== call,
-    );
-    for (const name of others) {
-      expect(intents[name]).not.toHaveBeenCalled();
-    }
+    expectOnlyCalled(intents, call, args);
   });
 });

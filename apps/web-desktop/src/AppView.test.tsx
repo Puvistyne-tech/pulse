@@ -6,6 +6,7 @@ import {
   MESSAGE_A,
   MESSAGE_B,
   authenticating,
+  expectOnlyCalled,
   inboxItemOf,
   inboxOf,
   noopIntents,
@@ -105,9 +106,6 @@ test("rooms render in snapshot order", () => {
 
 const inboxItems = [inboxItemOf(MESSAGE_B), inboxItemOf(MESSAGE_A)];
 const openInbox = withExtras(signedInWithRooms, { inbox: inboxOf(inboxItems) });
-const replyingInbox = withExtras(signedInWithRooms, {
-  inbox: inboxOf(inboxItems, { replying: true }),
-});
 
 describe("panels", () => {
   test.each<[string, ClientSnapshot, string, boolean]>([
@@ -126,77 +124,21 @@ describe("panels", () => {
   });
 });
 
-type Call = keyof ReturnType<typeof noopIntents>;
-
-interface KeyCase {
-  snapshot: ClientSnapshot;
-  key: Partial<KeyboardEventInit>;
-  call: Call | null;
-  args: unknown[];
-  prevented: boolean;
-}
-
-const keyCases: ReadonlyArray<[string, KeyCase]> = [
-  [
-    "cmd+i toggles the inbox",
-    { snapshot: signedInWithRooms, key: { key: "i", metaKey: true }, call: "toggleInbox", args: [], prevented: true },
-  ],
-  [
-    "ctrl+i toggles the inbox",
-    { snapshot: signedInWithRooms, key: { key: "i", ctrlKey: true }, call: "toggleInbox", args: [], prevented: true },
-  ],
-  [
-    "cmd+i closes an open inbox",
-    { snapshot: openInbox, key: { key: "i", metaKey: true }, call: "toggleInbox", args: [], prevented: true },
-  ],
-  [
-    "j selects the next thread",
-    { snapshot: openInbox, key: { key: "j" }, call: "moveInboxSelection", args: ["next"], prevented: true },
-  ],
-  [
-    "k selects the previous thread",
-    { snapshot: openInbox, key: { key: "k" }, call: "moveInboxSelection", args: ["previous"], prevented: true },
-  ],
-  [
-    "e archives the selection",
-    { snapshot: openInbox, key: { key: "e" }, call: "archiveInboxSelection", args: [], prevented: true },
-  ],
-  [
-    "r starts an inbox reply",
-    { snapshot: openInbox, key: { key: "r" }, call: "startInboxReply", args: [], prevented: true },
-  ],
-  [
-    "escape cancels an inbox reply",
-    { snapshot: replyingInbox, key: { key: "Escape" }, call: "cancelInboxReply", args: [], prevented: true },
-  ],
-  [
-    "j is ignored while the inbox is closed",
-    { snapshot: signedInWithRooms, key: { key: "j" }, call: null, args: [], prevented: false },
-  ],
-  [
-    "escape is ignored without an inbox reply",
-    { snapshot: openInbox, key: { key: "Escape" }, call: null, args: [], prevented: false },
-  ],
-  [
-    "cmd+j is ignored",
-    { snapshot: openInbox, key: { key: "j", metaKey: true }, call: null, args: [], prevented: false },
-  ],
-];
-
 describe("inbox keys", () => {
-  test.each(keyCases)("%s", (_name, { snapshot, key, call, args, prevented }) => {
+  test.each<[string, ClientSnapshot, Partial<KeyboardEventInit>, boolean]>([
+    ["a mapped key is dispatched and prevented", openInbox, { key: "j" }, true],
+    ["an unmapped key is ignored and not prevented", openInbox, { key: "x" }, false],
+  ])("%s", (_name, snapshot, key, dispatched) => {
     const intents = noopIntents();
     render(<AppView snapshot={snapshot} intents={intents} />);
     const event = createEvent.keyDown(window, { cancelable: true, ...key });
     fireEvent(window, event);
-    expect(event.defaultPrevented).toBe(prevented);
-    for (const name of Object.keys(intents) as Call[]) {
-      if (name === call) {
-        expect(intents[name]).toHaveBeenCalledExactlyOnceWith(...args);
-      } else {
-        expect(intents[name]).not.toHaveBeenCalled();
-      }
-    }
+    expect(event.defaultPrevented).toBe(dispatched);
+    expectOnlyCalled(
+      intents,
+      dispatched ? "moveInboxSelection" : null,
+      dispatched ? ["next"] : [],
+    );
   });
 
   test("typing in the composer never triggers inbox shortcuts", () => {

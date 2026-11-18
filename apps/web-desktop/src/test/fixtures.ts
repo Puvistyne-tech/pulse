@@ -25,7 +25,7 @@ import type {
   TimelineEntry,
   TimelineSnapshot,
 } from "@pulse/protocol";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import type { PulseIntents } from "../client/usePulseClient";
 
 export const CAMPUS_A: CampusId = "0193a5c0-0000-7000-8000-00000000000a";
@@ -432,4 +432,20 @@ export function noopIntents() {
     startInboxReply: vi.fn(async () => {}),
     cancelInboxReply: vi.fn(async () => {}),
   } satisfies PulseIntents;
+}
+
+export type IntentName = keyof ReturnType<typeof noopIntents>;
+
+export function expectOnlyCalled(
+  intents: ReturnType<typeof noopIntents>,
+  call: IntentName | null,
+  args: unknown[] = [],
+) {
+  for (const name of Object.keys(intents) as IntentName[]) {
+    if (name === call) {
+      expect(intents[name]).toHaveBeenCalledExactlyOnceWith(...args);
+    } else {
+      expect(intents[name]).not.toHaveBeenCalled();
+    }
+  }
 }

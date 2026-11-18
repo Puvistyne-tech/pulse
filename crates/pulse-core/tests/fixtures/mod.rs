@@ -21,8 +21,8 @@ use pulse_protocol::{
     ReactionRejection, ReactionTally, Role, Room, RoomCursor, RoomId, RoomList, RoomMessage,
     RoomSynced, RoomUnavailable, SendMessage, ServerFrame, SessionSnapshot, SetThreadSubscription,
     SetTopicTitle, SignInRequest, SignUpRequest, SubscriptionOrigin, SubscriptionState, SyncInbox,
-    SyncRooms, SyncShelf, SyncThread, ThreadChanged, ThreadRejected, ThreadRejection,
-    ThreadSummary, ThreadSynced, TimelineSnapshot, Welcome,
+    SyncLounges, SyncRooms, SyncShelf, SyncStewards, SyncThread, ThreadChanged, ThreadRejected,
+    ThreadRejection, ThreadSummary, ThreadSynced, TimelineSnapshot, Welcome,
 };
 
 pub fn token_a() -> AuthToken {
@@ -755,6 +755,36 @@ pub fn sync_inbox_frame() -> ClientFrame {
 
 pub fn sync_shelf_frame() -> ClientFrame {
     ClientFrame::SyncShelf(SyncShelf {})
+}
+
+pub fn sync_stewards_frame() -> ClientFrame {
+    ClientFrame::SyncStewards(SyncStewards {})
+}
+
+pub fn sync_lounges_frame() -> ClientFrame {
+    ClientFrame::SyncLounges(SyncLounges {})
+}
+
+pub fn connect_burst(rooms: &[RoomId]) -> Vec<ClientFrame> {
+    connect_burst_at(
+        &rooms
+            .iter()
+            .map(|room_id| (*room_id, None, None))
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub fn connect_burst_at(cursors: &[(RoomId, Option<MessageId>, Option<u64>)]) -> Vec<ClientFrame> {
+    let rooms = (!cursors.is_empty()).then(|| sync_frame_at(cursors));
+    rooms
+        .into_iter()
+        .chain([
+            sync_inbox_frame(),
+            sync_shelf_frame(),
+            sync_stewards_frame(),
+            sync_lounges_frame(),
+        ])
+        .collect()
 }
 
 pub fn sync_thread_frame(root_index: u128, after: Option<u128>) -> ClientFrame {

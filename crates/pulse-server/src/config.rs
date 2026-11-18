@@ -2,7 +2,9 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use crate::error::StartupError;
+use crate::lounge::LoungeConfig;
 use crate::storage::StorageConfig;
+use crate::stream::StreamConfig;
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
 pub const DEFAULT_DATABASE_URL: &str = "postgres://pulse:pulse@127.0.0.1:55432/pulse";
@@ -48,4 +50,32 @@ pub fn reminder_scan_interval_from_env() -> Duration {
         .filter(|millis| *millis > 0)
         .unwrap_or(DEFAULT_REMINDER_SCAN_MS);
     Duration::from_millis(millis)
+}
+
+fn millis_from_env(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|text| text.parse::<u64>().ok())
+        .filter(|millis| *millis > 0)
+        .unwrap_or(default)
+}
+
+pub fn lounge_from_env() -> LoungeConfig {
+    let defaults = LoungeConfig::default();
+    LoungeConfig {
+        livekit_url: env_or("PULSE_LIVEKIT_URL", &defaults.livekit_url),
+        api_key: env_or("PULSE_LIVEKIT_API_KEY", &defaults.api_key),
+        api_secret: env_or("PULSE_LIVEKIT_API_SECRET", &defaults.api_secret),
+        presence_ttl_ms: millis_from_env("PULSE_LOUNGE_PRESENCE_TTL_MS", defaults.presence_ttl_ms),
+        ticket_ttl_ms: defaults.ticket_ttl_ms,
+    }
+}
+
+pub fn stream_from_env() -> StreamConfig {
+    StreamConfig {
+        idle_timeout_ms: millis_from_env(
+            "PULSE_STREAM_IDLE_MS",
+            StreamConfig::default().idle_timeout_ms,
+        ),
+    }
 }

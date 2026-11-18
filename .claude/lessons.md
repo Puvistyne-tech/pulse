@@ -25,3 +25,4 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - `cargo test --workspace` needs `docker compose up -d postgres`; server tests create a fresh `pulse_test_*` database per test.
 - Wrap dynamic SQL in `sqlx::AssertSqlSafe(..)` under sqlx 0.9; use `Uuid::now_v7()` since the workspace enables only `v7`.
 - Use `sed -i ''` on macOS and check `git diff --stat` after every scripted edit.
+- Grep every sibling test file for a helper before defining it; a builder, tally loop or count query used by two test files belongs in the crate fixtures module.

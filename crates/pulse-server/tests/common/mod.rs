@@ -1561,9 +1561,9 @@ pub async fn bound_attachment_count(state: &AppState, campus_id: CampusId) -> i6
 pub mod steward;
 
 use pulse_protocol::{
-    AckWork, CallTool, JoinLounge, LeaveLounge, ListTools, LoungeHeartbeat, LoungeId, ManageSteward,
-    StewardAction, StewardProfile, StreamChunk, SyncLounges, SyncStewards, SyncWork, ToolCallId,
-    mention_token,
+    AckWork, CallTool, JoinLounge, LeaveLounge, ListTools, LoungeHeartbeat, LoungeId,
+    ManageSteward, StewardAction, StewardProfile, StreamChunk, SyncLounges, SyncStewards, SyncWork,
+    ToolCallId, mention_token,
 };
 use pulse_server::steward::{StewardOutcome, manage_steward};
 
@@ -1818,4 +1818,55 @@ pub fn agent_chunks_of(frames: &[ServerFrame]) -> Vec<pulse_protocol::AgentStrea
             _ => None,
         })
         .collect()
+}
+
+pub enum Managed {
+    Issued(Box<pulse_protocol::StewardIssued>),
+    Changed(StewardProfile),
+    Rejected(pulse_protocol::StewardRejected),
+}
+
+impl Managed {
+    pub fn issued(self) -> pulse_protocol::StewardIssued {
+        match self {
+            Managed::Issued(issued) => *issued,
+            _ => panic!("expected an issued token"),
+        }
+    }
+
+    pub fn rejected(self) -> pulse_protocol::StewardRejected {
+        match self {
+            Managed::Rejected(rejected) => rejected,
+            _ => panic!("expected a rejection"),
+        }
+    }
+}
+
+pub async fn manage_on(socket: &mut ClientSocket, request: ManageSteward) -> Managed {
+    let nonce = request.request_nonce;
+    let steward_id = request.steward_id;
+    let waits_for_change = matches!(
+        request.action,
+        StewardAction::Revoke | StewardAction::AssignRooms
+    );
+    send(socket, &manage_frame(request)).await;
+    next_of(socket, |frame| match frame {
+        ServerFrame::StewardIssued(issued) if issued.request_nonce == nonce => {
+            Some(Managed::Issued(Box::new(issued.clone())))
+        }
+        ServerFrame::StewardRejected(rejected) if rejected.request_nonce == nonce => {
+            Some(Managed::Rejected(*rejected))
+        }
+        ServerFrame::StewardChanged(changed)
+            if waits_for_change && Some(changed.steward.steward_id) == steward_id =>
+        {
+            Some(Managed::Changed(changed.steward.clone()))
+        }
+        _ => None,
+    })
+    .await
+}
+
+pub async fn owner_socket(addr: SocketAddr, campus: &Campus) -> ClientSocket {
+    joined_socket(addr, campus.id, &campus.owner.token).await.0
 }

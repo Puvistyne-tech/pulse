@@ -4,10 +4,10 @@ use std::collections::BTreeSet;
 
 use axum::http::StatusCode;
 use common::{
-    ClientSocket, Observed, SCENARIO_DEADLINE, Stage, api_get, campus_with_owner,
+    ClientSocket, Managed, Observed, SCENARIO_DEADLINE, Stage, api_get, campus_with_owner,
     create_steward_request, handshake_outcome, issue_steward, joined_socket, manage_as,
-    manage_frame, next_of, send, sibling_state, spawn_server_with, steward_request, steward_row,
-    steward_room_rows, sync_stewards_frame,
+    manage_frame, next_of, send, sibling_state, spawn_server_with, steward_request,
+    steward_room_rows, steward_row, sync_stewards_frame,
 };
 use pulse_protocol::{
     AccountId, AuthToken, ClientNonce, HandshakeRejected, HandshakeRejection, Role, RoomId,
@@ -15,7 +15,9 @@ use pulse_protocol::{
     StewardChanged, StewardIssued, StewardProfile, StewardRejection, api_path,
 };
 use pulse_server::auth::token_digest;
-use pulse_server::steward::{StewardFailure, StewardOutcome, manage_steward, resolve_steward_token};
+use pulse_server::steward::{
+    StewardFailure, StewardOutcome, manage_steward, resolve_steward_token,
+};
 use rstest::rstest;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
@@ -24,18 +26,11 @@ async fn issued_over_socket(
     socket: &mut ClientSocket,
     request: pulse_protocol::ManageSteward,
 ) -> Result<StewardIssued, pulse_protocol::StewardRejected> {
-    let nonce = request.request_nonce;
-    send(socket, &manage_frame(request)).await;
-    next_of(socket, |frame| match frame {
-        ServerFrame::StewardIssued(issued) if issued.request_nonce == nonce => {
-            Some(Ok(issued.clone()))
-        }
-        ServerFrame::StewardRejected(rejected) if rejected.request_nonce == nonce => {
-            Some(Err(*rejected))
-        }
-        _ => None,
-    })
-    .await
+    match manage_on(socket, request).await {
+        Managed::Issued(issued) => Ok(*issued),
+        Managed::Rejected(rejected) => Err(rejected),
+        Managed::Changed(_) => panic!("creation never answers with a bare change"),
+    }
 }
 
 async fn changed_of(socket: &mut ClientSocket, steward_id: AccountId) -> StewardProfile {
@@ -56,12 +51,10 @@ async fn create_issues_one_token_and_stores_only_its_digest() {
         let stage = Stage::open().await;
         let (mut owner, _) =
             joined_socket(stage.addr, stage.campus.id, &stage.campus.owner.token).await;
-        let issued = issued_over_socket(
-            &mut owner,
-            create_steward_request("Scribe", &[stage.room]),
-        )
-        .await
-        .expect("issued");
+        let issued =
+            issued_over_socket(&mut owner, create_steward_request("Scribe", &[stage.room]))
+                .await
+                .expect("issued");
         assert!(issued.token.0.starts_with(STEWARD_TOKEN_PREFIX));
         assert_eq!(issued.steward.display_name, "Scribe");
         assert_eq!(issued.steward.room_ids, vec![stage.room]);
@@ -81,30 +74,24 @@ async fn create_issues_one_token_and_stores_only_its_digest() {
 }
 
 #[rstest]
-#[case::blank_name("   ", 1, StewardRejection::InvalidDisplayName)]
-#[case::empty_name("", 1, StewardRejection::InvalidDisplayName)]
+#[case::blank_name("   ", 0, StewardRejection::InvalidDisplayName)]
+#[case::empty_name("", 0, StewardRejection::InvalidDisplayName)]
 #[case::too_many_rooms("Scribe", STEWARD_ROOMS_MAX + 1, StewardRejection::InvalidRooms)]
-#[case::unknown_room("Scribe", 0, StewardRejection::InvalidRooms)]
+#[case::unknown_room("Scribe", 1, StewardRejection::InvalidRooms)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn invalid_creations_are_rejected_without_rows(
     #[case] name: &str,
-    #[case] bogus_rooms: usize,
+    #[case] unknown_rooms: usize,
     #[case] reason: StewardRejection,
 ) {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
         let (mut owner, _) =
             joined_socket(stage.addr, stage.campus.id, &stage.campus.owner.token).await;
-        let rooms = (0..bogus_rooms)
-            .map(|_| RoomId::generate())
-            .collect::<Vec<_>>();
-        let rooms = if bogus_rooms == 0 {
-            vec![RoomId::generate()]
-        } else if name.trim().is_empty() {
-            vec![stage.room]
-        } else {
-            rooms
-        };
+        let mut rooms = vec![stage.room];
+        if unknown_rooms > 0 {
+            rooms = (0..unknown_rooms).map(|_| RoomId::generate()).collect();
+        }
         let request = create_steward_request(name, &rooms);
         let nonce = request.request_nonce;
         let rejected = issued_over_socket(&mut owner, request)
@@ -164,13 +151,12 @@ async fn the_campus_cap_counts_only_active_stewards() {
 }
 
 #[rstest]
-#[case::rotate(StewardAction::RotateToken, true)]
-#[case::revoke(StewardAction::Revoke, false)]
-#[case::assign(StewardAction::AssignRooms, false)]
+#[case::rotate(StewardAction::RotateToken)]
+#[case::revoke(StewardAction::Revoke)]
+#[case::assign(StewardAction::AssignRooms)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn unknown_stewards_are_rejected_and_foreign_campus_stewards_stay_untouched(
     #[case] action: StewardAction,
-    #[case] _issues_token: bool,
 ) {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
@@ -210,8 +196,14 @@ async fn rotating_replaces_the_token_and_bumps_the_revision() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
         let owner = stage.campus.owner.account.account_id;
-        let (profile, old) =
-            issue_steward(&stage.state, stage.campus.id, owner, "Scribe", &[stage.room]).await;
+        let (profile, old) = issue_steward(
+            &stage.state,
+            stage.campus.id,
+            owner,
+            "Scribe",
+            &[stage.room],
+        )
+        .await;
         let StewardOutcome::Issued(rotated, fresh) = manage_as(
             &stage.state,
             stage.campus.id,
@@ -349,8 +341,14 @@ async fn assignments_only_accept_rooms_of_the_same_campus(#[case] foreign: bool)
         let stage = Stage::open().await;
         let other = campus_with_owner(&stage.state, "other@example.org", "south-quad").await;
         let owner = stage.campus.owner.account.account_id;
-        let (profile, _) =
-            issue_steward(&stage.state, stage.campus.id, owner, "Scribe", &[stage.room]).await;
+        let (profile, _) = issue_steward(
+            &stage.state,
+            stage.campus.id,
+            owner,
+            "Scribe",
+            &[stage.room],
+        )
+        .await;
         let target = if foreign {
             other.rooms[0]
         } else {
@@ -402,8 +400,14 @@ async fn handshake_honours_only_the_current_token_of_its_campus(
         let stage = Stage::open().await;
         let other = campus_with_owner(&stage.state, "other@example.org", "south-quad").await;
         let owner = stage.campus.owner.account.account_id;
-        let (profile, original) =
-            issue_steward(&stage.state, stage.campus.id, owner, "Scribe", &[stage.room]).await;
+        let (profile, original) = issue_steward(
+            &stage.state,
+            stage.campus.id,
+            owner,
+            "Scribe",
+            &[stage.room],
+        )
+        .await;
         let StewardOutcome::Issued(_, current) = manage_as(
             &stage.state,
             stage.campus.id,
@@ -488,17 +492,22 @@ async fn changes_fan_out_to_every_member_of_the_campus_only() {
         let (mut ada, _) = joined_socket(stage.addr, stage.campus.id, &stage.ada.token).await;
         let (mut guest, _) = joined_socket(stage.addr, stage.campus.id, &stage.guest.token).await;
         let (mut outsider, _) = joined_socket(stage.addr, other.id, &other.owner.token).await;
-        let issued = issued_over_socket(
-            &mut owner,
-            create_steward_request("Scribe", &[stage.room]),
-        )
-        .await
-        .expect("issued");
+        let issued =
+            issued_over_socket(&mut owner, create_steward_request("Scribe", &[stage.room]))
+                .await
+                .expect("issued");
         for socket in [&mut owner, &mut ada, &mut guest] {
-            assert_eq!(changed_of(socket, issued.steward.steward_id).await, issued.steward);
+            assert_eq!(
+                changed_of(socket, issued.steward.steward_id).await,
+                issued.steward
+            );
         }
         let own_nonce = ClientNonce::generate();
-        send(&mut outsider, &common::send_message(other.rooms[0], own_nonce, "ping")).await;
+        send(
+            &mut outsider,
+            &common::send_message(other.rooms[0], own_nonce, "ping"),
+        )
+        .await;
         let seen = common::frames_until_pong(&mut outsider, 3).await;
         assert!(
             seen.iter()
@@ -514,7 +523,14 @@ async fn members_list_the_directory_over_a_socket() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
         let owner = stage.campus.owner.account.account_id;
-        let (first, _) = issue_steward(&stage.state, stage.campus.id, owner, "Scribe", &[stage.room]).await;
+        let (first, _) = issue_steward(
+            &stage.state,
+            stage.campus.id,
+            owner,
+            "Scribe",
+            &[stage.room],
+        )
+        .await;
         let (second, _) = issue_steward(&stage.state, stage.campus.id, owner, "Herald", &[]).await;
         manage_as(
             &stage.state,
@@ -551,8 +567,14 @@ async fn concurrent_rotations_leave_exactly_one_valid_token(#[case] attempts: us
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
         let owner = stage.campus.owner.account.account_id;
-        let (profile, original) =
-            issue_steward(&stage.state, stage.campus.id, owner, "Scribe", &[stage.room]).await;
+        let (profile, original) = issue_steward(
+            &stage.state,
+            stage.campus.id,
+            owner,
+            "Scribe",
+            &[stage.room],
+        )
+        .await;
         let mut rotating = JoinSet::new();
         for _ in 0..attempts {
             let state = sibling_state(&stage.state);
@@ -579,7 +601,8 @@ async fn concurrent_rotations_leave_exactly_one_valid_token(#[case] attempts: us
                 other => panic!("expected an issued token, got {other:?}"),
             }
         }
-        let expected = (2..=u64::try_from(attempts).expect("attempts") + 1).collect::<BTreeSet<_>>();
+        let expected =
+            (2..=u64::try_from(attempts).expect("attempts") + 1).collect::<BTreeSet<_>>();
         assert_eq!(revisions, expected);
         let row = steward_row(&stage.state, stage.campus.id, profile.steward_id)
             .await
@@ -610,9 +633,10 @@ async fn campus_members_without_the_permission_cannot_manage() {
         let stage = Stage::open().await;
         let addr = spawn_server_with(sibling_state(&stage.state)).await;
         let (mut ada, _) = joined_socket(addr, stage.campus.id, &stage.ada.token).await;
-        let rejected = issued_over_socket(&mut ada, create_steward_request("Scribe", &[stage.room]))
-            .await
-            .expect_err("rejected");
+        let rejected =
+            issued_over_socket(&mut ada, create_steward_request("Scribe", &[stage.room]))
+                .await
+                .expect_err("rejected");
         assert_eq!(rejected.reason, StewardRejection::Forbidden);
         assert!(
             pulse_server::steward::steward_profiles(&stage.state.db, stage.campus.id)

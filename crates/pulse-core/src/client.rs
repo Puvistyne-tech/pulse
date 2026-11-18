@@ -1,14 +1,27 @@
-use pulse_protocol::{ApiError, ApiErrorCode, ClientSnapshot};
+use pulse_protocol::{
+    ApiError, ApiErrorCode, AuthToken, CampusId, ClientFrame, ClientNonce, ClientSnapshot,
+    ConnectionPhase, RoomId, ServerFrame, TimelineSnapshot,
+};
 
 use crate::api::ApiTransport;
 use crate::backoff::BackoffPolicy;
-use crate::connection::ConnectionMachine;
+use crate::connection::{ConnectionCommand, ConnectionEvent, ConnectionMachine};
 use crate::session::{SessionEvent, SessionMachine, drive_session};
+use crate::timeline::{TimelineEvent, TimelineMachine};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkTarget {
+    pub campus_id: CampusId,
+    pub auth_token: AuthToken,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Client {
     connection: ConnectionMachine,
     session: SessionMachine,
+    timeline: Option<TimelineMachine>,
+    outbound: Vec<ClientFrame>,
+    sequence: u64,
 }
 
 impl Default for Client {
@@ -22,13 +35,28 @@ impl Client {
         Self {
             connection: ConnectionMachine::new(policy),
             session: SessionMachine::new(),
+            timeline: None,
+            outbound: Vec::new(),
+            sequence: 0,
         }
     }
 
     pub fn snapshot(&self) -> ClientSnapshot {
+        let active_room_id = self.session.snapshot().active_room_id;
+        let timeline = self.timeline.as_ref().map_or_else(
+            || TimelineSnapshot {
+                room_id: None,
+                entries: Vec::new(),
+                syncing: false,
+                error: None,
+            },
+            |machine| machine.snapshot(active_room_id),
+        );
         ClientSnapshot {
+            sequence: self.sequence,
             network: self.connection.snapshot(),
             session: self.session.snapshot(),
+            timeline,
         }
     }
 
@@ -37,9 +65,136 @@ impl Client {
         api: &mut A,
         event: SessionEvent,
     ) -> ClientSnapshot {
+        self.sequence += 1;
+        let rooms_before = self.room_ids();
         let machine = core::mem::take(&mut self.session);
         self.session = drive_session(machine, api, event).await;
+        self.reconcile(rooms_before);
         self.snapshot()
+    }
+
+    pub fn link_target(&self) -> Option<LinkTarget> {
+        let campus_id = self.session.active_campus_id()?;
+        let auth_token = self.session.token()?.clone();
+        Some(LinkTarget {
+            campus_id,
+            auth_token,
+        })
+    }
+
+    pub fn connection_step(&mut self, event: ConnectionEvent) -> Option<ConnectionCommand> {
+        self.sequence += 1;
+        self.step_connection(event)
+    }
+
+    pub fn receive_frame(&mut self, frame: ServerFrame) -> Option<ConnectionCommand> {
+        self.sequence += 1;
+        match frame {
+            ServerFrame::Welcome(welcome) => {
+                self.step_connection(ConnectionEvent::WelcomeReceived(welcome))
+            }
+            ServerFrame::VersionMismatch(mismatch) => {
+                self.step_connection(ConnectionEvent::VersionRejected(mismatch))
+            }
+            ServerFrame::HandshakeRejected(rejected) => {
+                self.step_connection(ConnectionEvent::HandshakeRejected(rejected))
+            }
+            ServerFrame::Pong(_) => None,
+            frame => {
+                self.feed_timeline(TimelineEvent::FrameReceived(frame));
+                None
+            }
+        }
+    }
+
+    pub fn send_message(
+        &mut self,
+        room_id: RoomId,
+        client_nonce: ClientNonce,
+        body: String,
+    ) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::SendRequested {
+            room_id,
+            client_nonce,
+            body,
+        });
+        self.snapshot()
+    }
+
+    pub fn discard_message(&mut self, client_nonce: ClientNonce) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::DiscardRequested { client_nonce });
+        self.snapshot()
+    }
+
+    pub fn drain_outbound(&mut self) -> Vec<ClientFrame> {
+        self.sequence += 1;
+        core::mem::take(&mut self.outbound)
+    }
+
+    fn room_ids(&self) -> Vec<RoomId> {
+        self.session
+            .snapshot()
+            .rooms
+            .iter()
+            .map(|room| room.room_id)
+            .collect()
+    }
+
+    fn feed_timeline(&mut self, event: TimelineEvent) {
+        let Some(machine) = self.timeline.take() else {
+            return;
+        };
+        let (machine, frames) = machine.step(event);
+        self.timeline = Some(machine);
+        if matches!(self.connection.phase(), ConnectionPhase::Connected) {
+            self.outbound.extend(frames);
+        }
+    }
+
+    fn step_connection(&mut self, event: ConnectionEvent) -> Option<ConnectionCommand> {
+        let was_connected = matches!(self.connection.phase(), ConnectionPhase::Connected);
+        let machine = core::mem::replace(
+            &mut self.connection,
+            ConnectionMachine::new(BackoffPolicy::default()),
+        );
+        let (machine, command) = machine.step(event);
+        self.connection = machine;
+        let is_connected = matches!(self.connection.phase(), ConnectionPhase::Connected);
+        match (was_connected, is_connected) {
+            (false, true) => {
+                let rooms = self.room_ids();
+                self.feed_timeline(TimelineEvent::Connected { rooms });
+            }
+            (true, false) => self.feed_timeline(TimelineEvent::Disconnected),
+            _ => {}
+        }
+        command
+    }
+
+    fn reset_connection(&mut self) {
+        self.step_connection(ConnectionEvent::DisconnectRequested);
+    }
+
+    fn reconcile(&mut self, rooms_before: Vec<RoomId>) {
+        let account = self.session.account().cloned();
+        let campus_id = self.session.active_campus_id();
+        let Some((account, campus_id)) = account.zip(campus_id) else {
+            self.reset_connection();
+            self.timeline = None;
+            return;
+        };
+        let current = self.timeline.as_ref().map(TimelineMachine::campus_id);
+        if current != Some(campus_id) {
+            self.reset_connection();
+            self.timeline = Some(TimelineMachine::new(campus_id, account));
+            return;
+        }
+        let rooms = self.room_ids();
+        if rooms != rooms_before {
+            self.feed_timeline(TimelineEvent::RoomsChanged { rooms });
+        }
     }
 }
 

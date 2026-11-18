@@ -2,6 +2,8 @@ pub mod auth;
 pub mod campus;
 pub mod config;
 pub mod error;
+pub mod fanout;
+pub mod message;
 pub mod migrate;
 pub mod routes;
 pub mod state;

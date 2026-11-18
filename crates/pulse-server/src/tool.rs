@@ -1,19 +1,18 @@
 use pulse_protocol::{
     AccountId, CallTool, CampusId, HistoryRead, ListRoomsArguments, MessagePosted,
     MessageRejection, Permission, PostMessageArguments, ReadRoomHistoryArguments,
-    ReadThreadArguments, Room, RoomId, RoomsListed, SendMessage, StewardTool, SyncThread,
+    ReadThreadArguments, RoomId, RoomsListed, SendMessage, StewardTool, SyncThread,
     TOOL_ARGUMENTS_MAX_BYTES, TOOL_HISTORY_LIMIT_MAX, ToolContent, ToolContentKind, ToolErrorCode,
     ToolResult, role_permits,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use uuid::Uuid;
 
 use crate::campus::campus_role;
 use crate::message::{PostFailure, PostOutcome, post_message, room_history, sync_thread};
+use crate::publish::publish_created;
 use crate::state::AppState;
-use crate::steward::steward_room_assigned;
-use crate::ws::publish_created;
+use crate::steward::{assigned_rooms, steward_room_assigned};
 
 const DEFAULT_HISTORY_LIMIT: u32 = 20;
 
@@ -76,24 +75,9 @@ async fn list_rooms(
     request: &CallTool,
 ) -> Result<ToolResult, ToolErrorCode> {
     arguments::<ListRoomsArguments>(request)?;
-    let rows = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT r.room_id, r.slug FROM rooms r JOIN steward_rooms a \
-         ON a.campus_id = r.campus_id AND a.room_id = r.room_id \
-         WHERE r.campus_id = $1 AND a.steward_id = $2 ORDER BY r.slug",
-    )
-    .bind(campus_id.as_uuid())
-    .bind(steward_id.as_uuid())
-    .fetch_all(&state.db)
-    .await
-    .map_err(database_failure)?;
-    let rooms = rows
-        .into_iter()
-        .map(|(room_id, slug)| Room {
-            room_id: RoomId(room_id),
-            campus_id,
-            slug,
-        })
-        .collect();
+    let rooms = assigned_rooms(&state.db, campus_id, steward_id)
+        .await
+        .map_err(database_failure)?;
     Ok(success(request, &RoomsListed { rooms }))
 }
 

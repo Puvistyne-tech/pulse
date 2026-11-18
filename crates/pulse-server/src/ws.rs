@@ -8,14 +8,14 @@ use pulse_protocol::{
     LoungeChanged, LoungeHeartbeat, LoungeId, LoungeRejected, LoungeRejection, LoungesSynced,
     ManageSteward, MarkThreadRead, MessageAccepted, MessageCreated, MessageId, MessageRejected,
     MessageRejection, MessageUpdated, Permission, PinRejected, Pong, ProtocolVersion, React,
-    ReactionRejected, ReactionRejection, Role, RoomId, RoomMessage, RoomUnavailable,
-    SHELF_SYNC_LIMIT, STEWARD_TOKEN_PREFIX, SYNC_MAX_ROOMS, SendMessage, ServerFrame, SessionId,
-    SetPin, SetThreadSubscription, SetTopicTitle, ShelfChanged, ShelfItem, ShelfRejected,
-    ShelfSynced, StewardChanged, StewardIssued, StewardRejected, StewardsSynced, StreamAbortReason,
-    StreamChunk, StreamPhase, StreamRejected, StreamRejection, SyncRooms, SyncShelf, SyncThread,
-    SyncVault, ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ToolsListed,
-    UpdateShelf, VaultRejected, VaultRejection, VersionMismatch, WORK_SYNC_LIMIT, Welcome,
-    WorkSynced, close_code, role_permits, tool_descriptors,
+    ReactionRejected, ReactionRejection, Role, RoomId, RoomUnavailable, SHELF_SYNC_LIMIT,
+    STEWARD_TOKEN_PREFIX, SYNC_MAX_ROOMS, SendMessage, ServerFrame, SessionId, SetPin,
+    SetThreadSubscription, SetTopicTitle, ShelfChanged, ShelfItem, ShelfRejected, ShelfSynced,
+    StewardChanged, StewardIssued, StewardRejected, StewardsSynced, StreamAbortReason, StreamChunk,
+    StreamPhase, StreamRejected, StreamRejection, SyncRooms, SyncShelf, SyncThread, SyncVault,
+    ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ToolsListed, UpdateShelf,
+    VaultRejected, VaultRejection, VersionMismatch, WORK_SYNC_LIMIT, Welcome, WorkSynced,
+    close_code, role_permits, tool_descriptors,
 };
 use tokio::sync::broadcast::error::RecvError;
 
@@ -27,11 +27,12 @@ use crate::message::{
     PostFailure, PostOutcome, is_top_level, post_message, send_message, sync_room, sync_thread,
 };
 use crate::pin::{PinFailure, PinOutcome, set_pin};
+use crate::publish::{publish_created, publish_frame, publish_summaries};
 use crate::reaction::{ReactionFailure, ReactionOutcome, apply_reaction};
 use crate::shelf::{ShelfFailure, ShelfOutcome, current_item, shelf_items, update_shelf};
 use crate::state::AppState;
 use crate::steward::{
-    StewardFailure, StewardOutcome, ack_work, display_name_of, manage_steward, mentioned_stewards,
+    StewardFailure, StewardOutcome, ack_work, credential_current, display_name_of, manage_steward,
     steward_profiles, steward_room_assigned, work_items,
 };
 use crate::stream::{OpenStream, OpenStreams, StreamStep};
@@ -140,13 +141,14 @@ async fn accept_hello(
     };
     let (account_id, steward) = match credential {
         Some(credential) => {
-            let name = match display_name_of(&state.db, credential.steward_id).await {
-                Ok(Some(name)) => name,
-                _ => {
-                    close_with(socket, close_code::INTERNAL_ERROR).await;
-                    return None;
-                }
-            };
+            let name =
+                match display_name_of(&state.db, hello.campus_id, credential.steward_id).await {
+                    Ok(Some(name)) => name,
+                    _ => {
+                        close_with(socket, close_code::INTERNAL_ERROR).await;
+                        return None;
+                    }
+                };
             (
                 credential.steward_id,
                 Some(StewardSession {
@@ -227,91 +229,6 @@ async fn await_hello(socket: &mut WebSocket, state: &AppState) -> Option<Subscri
             }
             Incoming::Stop => return None,
         }
-    }
-}
-
-async fn publish_frame(
-    state: &AppState,
-    campus_id: CampusId,
-    account_id: Option<AccountId>,
-    frame: ServerFrame,
-) {
-    let envelope = FanoutEnvelope {
-        campus_id,
-        account_id,
-        frame,
-    };
-    if let Err(error) = state.fanout.publish(&envelope).await {
-        tracing::warn!(%error, "fanout failed");
-    }
-}
-
-async fn publish_summaries(
-    state: &AppState,
-    campus_id: CampusId,
-    accounts: &[AccountId],
-    root: MessageId,
-) {
-    if accounts.is_empty() {
-        return;
-    }
-    let mut connection = match state.db.acquire().await {
-        Ok(connection) => connection,
-        Err(error) => {
-            tracing::warn!(%error, "thread summary connection failed");
-            return;
-        }
-    };
-    for account_id in accounts {
-        match thread_summaries(&mut connection, campus_id, *account_id, Some(&[root]), 1).await {
-            Ok(summaries) => {
-                for summary in summaries {
-                    publish_frame(
-                        state,
-                        campus_id,
-                        Some(*account_id),
-                        ServerFrame::ThreadChanged(ThreadChanged { summary }),
-                    )
-                    .await;
-                }
-            }
-            Err(error) => tracing::warn!(%error, "thread summary failed"),
-        }
-    }
-}
-
-pub(crate) async fn publish_created(
-    state: &AppState,
-    campus_id: CampusId,
-    message: RoomMessage,
-    affected: &[AccountId],
-) {
-    let root = message.thread_root_id.unwrap_or(message.message_id);
-    publish_frame(
-        state,
-        campus_id,
-        None,
-        ServerFrame::MessageCreated(MessageCreated {
-            message: message.clone(),
-        }),
-    )
-    .await;
-    publish_summaries(state, campus_id, affected, root).await;
-    match mentioned_stewards(&state.db, campus_id, &message).await {
-        Ok(stewards) => {
-            for steward_id in stewards {
-                publish_frame(
-                    state,
-                    campus_id,
-                    Some(steward_id),
-                    ServerFrame::StewardWorkItem(pulse_protocol::StewardWorkItem {
-                        message: message.clone(),
-                    }),
-                )
-                .await;
-            }
-        }
-        Err(error) => tracing::warn!(%error, "steward work lookup failed"),
     }
 }
 
@@ -877,16 +794,17 @@ async fn abort_streams(
 async fn admit_stream(
     state: &AppState,
     active: &Subscriptions,
-    chunk: &StreamChunk,
+    room_id: RoomId,
+    thread_root_id: Option<MessageId>,
 ) -> Result<Option<StreamRejection>, sqlx::Error> {
     if !permitted(state, active, Permission::StreamReply).await?
-        || !room_open(state, active, chunk.room_id).await?
+        || !room_open(state, active, room_id).await?
     {
         return Ok(Some(StreamRejection::Forbidden));
     }
-    if let Some(root) = chunk.thread_root_id {
+    if let Some(root) = thread_root_id {
         let mut connection = state.db.acquire().await?;
-        if !is_top_level(&mut connection, active.campus_id, chunk.room_id, root).await? {
+        if !is_top_level(&mut connection, active.campus_id, room_id, root).await? {
             return Ok(Some(StreamRejection::UnknownThread));
         }
     }
@@ -972,12 +890,21 @@ async fn handle_stream(
     if active.steward.is_none() {
         return reply_with(socket, &reject(StreamRejection::Forbidden)).await;
     }
-    if chunk.phase == StreamPhase::Begin {
-        match admit_stream(state, active, &chunk).await {
-            Ok(None) => {}
-            Ok(Some(reason)) => return reply_with(socket, &reject(reason)).await,
-            Err(error) => return database_failure(socket, "stream admission", error).await,
+    let admission = match (chunk.phase, active.streams.peek(stream_id)) {
+        (StreamPhase::Begin, _) => {
+            Some(admit_stream(state, active, chunk.room_id, chunk.thread_root_id).await)
         }
+        (StreamPhase::Abort, _) | (_, None) => None,
+        (_, Some(open)) => Some(admit_stream(state, active, open.room_id, None).await),
+    };
+    match admission {
+        None | Some(Ok(None)) => {}
+        Some(Ok(Some(reason))) => {
+            let streams = active.streams.take_all();
+            abort_streams(state, active, streams, StreamAbortReason::Revoked).await;
+            return reply_with(socket, &reject(reason)).await;
+        }
+        Some(Err(error)) => return database_failure(socket, "stream admission", error).await,
     }
     let before = active.streams.peek(stream_id).map(|open| StreamRef {
         stream_id,
@@ -993,9 +920,20 @@ async fn handle_stream(
     };
     match active.streams.accept(&chunk, now_ms()) {
         Ok(StreamStep::Opened | StreamStep::Appended) => {
+            let Some(base) = active.streams.peek(stream_id).map(|open| StreamRef {
+                room_id: open.room_id,
+                thread_root_id: open.thread_root_id,
+                ..base
+            }) else {
+                return Flow::Continue;
+            };
             let frame = agent_chunk(active, base, chunk.phase, chunk.text, None, None);
-            publish_frame(state, active.campus_id, None, frame).await;
-            Flow::Continue
+            if publish_frame(state, active.campus_id, None, frame).await {
+                Flow::Continue
+            } else {
+                active.streams.discard(stream_id);
+                reply_with(socket, &reject(StreamRejection::UnknownStream)).await
+            }
         }
         Ok(StreamStep::Cancelled(open)) => {
             let base = StreamRef {
@@ -1042,12 +980,8 @@ async fn handle_sync_work(
     active: &Subscriptions,
 ) -> Flow {
     let synced = if active.steward.is_some() {
-        let mut connection = match state.db.acquire().await {
-            Ok(connection) => connection,
-            Err(error) => return database_failure(socket, "work connection", error).await,
-        };
         match work_items(
-            &mut connection,
+            &state.db,
             active.campus_id,
             active.account_id,
             WORK_SYNC_LIMIT,
@@ -1151,12 +1085,20 @@ async fn handle_sync_lounges(
     state: &AppState,
     active: &Subscriptions,
 ) -> Flow {
-    let lounges = match lounges_of(state, active.campus_id).await {
-        Ok(lounges) => lounges,
-        Err(LoungeFailure::Rejected(_)) => Vec::new(),
-        Err(LoungeFailure::Database(error)) => {
-            return database_failure(socket, "lounge sync", error).await;
+    let allowed = match permitted(state, active, Permission::ViewCampus).await {
+        Ok(allowed) => allowed,
+        Err(error) => return database_failure(socket, "role lookup", error).await,
+    };
+    let lounges = if allowed {
+        match lounges_of(state, active.campus_id).await {
+            Ok(lounges) => lounges,
+            Err(LoungeFailure::Rejected(_)) => Vec::new(),
+            Err(LoungeFailure::Database(error)) => {
+                return database_failure(socket, "lounge sync", error).await;
+            }
         }
+    } else {
+        Vec::new()
     };
     reply_with(
         socket,
@@ -1274,7 +1216,9 @@ async fn handle_leave_lounge(
     request: LeaveLounge,
 ) -> Flow {
     let lounge_id = request.lounge_id;
-    active.lounges.remove(&lounge_id);
+    if !active.lounges.remove(&lounge_id) {
+        return Flow::Continue;
+    }
     match leave_lounge(
         state,
         active.campus_id,
@@ -1442,7 +1386,7 @@ async fn forward_feed(
     if changed.steward.steward_id != active.account_id {
         return flow;
     }
-    if changed.steward.revoked || changed.steward.credential_revision != session.credential_revision
+    if changed.steward.revoked || changed.steward.credential_revision > session.credential_revision
     {
         let streams = active.streams.take_all();
         abort_streams(state, active, streams, StreamAbortReason::Revoked).await;
@@ -1451,6 +1395,8 @@ async fn forward_feed(
     active
         .rooms
         .retain(|room_id| changed.steward.room_ids.contains(room_id));
+    let pruned = active.streams.take_outside(&changed.steward.room_ids);
+    abort_streams(state, active, pruned, StreamAbortReason::Rejected).await;
     flow
 }
 
@@ -1466,6 +1412,19 @@ pub async fn serve_socket(mut socket: WebSocket, state: AppState) {
             return;
         }
     };
+    if let Some(session) = active.steward.as_ref() {
+        let current = credential_current(
+            &state.db,
+            active.campus_id,
+            active.account_id,
+            session.credential_revision,
+        )
+        .await;
+        if !matches!(current, Ok(true)) {
+            close_with(&mut socket, close_code::POLICY_VIOLATION).await;
+            return;
+        }
+    }
     loop {
         let deadline = active.streams.next_deadline_ms();
         let flow = tokio::select! {

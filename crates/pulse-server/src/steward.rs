@@ -1,7 +1,7 @@
 use pulse_protocol::{
-    AccountId, AuthToken, CampusId, ManageSteward, MessageId, Permission, RoomId, RoomMessage,
-    STEWARDS_PER_CAMPUS_MAX, StewardAction, StewardProfile, StewardRejection, StewardWorkItem,
-    WorkSynced, normalize_display_name, normalize_room_ids, role_permits,
+    AccountId, AuthToken, CampusId, ManageSteward, MessageId, Permission, Room, RoomId,
+    RoomMessage, STEWARDS_PER_CAMPUS_MAX, StewardAction, StewardProfile, StewardRejection,
+    StewardWorkItem, WorkSynced, normalize_display_name, normalize_room_ids, role_permits,
 };
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
@@ -105,32 +105,63 @@ pub async fn steward_room_assigned(
     .await
 }
 
-pub async fn assigned_room_ids(
+pub async fn assigned_rooms(
     executor: impl sqlx::PgExecutor<'_>,
     campus_id: CampusId,
     steward_id: AccountId,
-) -> Result<Vec<RoomId>, sqlx::Error> {
-    let rows = sqlx::query_scalar::<_, Uuid>(
-        "SELECT r.room_id FROM steward_rooms r JOIN stewards s \
+) -> Result<Vec<Room>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT rm.room_id, rm.slug FROM steward_rooms r JOIN stewards s \
          ON s.campus_id = r.campus_id AND s.steward_id = r.steward_id \
+         JOIN rooms rm ON rm.campus_id = r.campus_id AND rm.room_id = r.room_id \
          WHERE r.campus_id = $1 AND r.steward_id = $2 AND s.revoked_at IS NULL \
-         ORDER BY r.room_id",
+         ORDER BY rm.slug",
     )
     .bind(campus_id.as_uuid())
     .bind(steward_id.as_uuid())
     .fetch_all(executor)
     .await?;
-    Ok(rows.into_iter().map(RoomId).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(room_id, slug)| Room {
+            room_id: RoomId(room_id),
+            campus_id,
+            slug,
+        })
+        .collect())
+}
+
+pub async fn credential_current(
+    executor: impl sqlx::PgExecutor<'_>,
+    campus_id: CampusId,
+    steward_id: AccountId,
+    credential_revision: u64,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM stewards WHERE campus_id = $1 AND steward_id = $2 \
+         AND revoked_at IS NULL AND credential_revision = $3)",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(steward_id.as_uuid())
+    .bind(i64::try_from(credential_revision).unwrap_or(i64::MAX))
+    .fetch_one(executor)
+    .await
 }
 
 pub async fn display_name_of(
     executor: impl sqlx::PgExecutor<'_>,
+    campus_id: CampusId,
     account_id: AccountId,
 ) -> Result<Option<String>, sqlx::Error> {
-    sqlx::query_scalar::<_, String>("SELECT display_name FROM accounts WHERE account_id = $1")
-        .bind(account_id.as_uuid())
-        .fetch_optional(executor)
-        .await
+    sqlx::query_scalar::<_, String>(
+        "SELECT a.display_name FROM accounts a JOIN campus_members m \
+         ON m.account_id = a.account_id \
+         WHERE m.campus_id = $1 AND a.account_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(account_id.as_uuid())
+    .fetch_optional(executor)
+    .await
 }
 
 pub async fn mentioned_stewards(
@@ -151,8 +182,8 @@ pub async fn mentioned_stewards(
          ON r.campus_id = s.campus_id AND r.steward_id = s.steward_id \
          WHERE s.campus_id = $1 AND r.room_id = $2 AND s.steward_id = ANY($3) \
          AND s.revoked_at IS NULL \
-         AND NOT EXISTS (SELECT 1 FROM stewards author WHERE author.campus_id = $1 \
-         AND author.steward_id = $4) \
+         AND EXISTS (SELECT 1 FROM accounts author WHERE author.account_id = $4 \
+         AND author.kind = 'person') \
          ORDER BY s.steward_id",
     )
     .bind(campus_id.as_uuid())
@@ -165,14 +196,14 @@ pub async fn mentioned_stewards(
 }
 
 pub async fn work_items(
-    executor: &mut PgConnection,
+    db: &PgPool,
     campus_id: CampusId,
     steward_id: AccountId,
     limit: usize,
 ) -> Result<WorkSynced, sqlx::Error> {
-    let mut transaction =
-        sqlx::Connection::begin_with(&mut *executor, "BEGIN ISOLATION LEVEL REPEATABLE READ")
-            .await?;
+    let mut transaction = db
+        .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ")
+        .await?;
     let cursor = sqlx::query_scalar::<_, Option<Uuid>>(
         "SELECT work_cursor FROM stewards \
          WHERE campus_id = $1 AND steward_id = $2 AND revoked_at IS NULL",

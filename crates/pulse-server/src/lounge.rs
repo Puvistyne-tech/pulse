@@ -25,9 +25,11 @@ const RETURN_STATE: &str = "local out = {tostring(redis.call('INCR', KEYS[2]))} 
 static PRESENT: LazyLock<Script> = LazyLock::new(|| {
     Script::new(&format!(
         "{PRUNE_AND_TIME} \
-         local present = redis.call('ZSCORE', KEYS[1], ARGV[1]) \
+         local present = redis.call('ZSCORE', KEYS[1], ARGV[4] .. '0') \
+         or redis.call('ZSCORE', KEYS[1], ARGV[4] .. '1') \
          if not present and redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then \
          return {{'-1'}} end \
+         redis.call('ZREM', KEYS[1], ARGV[4] .. '0', ARGV[4] .. '1') \
          redis.call('ZADD', KEYS[1], now + tonumber(ARGV[2]), ARGV[1]) \
          redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]) * 2) \
          {RETURN_STATE}"
@@ -58,13 +60,26 @@ static SNAPSHOT: LazyLock<Script> = LazyLock::new(|| {
     )
 });
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LoungeConfig {
     pub livekit_url: String,
     pub api_key: String,
     pub api_secret: String,
     pub presence_ttl_ms: u64,
     pub ticket_ttl_ms: u64,
+}
+
+impl std::fmt::Debug for LoungeConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LoungeConfig")
+            .field("livekit_url", &self.livekit_url)
+            .field("api_key", &self.api_key)
+            .field("api_secret", &"redacted")
+            .field("presence_ttl_ms", &self.presence_ttl_ms)
+            .field("ticket_ttl_ms", &self.ticket_ttl_ms)
+            .finish()
+    }
 }
 
 impl Default for LoungeConfig {
@@ -156,12 +171,16 @@ async fn lounge_scope(
 
 async fn display_names(
     state: &AppState,
+    campus_id: CampusId,
     account_ids: &[AccountId],
 ) -> Result<BTreeMap<AccountId, String>, sqlx::Error> {
     let ids: Vec<Uuid> = account_ids.iter().map(|id| id.as_uuid()).collect();
     let rows = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT account_id, display_name FROM accounts WHERE account_id = ANY($1)",
+        "SELECT a.account_id, a.display_name FROM accounts a JOIN campus_members m \
+         ON m.account_id = a.account_id \
+         WHERE m.campus_id = $1 AND a.account_id = ANY($2)",
     )
+    .bind(campus_id.as_uuid())
     .bind(&ids)
     .fetch_all(&state.db)
     .await?;
@@ -221,7 +240,7 @@ async fn named_lounge(
     presence: &Presence,
 ) -> Result<Lounge, LoungeFailure> {
     let accounts: Vec<AccountId> = presence.members.iter().map(|member| member.0).collect();
-    let names = display_names(state, &accounts).await?;
+    let names = display_names(state, campus_id, &accounts).await?;
     Ok(build_lounge(
         campus_id, lounge_id, room_id, presence, &names,
     ))
@@ -271,7 +290,7 @@ pub async fn lounges_of(
         .iter()
         .flat_map(|presence| presence.members.iter().map(|member| member.0))
         .collect();
-    let names = display_names(state, &everyone).await?;
+    let names = display_names(state, campus_id, &everyone).await?;
     Ok(rows
         .into_iter()
         .zip(presences)
@@ -313,6 +332,7 @@ async fn mark_present(
         .arg(member)
         .arg(state.lounge.presence_ttl_ms)
         .arg(LOUNGE_PARTICIPANTS_MAX)
+        .arg(format!("{account_id}:{session_id}:"))
         .invoke_async(&mut connection)
         .await?;
     let Some(presence) = parse_presence(&tokens) else {

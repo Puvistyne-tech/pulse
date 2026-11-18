@@ -1,5 +1,5 @@
-use pulse_core::native::NativeClient;
 use percent_encoding::percent_decode_str;
+use pulse_core::native::NativeClient;
 use pulse_protocol::{
     CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep, MessageId,
     ReactionAction, ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest,

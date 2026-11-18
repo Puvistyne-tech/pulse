@@ -9,8 +9,8 @@ use pulse_protocol::{
     SEARCH_CANDIDATE_LIMIT, SYNC_MAX_ROOMS, SearchSnapshot, SendMessage, ServerFrame, SetPin,
     SetThreadSubscription, SetTopicTitle, ShelfSnapshot, ShelfSynced, SubscriptionOrigin,
     SubscriptionState, SyncInbox, SyncRooms, SyncShelf, SyncThread, ThreadPreview, ThreadRejection,
-    ThreadSnapshot, ThreadSynced, TimelineEntry, TimelineSnapshot, UpdateShelf, Validate,
-    VaultSnapshot, VaultSynced, body_segments, mention_token, normalize_message_content,
+    ThreadSnapshot, ThreadSummary, ThreadSynced, TimelineEntry, TimelineSnapshot, UpdateShelf,
+    Validate, VaultSnapshot, VaultSynced, body_segments, mention_token, normalize_message_content,
     normalize_reaction_emoji, normalize_topic_title, validate_remind_at,
 };
 
@@ -401,6 +401,13 @@ impl TimelineMachine {
         }
     }
 
+    fn index_summary(&mut self, summary: &ThreadSummary) {
+        self.index_message(&summary.root);
+        if let Some(reply) = &summary.latest_reply {
+            self.index_message(reply);
+        }
+    }
+
     fn gap_frames(&mut self, room_id: RoomId) -> Vec<ClientFrame> {
         let connected = self.connected;
         let Some(log) = self.logs.get_mut(&room_id) else {
@@ -666,6 +673,7 @@ impl TimelineMachine {
             ServerFrame::InboxSynced(synced) => {
                 for summary in synced.threads {
                     if summary.root.campus_id == self.campus_id {
+                        self.index_summary(&summary);
                         self.inbox.apply_summary(summary);
                     }
                 }
@@ -673,6 +681,7 @@ impl TimelineMachine {
             }
             ServerFrame::ThreadChanged(changed) => {
                 if changed.summary.root.campus_id == self.campus_id {
+                    self.index_summary(&changed.summary);
                     self.inbox.apply_summary(changed.summary);
                 }
                 Vec::new()

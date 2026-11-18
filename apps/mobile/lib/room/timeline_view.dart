@@ -16,6 +16,7 @@ const _rejectionLabels = {
   MessageRejection.invalidBody: 'Message not accepted',
   MessageRejection.unknownRoom: 'Room not found',
   MessageRejection.unknownThread: 'Thread not found',
+  MessageRejection.invalidAttachment: 'Attachment not accepted',
 };
 
 class EntryActions {

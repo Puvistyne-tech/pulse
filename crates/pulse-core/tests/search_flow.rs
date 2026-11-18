@@ -148,7 +148,6 @@ fn ingested_messages_queue_index_documents(#[case] frame: ServerFrame, #[case] e
 #[rstest]
 #[case::inbox_page(inbox_synced_frame(&[SummarySpec::replied(1, 2, 1)]), &[1, 2])]
 #[case::thread_change(thread_changed_frame(&SummarySpec::replied(1, 2, 1)), &[1, 2])]
-#[ignore = "InboxSynced and ThreadChanged arms in timeline.rs skip index_message"]
 fn inbox_summaries_queue_index_documents(#[case] frame: ServerFrame, #[case] expected: &[u128]) {
     let mut client = settled_client();
     client.receive_frame(frame);

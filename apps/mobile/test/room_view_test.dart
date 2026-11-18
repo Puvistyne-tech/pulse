@@ -608,34 +608,28 @@ void main() {
       });
     }
 
-    testWidgets(
-      'defect composer.dart: a draft without text still enables send',
-      (tester) async {
-        await pumpRoom(
-          tester,
-          timelineOf([], drafts: [draftOf(UploadState.uploaded)]),
-        );
-        final button = tester.widget<ElevatedButton>(
-          find.byKey(const Key('sendMessage')),
-        );
-        expect(button.onPressed, isNotNull);
-      },
-      skip: true,
-    );
+    testWidgets('a draft without text still enables send', (tester) async {
+      await pumpRoom(
+        tester,
+        timelineOf([], drafts: [draftOf(UploadState.uploaded)]),
+      );
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('sendMessage')),
+      );
+      expect(button.onPressed, isNotNull);
+    });
   });
 
   group('rejection labels', () {
-    testWidgets(
-      'defect timeline_view.dart: a failed attachment send names the attachment',
-      (tester) async {
-        await pumpRoom(
-          tester,
-          timelineOf([failedEntry(MessageRejection.invalidAttachment)]),
-        );
-        expect(find.text('Attachment not accepted'), findsOneWidget);
-      },
-      skip: true,
-    );
+    testWidgets('a failed attachment send names the attachment', (
+      tester,
+    ) async {
+      await pumpRoom(
+        tester,
+        timelineOf([failedEntry(MessageRejection.invalidAttachment)]),
+      );
+      expect(find.text('Attachment not accepted'), findsOneWidget);
+    });
   });
 
   group('pinning', () {

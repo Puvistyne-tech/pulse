@@ -109,7 +109,9 @@ class _ComposerState extends State<Composer> {
               listenable: _draft,
               builder: (context, child) => ElevatedButton(
                 key: const Key('sendMessage'),
-                onPressed: _draft.text.isEmpty ? null : _submit,
+                onPressed: _draft.text.isEmpty && widget.drafts.isEmpty
+                    ? null
+                    : _submit,
                 child: const Text('Send'),
               ),
             ),

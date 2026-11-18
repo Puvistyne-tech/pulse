@@ -3,6 +3,7 @@ import { CampusPicker } from "./campus/CampusPicker";
 import { CreateCampusForm } from "./campus/CreateCampusForm";
 import { RoomList } from "./campus/RoomList";
 import type { PulseIntents } from "./client/usePulseClient";
+import { RoomView } from "./room/RoomView";
 import { AuthForm } from "./session/AuthForm";
 import { ErrorNotice } from "./session/ErrorNotice";
 import { SnapshotView } from "./snapshot/SnapshotView";
@@ -13,7 +14,7 @@ interface AppViewProps {
 }
 
 export function AppView({ snapshot, intents }: AppViewProps) {
-  const { session, network } = snapshot;
+  const { session, network, timeline } = snapshot;
 
   if (session.auth !== "signed_in") {
     return (
@@ -44,7 +45,16 @@ export function AppView({ snapshot, intents }: AppViewProps) {
         busy={session.busy}
         createCampus={intents.createCampus}
       />
-      <RoomList rooms={session.rooms} />
+      <RoomList
+        rooms={session.rooms}
+        activeRoomId={session.active_room_id}
+        selectRoom={intents.selectRoom}
+      />
+      <RoomView
+        timeline={timeline}
+        sendMessage={intents.sendMessage}
+        discardMessage={intents.discardMessage}
+      />
       <SnapshotView network={network} />
     </main>
   );

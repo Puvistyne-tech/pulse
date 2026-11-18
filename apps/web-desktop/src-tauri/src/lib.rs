@@ -1,5 +1,8 @@
 use pulse_core::native::NativeClient;
-use pulse_protocol::{CampusId, ClientSnapshot, CreateCampusRequest, SignInRequest, SignUpRequest};
+use pulse_protocol::{
+    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, RoomId, SignInRequest,
+    SignUpRequest,
+};
 use tauri::{Manager, State};
 
 type CommandResult = Result<ClientSnapshot, String>;
@@ -42,6 +45,37 @@ async fn select_campus(client: State<'_, NativeClient>, campus_id: CampusId) -> 
     Ok(client.select_campus(campus_id).await)
 }
 
+#[tauri::command]
+async fn select_room(client: State<'_, NativeClient>, room_id: RoomId) -> CommandResult {
+    Ok(client.select_room(room_id).await)
+}
+
+#[tauri::command]
+async fn send_message(
+    client: State<'_, NativeClient>,
+    room_id: RoomId,
+    body: String,
+) -> CommandResult {
+    Ok(client.send_message(room_id, body).await)
+}
+
+#[tauri::command]
+async fn discard_message(
+    client: State<'_, NativeClient>,
+    client_nonce: ClientNonce,
+) -> CommandResult {
+    Ok(client.discard_message(client_nonce).await)
+}
+
+#[tauri::command]
+async fn watch_snapshots(
+    client: State<'_, NativeClient>,
+    on_snapshot: tauri::ipc::Channel<ClientSnapshot>,
+) -> Result<(), String> {
+    client.forward_snapshots(move |snapshot| on_snapshot.send(snapshot).is_ok());
+    Ok(())
+}
+
 pub fn run() {
     let outcome = tauri::Builder::default()
         .setup(|app| {
@@ -55,7 +89,11 @@ pub fn run() {
             sign_out,
             refresh_campuses,
             create_campus,
-            select_campus
+            select_campus,
+            select_room,
+            send_message,
+            discard_message,
+            watch_snapshots
         ])
         .run(tauri::generate_context!());
     if let Err(error) = outcome {

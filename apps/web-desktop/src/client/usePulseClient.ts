@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   CampusId,
+  ClientNonce,
   ClientSnapshot,
   CreateCampusRequest,
+  RoomId,
   SignInRequest,
   SignUpRequest,
 } from "@pulse/protocol";
 import { pulseClient } from "./pulseClient";
+import { newerSnapshot } from "./snapshotOrder";
 
 export interface PulseIntents {
   signUp(request: SignUpRequest): Promise<void>;
@@ -15,6 +18,9 @@ export interface PulseIntents {
   createCampus(request: CreateCampusRequest): Promise<void>;
   selectCampus(campusId: CampusId): Promise<void>;
   refreshCampuses(): Promise<void>;
+  selectRoom(roomId: RoomId): Promise<void>;
+  sendMessage(roomId: RoomId, body: string): Promise<void>;
+  discardMessage(clientNonce: ClientNonce): Promise<void>;
 }
 
 export function usePulseClient(): {
@@ -25,17 +31,25 @@ export function usePulseClient(): {
   const [snapshot, setSnapshot] = useState<ClientSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
 
-  const publish = useCallback(async (pending: Promise<ClientSnapshot>) => {
-    try {
-      setSnapshot(await pending);
-    } catch {
-      setFailed(true);
-    }
+  const apply = useCallback((next: ClientSnapshot) => {
+    setSnapshot((current) => newerSnapshot(current, next));
   }, []);
+
+  const publish = useCallback(
+    async (pending: Promise<ClientSnapshot>) => {
+      try {
+        apply(await pending);
+      } catch {
+        setFailed(true);
+      }
+    },
+    [apply],
+  );
 
   useEffect(() => {
     void publish(pulseClient.snapshot());
-  }, [publish]);
+    pulseClient.watchSnapshots(apply).catch(() => setFailed(true));
+  }, [publish, apply]);
 
   const intents = useMemo<PulseIntents>(
     () => ({
@@ -45,6 +59,11 @@ export function usePulseClient(): {
       createCampus: (request) => publish(pulseClient.createCampus(request)),
       selectCampus: (campusId) => publish(pulseClient.selectCampus(campusId)),
       refreshCampuses: () => publish(pulseClient.refreshCampuses()),
+      selectRoom: (roomId) => publish(pulseClient.selectRoom(roomId)),
+      sendMessage: (roomId, body) =>
+        publish(pulseClient.sendMessage(roomId, body)),
+      discardMessage: (clientNonce) =>
+        publish(pulseClient.discardMessage(clientNonce)),
     }),
     [publish],
   );

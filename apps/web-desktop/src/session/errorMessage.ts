@@ -5,6 +5,7 @@ const invalidFieldMessages: Record<InputField, string> = {
   display_name: "Enter a valid display name",
   password: "Enter a valid password",
   slug: "Use lowercase letters, digits and hyphens for the slug",
+  message_body: "Write a message of up to 4000 characters",
 };
 
 const conflictFieldMessages: Record<InputField, string> = {
@@ -12,6 +13,7 @@ const conflictFieldMessages: Record<InputField, string> = {
   display_name: "That display name is already taken",
   password: "That password cannot be used",
   slug: "That slug is already taken",
+  message_body: "That message was already sent",
 };
 
 const codeMessages: Record<ApiErrorCode, string> = {

@@ -1796,7 +1796,16 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4aaa26c720c68b866f2c96ef5c1264b3e6f473fe5d4ce61cd44bbe913e553018"
 dependencies = [
- "hmac",
+ "hmac 0.13.0",
+]
+
+[[package]]
+name = "hmac"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+dependencies = [
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -3114,7 +3123,7 @@ checksum = "d86a77b7d9cdebd9643c180c158748db7d894b24a3935ed4b5843e698ae086eb"
 dependencies = [
  "base64 0.23.1",
  "indexmap 2.14.2",
- "quick-xml",
+ "quick-xml 0.42.0",
  "serde",
  "time",
 ]
@@ -3305,7 +3314,9 @@ dependencies = [
  "http-body-util",
  "pulse-protocol",
  "redis",
+ "reqwest 0.12.28",
  "rstest",
+ "rusty-s3",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3316,6 +3327,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 
@@ -3327,6 +3339,16 @@ dependencies = [
  "pulse-core",
  "pulse-protocol",
  "uuid",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.38.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b66c2058c55a409d601666cffe35f04333cf1013010882cec174a7467cd4e21c"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -3774,6 +3796,25 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "rusty-s3"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fac2edd2f0b56bd79a7343f49afc01c2d41010df480538a510e0abc56044f66c"
+dependencies = [
+ "base64 0.22.1",
+ "hmac 0.12.1",
+ "jiff",
+ "md-5 0.10.6",
+ "percent-encoding",
+ "quick-xml 0.38.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "url",
+ "zeroize",
+]
 
 [[package]]
 name = "ryu"
@@ -4386,7 +4427,7 @@ dependencies = [
  "futures-util",
  "hex",
  "hkdf",
- "hmac",
+ "hmac 0.13.0",
  "itoa",
  "log",
  "md-5 0.11.0",

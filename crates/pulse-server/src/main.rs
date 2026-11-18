@@ -1,3 +1,5 @@
+use pulse_server::shelf::spawn_reminder_loop;
+use pulse_server::storage::Storage;
 use pulse_server::{MIGRATOR, StartupError, config, router, state};
 use tracing_subscriber::EnvFilter;
 
@@ -14,8 +16,13 @@ async fn main() {
 
 async fn run() -> Result<(), StartupError> {
     let config = config::from_env()?;
-    let app_state = state::lazy(&config)?;
+    let storage = Storage::new(config::storage_from_env())?;
+    let app_state = state::lazy(&config)?.with_storage(storage);
     MIGRATOR.run(&app_state.db).await?;
+    if let Err(error) = app_state.storage.ensure_bucket().await {
+        tracing::warn!(%error, "object storage bucket unavailable");
+    }
+    spawn_reminder_loop(app_state.clone(), config::reminder_scan_interval_from_env());
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "pulse-server listening");
     axum::serve(listener, router(app_state)).await?;

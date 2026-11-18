@@ -3,12 +3,17 @@ pub mod campus;
 pub mod config;
 pub mod error;
 pub mod fanout;
+pub mod media;
 pub mod message;
 pub mod migrate;
+pub mod pin;
 pub mod reaction;
 pub mod routes;
+pub mod shelf;
 pub mod state;
+pub mod storage;
 pub mod thread;
+pub mod vault;
 pub mod ws;
 
 pub use config::Config;

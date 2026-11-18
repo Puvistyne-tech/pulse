@@ -15,6 +15,8 @@ pub enum StartupError {
     Valkey(#[from] redis::RedisError),
     #[error("migration failed: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
+    #[error("object storage configuration rejected: {0}")]
+    Storage(#[from] crate::storage::StorageError),
     #[error("listener failed: {0}")]
     Io(#[from] std::io::Error),
 }

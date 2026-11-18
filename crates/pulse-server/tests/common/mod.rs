@@ -2,6 +2,7 @@
 
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::body::Body;
@@ -12,8 +13,8 @@ use pulse_protocol::fixtures::VALID_PASSWORD;
 use pulse_protocol::{
     AccountId, AuthSession, AuthToken, CampusCreated, CampusId, CampusList, ClientFrame,
     ClientNonce, CreateCampusRequest, Hello, MessageId, Ping, Pong, ProtocolVersion, Role,
-    RoomCursor, RoomId, RoomList, RoomMessage, SendMessage, ServerFrame, SignUpRequest, SyncRooms,
-    Welcome, api_path,
+    RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced, SendMessage, ServerFrame, SignUpRequest,
+    SyncRooms, Welcome, api_path,
 };
 use pulse_server::auth::token_digest;
 use pulse_server::{AppState, Config, MIGRATOR, router, state};
@@ -21,7 +22,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -267,6 +268,8 @@ pub async fn observe(socket: &mut ClientSocket) -> Observed {
 }
 
 pub const SCENARIO_DEADLINE: Duration = Duration::from_secs(60);
+pub const AUTH_DEADLINE: Duration = Duration::from_secs(30);
+pub const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
 const OBSERVE_DEADLINE: Duration = Duration::from_secs(20);
 
 pub async fn observe_until(
@@ -386,6 +389,74 @@ pub async fn stored_bodies(state: &AppState, campus_id: CampusId) -> Vec<String>
     .fetch_all(&state.db)
     .await
     .expect("stored bodies")
+}
+
+pub async fn synced_page(
+    socket: &mut ClientSocket,
+    room_id: RoomId,
+    after: Option<MessageId>,
+) -> RoomSynced {
+    send(socket, &sync_rooms(&[(room_id, after)])).await;
+    match expect_frame(socket).await {
+        ServerFrame::RoomSynced(page) => page,
+        other => panic!("expected room sync, got {other:?}"),
+    }
+}
+
+pub struct ValkeyProxy {
+    pub addr: SocketAddr,
+    links: Arc<Mutex<Vec<JoinHandle<()>>>>,
+}
+
+impl ValkeyProxy {
+    pub async fn start() -> Self {
+        let valkey_url =
+            std::env::var("VALKEY_URL").unwrap_or_else(|_| DEFAULT_VALKEY_URL.to_owned());
+        let upstream = valkey_url
+            .strip_prefix("redis://")
+            .unwrap_or(valkey_url.as_str())
+            .to_owned();
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind proxy");
+        let addr = listener.local_addr().expect("proxy address");
+        let links = Arc::new(Mutex::new(Vec::new()));
+        let tracked = Arc::clone(&links);
+        tokio::spawn(async move {
+            while let Ok((mut client, _)) = listener.accept().await {
+                let upstream = upstream.clone();
+                let link = tokio::spawn(async move {
+                    if let Ok(mut server) = TcpStream::connect(upstream).await {
+                        let _ = tokio::io::copy_bidirectional(&mut client, &mut server).await;
+                    }
+                });
+                tracked.lock().expect("links").push(link);
+            }
+        });
+        Self { addr, links }
+    }
+
+    pub fn cut(&self) {
+        self.links
+            .lock()
+            .expect("links")
+            .drain(..)
+            .for_each(|link| link.abort());
+    }
+}
+
+pub fn proxied_state(state: &AppState, proxy: &ValkeyProxy) -> AppState {
+    AppState::new(
+        state.db.clone(),
+        redis::Client::open(format!("redis://{}", proxy.addr)).expect("proxied valkey client"),
+    )
+}
+
+pub fn assert_chain(messages: &[RoomMessage], start: Option<MessageId>) {
+    let mut tip = start;
+    for message in messages {
+        assert_eq!(message.previous_message_id, tip);
+        assert!(tip.is_none_or(|tip| message.message_id > tip));
+        tip = Some(message.message_id);
+    }
 }
 
 pub async fn created_messages(socket: &mut ClientSocket, count: usize) -> Vec<RoomMessage> {

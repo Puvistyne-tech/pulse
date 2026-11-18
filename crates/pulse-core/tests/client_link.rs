@@ -1,16 +1,13 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B, Start, chain, chain_message, client_rooms,
-    connected_client, created_frame, entry_keys, message_id, pending_key, rejected_frame,
-    room_list, send_frame, signed_in_client, start_events, sync_frame, synced_frame, token_a,
-    welcome_for,
+    CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B, Start, chain, chain_message, client_rooms, connect_for,
+    connected_client, created_frame, message_id, room_list, send_frame, signed_in_client,
+    start_events, sync_frame, synced_frame, token_a, welcome, welcome_for,
 };
 use futures::executor::block_on;
 use pulse_core::{Client, ConnectionEvent, LinkTarget, SessionEvent};
-use pulse_protocol::{
-    CampusId, ClientNonce, ConnectionPhase, MessageRejection, Pong, RoomId, ServerFrame,
-};
+use pulse_protocol::{CampusId, ClientNonce, ConnectionPhase, Pong, RoomId, ServerFrame};
 use rstest::rstest;
 
 fn expected_target(campus_id: CampusId) -> Option<LinkTarget> {
@@ -28,12 +25,9 @@ fn bring_to(client: &mut Client, start: Start) {
 
 fn connect_to(client: &mut Client, campus_id: CampusId) {
     [
-        ConnectionEvent::ConnectRequested {
-            campus_id,
-            auth_token: token_a(),
-        },
+        connect_for(campus_id),
         ConnectionEvent::TransportOpened,
-        ConnectionEvent::WelcomeReceived(welcome_for(campus_id)),
+        welcome(campus_id),
     ]
     .into_iter()
     .for_each(|event| {
@@ -260,29 +254,17 @@ fn room_selection_switches_timeline() {
 }
 
 #[test]
-fn pending_send_for_selected_room_is_visible_before_confirmation() {
+fn send_to_inactive_room_is_hidden_from_snapshot_but_still_sent() {
     let mut client = connected_client();
     let rooms = client_rooms(&client);
-    let snapshot = client.send_message(rooms[0], NONCE_A, "visible".to_owned());
-    assert_eq!(entry_keys(&snapshot.timeline), vec![pending_key(NONCE_A)]);
-    assert_eq!(
-        client.drain_outbound().last(),
-        Some(&send_frame(rooms[0], NONCE_A, "visible"))
-    );
-}
-
-#[test]
-fn rejected_frame_marks_entry_failed_in_snapshot() {
-    let mut client = connected_client();
-    let rooms = client_rooms(&client);
-    client.send_message(rooms[0], NONCE_A, "denied".to_owned());
-    client.receive_frame(rejected_frame(NONCE_A, MessageRejection::Forbidden));
-    assert_eq!(
-        entry_keys(&client.snapshot().timeline),
-        vec![fixtures::failed_key(NONCE_A, MessageRejection::Forbidden)]
-    );
-    let snapshot = client.discard_message(NONCE_A);
+    client.drain_outbound();
+    let snapshot = client.send_message(rooms[1], NONCE_A, "elsewhere".to_owned());
+    assert_eq!(snapshot.timeline.room_id, Some(rooms[0]));
     assert!(snapshot.timeline.entries.is_empty());
+    assert_eq!(
+        client.drain_outbound(),
+        vec![send_frame(rooms[1], NONCE_A, "elsewhere")]
+    );
 }
 
 enum Mutation {

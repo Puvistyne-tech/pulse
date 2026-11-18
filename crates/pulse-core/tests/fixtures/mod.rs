@@ -39,11 +39,15 @@ pub fn welcome_for(campus_id: CampusId) -> Welcome {
     }
 }
 
-pub fn connect() -> ConnectionEvent {
+pub fn connect_for(campus_id: CampusId) -> ConnectionEvent {
     ConnectionEvent::ConnectRequested {
-        campus_id: CAMPUS_A,
+        campus_id,
         auth_token: token_a(),
     }
+}
+
+pub fn connect() -> ConnectionEvent {
+    connect_for(CAMPUS_A)
 }
 
 pub fn welcome(campus_id: CampusId) -> ConnectionEvent {

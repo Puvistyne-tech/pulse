@@ -3,28 +3,14 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{
-    SCENARIO_DEADLINE, campus_with_owner, created_messages, expect_frame, frames_until_pong,
-    fresh_state, joined_socket, member_session, posted, seed_messages, send, spawn_server_with,
-    subscribed_socket, sync_rooms,
+    SCENARIO_DEADLINE, assert_chain, campus_with_owner, created_messages, expect_frame,
+    frames_until_pong, fresh_state, joined_socket, member_session, posted, seed_messages, send,
+    spawn_server_with, subscribed_socket, sync_rooms, synced_page,
 };
-use pulse_protocol::{
-    ClientNonce, MessageId, Role, RoomMessage, RoomSynced, SYNC_PAGE_LIMIT, ServerFrame,
-};
+use pulse_protocol::{ClientNonce, MessageId, Role, RoomMessage, SYNC_PAGE_LIMIT, ServerFrame};
 use rstest::rstest;
 use tokio::time::timeout;
 use uuid::Uuid;
-
-async fn synced(
-    socket: &mut common::ClientSocket,
-    room_id: pulse_protocol::RoomId,
-    after: Option<MessageId>,
-) -> RoomSynced {
-    send(socket, &sync_rooms(&[(room_id, after)])).await;
-    match expect_frame(socket).await {
-        ServerFrame::RoomSynced(page) => page,
-        other => panic!("expected room sync, got {other:?}"),
-    }
-}
 
 #[rstest]
 #[case::empty_room(0, None, vec![], false)]
@@ -61,7 +47,7 @@ async fn first_page_follows_cursor_rules(
         });
         let addr = spawn_server_with(state).await;
         let (mut socket, _) = joined_socket(addr, campus.id, &campus.owner.token).await;
-        let page = synced(&mut socket, room_id, after).await;
+        let page = synced_page(&mut socket, room_id, after).await;
         assert_eq!(page.room_id, room_id);
         assert_eq!(
             page.messages
@@ -100,7 +86,7 @@ async fn following_has_more_walks_every_message_once() {
         let mut walked = Vec::new();
         let mut page_sizes = Vec::new();
         loop {
-            let page = synced(&mut socket, room_id, cursor).await;
+            let page = synced_page(&mut socket, room_id, cursor).await;
             page_sizes.push(page.messages.len());
             cursor = page.messages.last().map(|message| message.message_id);
             walked.extend(page.messages);
@@ -145,7 +131,7 @@ async fn reconnect_with_cursor_returns_exactly_the_missed_messages(#[case] misse
                 .push(posted(&mut peer_socket, room_id, ClientNonce::generate(), &body).await);
         }
         let (mut reconnected, _) = joined_socket(addr, campus.id, &campus.owner.token).await;
-        let page = synced(&mut reconnected, room_id, Some(seen.message_id)).await;
+        let page = synced_page(&mut reconnected, room_id, Some(seen.message_id)).await;
         assert_eq!(page.messages, missed_messages);
         assert!(!page.has_more);
         let live = posted(&mut peer_socket, room_id, ClientNonce::generate(), "live").await;
@@ -208,13 +194,9 @@ async fn posting_during_sync_leaves_sync_and_live_complete(
             }
         }
         poster.await.expect("poster task");
-        let mut previous = cursor;
-        for (id, message) in &union {
-            assert_eq!(message.previous_message_id, Some(previous));
-            assert!(*id > previous);
-            previous = *id;
-        }
         assert_eq!(union.len(), expected_total);
+        let ordered = union.into_values().collect::<Vec<_>>();
+        assert_chain(&ordered, Some(cursor));
     })
     .await
     .expect("scenario deadline");

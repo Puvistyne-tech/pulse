@@ -16,6 +16,7 @@ import 'third_party/pulse_protocol/campus.dart';
 import 'third_party/pulse_protocol/frames.dart';
 import 'third_party/pulse_protocol/ids.dart';
 import 'third_party/pulse_protocol/link.dart';
+import 'third_party/pulse_protocol/lounge.dart';
 import 'third_party/pulse_protocol/media.dart';
 import 'third_party/pulse_protocol/mention.dart';
 import 'third_party/pulse_protocol/messaging.dart';
@@ -24,6 +25,7 @@ import 'third_party/pulse_protocol/reaction.dart';
 import 'third_party/pulse_protocol/search.dart';
 import 'third_party/pulse_protocol/shelf.dart';
 import 'third_party/pulse_protocol/snapshot.dart';
+import 'third_party/pulse_protocol/steward.dart';
 import 'third_party/pulse_protocol/thread.dart';
 import 'third_party/pulse_protocol/validation.dart';
 import 'third_party/pulse_protocol/version.dart';
@@ -36,8 +38,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     required super.portManager,
   });
 
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_StreamWriterPtr => wire
+      ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriterPtr;
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  StreamWriter
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    dynamic raw,
+  );
+
+  @protected
+  StreamWriter
+  dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    dynamic raw,
+  );
+
+  @protected
+  StreamWriter
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    dynamic raw,
+  );
+
+  @protected
+  StreamWriter
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    dynamic raw,
+  );
 
   @protected
   RustStreamSink<ClientSnapshot> dco_decode_StreamSink_client_snapshot_Sse(
@@ -76,6 +106,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AuthPhase dco_decode_auth_phase(dynamic raw);
+
+  @protected
+  AuthToken dco_decode_auth_token(dynamic raw);
 
   @protected
   BodySegment dco_decode_body_segment(dynamic raw);
@@ -123,6 +156,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField dco_decode_box_autoadd_input_field(dynamic raw);
 
   @protected
+  IssuedStewardToken dco_decode_box_autoadd_issued_steward_token(dynamic raw);
+
+  @protected
+  LoungeId dco_decode_box_autoadd_lounge_id(dynamic raw);
+
+  @protected
+  LoungeTicket dco_decode_box_autoadd_lounge_ticket(dynamic raw);
+
+  @protected
   MessageId dco_decode_box_autoadd_message_id(dynamic raw);
 
   @protected
@@ -162,6 +204,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignUpRequest dco_decode_box_autoadd_sign_up_request(dynamic raw);
 
   @protected
+  StewardTool dco_decode_box_autoadd_steward_tool(dynamic raw);
+
+  @protected
+  StreamId dco_decode_box_autoadd_stream_id(dynamic raw);
+
+  @protected
+  StreamState dco_decode_box_autoadd_stream_state(dynamic raw);
+
+  @protected
   SubscriptionState dco_decode_box_autoadd_subscription_state(dynamic raw);
 
   @protected
@@ -169,6 +220,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TimelineEntry dco_decode_box_autoadd_timeline_entry(dynamic raw);
+
+  @protected
+  ToolCallId dco_decode_box_autoadd_tool_call_id(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
@@ -243,6 +297,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField dco_decode_input_field(dynamic raw);
 
   @protected
+  IssuedStewardToken dco_decode_issued_steward_token(dynamic raw);
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
@@ -270,6 +327,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<InboxItem> dco_decode_list_inbox_item(dynamic raw);
 
   @protected
+  List<LoungeEntry> dco_decode_list_lounge_entry(dynamic raw);
+
+  @protected
+  List<LoungeParticipantView> dco_decode_list_lounge_participant_view(
+    dynamic raw,
+  );
+
+  @protected
   List<MentionRef> dco_decode_list_mention_ref(dynamic raw);
 
   @protected
@@ -288,16 +353,46 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Room> dco_decode_list_room(dynamic raw);
 
   @protected
+  List<RoomId> dco_decode_list_room_id(dynamic raw);
+
+  @protected
   List<SearchHit> dco_decode_list_search_hit(dynamic raw);
 
   @protected
   List<ShelfEntry> dco_decode_list_shelf_entry(dynamic raw);
 
   @protected
+  List<StewardEntry> dco_decode_list_steward_entry(dynamic raw);
+
+  @protected
   List<TimelineEntry> dco_decode_list_timeline_entry(dynamic raw);
 
   @protected
+  List<ToolDescriptor> dco_decode_list_tool_descriptor(dynamic raw);
+
+  @protected
   List<VaultEntry> dco_decode_list_vault_entry(dynamic raw);
+
+  @protected
+  LoungeEntry dco_decode_lounge_entry(dynamic raw);
+
+  @protected
+  LoungeId dco_decode_lounge_id(dynamic raw);
+
+  @protected
+  LoungeMediaState dco_decode_lounge_media_state(dynamic raw);
+
+  @protected
+  LoungeParticipantView dco_decode_lounge_participant_view(dynamic raw);
+
+  @protected
+  LoungeScope dco_decode_lounge_scope(dynamic raw);
+
+  @protected
+  LoungeSnapshot dco_decode_lounge_snapshot(dynamic raw);
+
+  @protected
+  LoungeTicket dco_decode_lounge_ticket(dynamic raw);
 
   @protected
   MentionRef dco_decode_mention_ref(dynamic raw);
@@ -335,6 +430,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField? dco_decode_opt_box_autoadd_input_field(dynamic raw);
 
   @protected
+  IssuedStewardToken? dco_decode_opt_box_autoadd_issued_steward_token(
+    dynamic raw,
+  );
+
+  @protected
+  LoungeId? dco_decode_opt_box_autoadd_lounge_id(dynamic raw);
+
+  @protected
+  LoungeTicket? dco_decode_opt_box_autoadd_lounge_ticket(dynamic raw);
+
+  @protected
   MessageId? dco_decode_opt_box_autoadd_message_id(dynamic raw);
 
   @protected
@@ -357,6 +463,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ShelfItemId? dco_decode_opt_box_autoadd_shelf_item_id(dynamic raw);
+
+  @protected
+  StewardTool? dco_decode_opt_box_autoadd_steward_tool(dynamic raw);
+
+  @protected
+  StreamState? dco_decode_opt_box_autoadd_stream_state(dynamic raw);
 
   @protected
   SubscriptionState? dco_decode_opt_box_autoadd_subscription_state(dynamic raw);
@@ -454,6 +566,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignUpRequest dco_decode_sign_up_request(dynamic raw);
 
   @protected
+  StewardEntry dco_decode_steward_entry(dynamic raw);
+
+  @protected
+  StewardSnapshot dco_decode_steward_snapshot(dynamic raw);
+
+  @protected
+  StewardTool dco_decode_steward_tool(dynamic raw);
+
+  @protected
+  StreamChunk dco_decode_stream_chunk(dynamic raw);
+
+  @protected
+  StreamId dco_decode_stream_id(dynamic raw);
+
+  @protected
+  StreamPhase dco_decode_stream_phase(dynamic raw);
+
+  @protected
+  StreamState dco_decode_stream_state(dynamic raw);
+
+  @protected
   SubscriptionState dco_decode_subscription_state(dynamic raw);
 
   @protected
@@ -467,6 +600,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TimelineSnapshot dco_decode_timeline_snapshot(dynamic raw);
+
+  @protected
+  ToolCallId dco_decode_tool_call_id(dynamic raw);
+
+  @protected
+  ToolDescriptor dco_decode_tool_descriptor(dynamic raw);
+
+  @protected
+  ToolErrorCode dco_decode_tool_error_code(dynamic raw);
 
   @protected
   int dco_decode_u_16(dynamic raw);
@@ -490,6 +632,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UploadState dco_decode_upload_state(dynamic raw);
 
   @protected
+  BigInt dco_decode_usize(dynamic raw);
+
+  @protected
   VaultEntry dco_decode_vault_entry(dynamic raw);
 
   @protected
@@ -503,6 +648,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  StreamWriter
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  StreamWriter
+  sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  StreamWriter
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  StreamWriter
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RustStreamSink<ClientSnapshot> sse_decode_StreamSink_client_snapshot_Sse(
@@ -538,6 +707,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AuthPhase sse_decode_auth_phase(SseDeserializer deserializer);
+
+  @protected
+  AuthToken sse_decode_auth_token(SseDeserializer deserializer);
 
   @protected
   BodySegment sse_decode_body_segment(SseDeserializer deserializer);
@@ -599,6 +771,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField sse_decode_box_autoadd_input_field(SseDeserializer deserializer);
 
   @protected
+  IssuedStewardToken sse_decode_box_autoadd_issued_steward_token(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  LoungeId sse_decode_box_autoadd_lounge_id(SseDeserializer deserializer);
+
+  @protected
+  LoungeTicket sse_decode_box_autoadd_lounge_ticket(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   MessageId sse_decode_box_autoadd_message_id(SseDeserializer deserializer);
 
   @protected
@@ -652,6 +837,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  StewardTool sse_decode_box_autoadd_steward_tool(SseDeserializer deserializer);
+
+  @protected
+  StreamId sse_decode_box_autoadd_stream_id(SseDeserializer deserializer);
+
+  @protected
+  StreamState sse_decode_box_autoadd_stream_state(SseDeserializer deserializer);
+
+  @protected
   SubscriptionState sse_decode_box_autoadd_subscription_state(
     SseDeserializer deserializer,
   );
@@ -665,6 +859,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TimelineEntry sse_decode_box_autoadd_timeline_entry(
     SseDeserializer deserializer,
   );
+
+  @protected
+  ToolCallId sse_decode_box_autoadd_tool_call_id(SseDeserializer deserializer);
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
@@ -753,6 +950,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField sse_decode_input_field(SseDeserializer deserializer);
 
   @protected
+  IssuedStewardToken sse_decode_issued_steward_token(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
@@ -790,6 +992,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<InboxItem> sse_decode_list_inbox_item(SseDeserializer deserializer);
 
   @protected
+  List<LoungeEntry> sse_decode_list_lounge_entry(SseDeserializer deserializer);
+
+  @protected
+  List<LoungeParticipantView> sse_decode_list_lounge_participant_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<MentionRef> sse_decode_list_mention_ref(SseDeserializer deserializer);
 
   @protected
@@ -812,10 +1022,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Room> sse_decode_list_room(SseDeserializer deserializer);
 
   @protected
+  List<RoomId> sse_decode_list_room_id(SseDeserializer deserializer);
+
+  @protected
   List<SearchHit> sse_decode_list_search_hit(SseDeserializer deserializer);
 
   @protected
   List<ShelfEntry> sse_decode_list_shelf_entry(SseDeserializer deserializer);
+
+  @protected
+  List<StewardEntry> sse_decode_list_steward_entry(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<TimelineEntry> sse_decode_list_timeline_entry(
@@ -823,7 +1041,35 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<ToolDescriptor> sse_decode_list_tool_descriptor(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<VaultEntry> sse_decode_list_vault_entry(SseDeserializer deserializer);
+
+  @protected
+  LoungeEntry sse_decode_lounge_entry(SseDeserializer deserializer);
+
+  @protected
+  LoungeId sse_decode_lounge_id(SseDeserializer deserializer);
+
+  @protected
+  LoungeMediaState sse_decode_lounge_media_state(SseDeserializer deserializer);
+
+  @protected
+  LoungeParticipantView sse_decode_lounge_participant_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  LoungeScope sse_decode_lounge_scope(SseDeserializer deserializer);
+
+  @protected
+  LoungeSnapshot sse_decode_lounge_snapshot(SseDeserializer deserializer);
+
+  @protected
+  LoungeTicket sse_decode_lounge_ticket(SseDeserializer deserializer);
 
   @protected
   MentionRef sse_decode_mention_ref(SseDeserializer deserializer);
@@ -869,6 +1115,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  IssuedStewardToken? sse_decode_opt_box_autoadd_issued_steward_token(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  LoungeId? sse_decode_opt_box_autoadd_lounge_id(SseDeserializer deserializer);
+
+  @protected
+  LoungeTicket? sse_decode_opt_box_autoadd_lounge_ticket(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   MessageId? sse_decode_opt_box_autoadd_message_id(
     SseDeserializer deserializer,
   );
@@ -903,6 +1162,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ShelfItemId? sse_decode_opt_box_autoadd_shelf_item_id(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  StewardTool? sse_decode_opt_box_autoadd_steward_tool(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  StreamState? sse_decode_opt_box_autoadd_stream_state(
     SseDeserializer deserializer,
   );
 
@@ -1010,6 +1279,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignUpRequest sse_decode_sign_up_request(SseDeserializer deserializer);
 
   @protected
+  StewardEntry sse_decode_steward_entry(SseDeserializer deserializer);
+
+  @protected
+  StewardSnapshot sse_decode_steward_snapshot(SseDeserializer deserializer);
+
+  @protected
+  StewardTool sse_decode_steward_tool(SseDeserializer deserializer);
+
+  @protected
+  StreamChunk sse_decode_stream_chunk(SseDeserializer deserializer);
+
+  @protected
+  StreamId sse_decode_stream_id(SseDeserializer deserializer);
+
+  @protected
+  StreamPhase sse_decode_stream_phase(SseDeserializer deserializer);
+
+  @protected
+  StreamState sse_decode_stream_state(SseDeserializer deserializer);
+
+  @protected
   SubscriptionState sse_decode_subscription_state(SseDeserializer deserializer);
 
   @protected
@@ -1023,6 +1313,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TimelineSnapshot sse_decode_timeline_snapshot(SseDeserializer deserializer);
+
+  @protected
+  ToolCallId sse_decode_tool_call_id(SseDeserializer deserializer);
+
+  @protected
+  ToolDescriptor sse_decode_tool_descriptor(SseDeserializer deserializer);
+
+  @protected
+  ToolErrorCode sse_decode_tool_error_code(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_16(SseDeserializer deserializer);
@@ -1046,6 +1345,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UploadState sse_decode_upload_state(SseDeserializer deserializer);
 
   @protected
+  BigInt sse_decode_usize(SseDeserializer deserializer);
+
+  @protected
   VaultEntry sse_decode_vault_entry(SseDeserializer deserializer);
 
   @protected
@@ -1060,6 +1362,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    StreamWriter self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    StreamWriter self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    StreamWriter self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    StreamWriter self,
     SseSerializer serializer,
   );
 
@@ -1107,6 +1437,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_auth_phase(AuthPhase self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_auth_token(AuthToken self, SseSerializer serializer);
 
   @protected
   void sse_encode_body_segment(BodySegment self, SseSerializer serializer);
@@ -1190,6 +1523,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_issued_steward_token(
+    IssuedStewardToken self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_lounge_id(
+    LoungeId self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_lounge_ticket(
+    LoungeTicket self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_message_id(
     MessageId self,
     SseSerializer serializer,
@@ -1262,6 +1613,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_steward_tool(
+    StewardTool self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_stream_id(
+    StreamId self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_stream_state(
+    StreamState self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_subscription_state(
     SubscriptionState self,
     SseSerializer serializer,
@@ -1276,6 +1645,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_timeline_entry(
     TimelineEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_tool_call_id(
+    ToolCallId self,
     SseSerializer serializer,
   );
 
@@ -1382,6 +1757,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_input_field(InputField self, SseSerializer serializer);
 
   @protected
+  void sse_encode_issued_steward_token(
+    IssuedStewardToken self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
@@ -1433,6 +1814,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_lounge_entry(
+    List<LoungeEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_lounge_participant_view(
+    List<LoungeParticipantView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_mention_ref(
     List<MentionRef> self,
     SseSerializer serializer,
@@ -1463,6 +1856,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_room(List<Room> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_room_id(List<RoomId> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_search_hit(
     List<SearchHit> self,
     SseSerializer serializer,
@@ -1475,8 +1871,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_steward_entry(
+    List<StewardEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_timeline_entry(
     List<TimelineEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_tool_descriptor(
+    List<ToolDescriptor> self,
     SseSerializer serializer,
   );
 
@@ -1485,6 +1893,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     List<VaultEntry> self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_lounge_entry(LoungeEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_lounge_id(LoungeId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_lounge_media_state(
+    LoungeMediaState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_lounge_participant_view(
+    LoungeParticipantView self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_lounge_scope(LoungeScope self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_lounge_snapshot(
+    LoungeSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_lounge_ticket(LoungeTicket self, SseSerializer serializer);
 
   @protected
   void sse_encode_mention_ref(MentionRef self, SseSerializer serializer);
@@ -1544,6 +1982,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_issued_steward_token(
+    IssuedStewardToken? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_lounge_id(
+    LoungeId? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_lounge_ticket(
+    LoungeTicket? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_message_id(
     MessageId? self,
     SseSerializer serializer,
@@ -1588,6 +2044,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_shelf_item_id(
     ShelfItemId? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_steward_tool(
+    StewardTool? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_stream_state(
+    StreamState? self,
     SseSerializer serializer,
   );
 
@@ -1718,6 +2186,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_sign_up_request(SignUpRequest self, SseSerializer serializer);
 
   @protected
+  void sse_encode_steward_entry(StewardEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_steward_snapshot(
+    StewardSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_steward_tool(StewardTool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_stream_chunk(StreamChunk self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_stream_id(StreamId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_stream_phase(StreamPhase self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_stream_state(StreamState self, SseSerializer serializer);
+
+  @protected
   void sse_encode_subscription_state(
     SubscriptionState self,
     SseSerializer serializer,
@@ -1742,6 +2234,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_tool_call_id(ToolCallId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tool_descriptor(
+    ToolDescriptor self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_tool_error_code(ToolErrorCode self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_16(int self, SseSerializer serializer);
 
   @protected
@@ -1761,6 +2265,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_upload_state(UploadState self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_usize(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_vault_entry(VaultEntry self, SseSerializer serializer);
@@ -1787,4 +2294,38 @@ class RustLibWire implements BaseWire {
 
   RustLibWire(ffi.DynamicLibrary dynamicLibrary)
     : _lookup = dynamicLibrary.lookup;
+
+  void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriterPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_pulse_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter',
+      );
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter =
+      _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriterPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriterPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_pulse_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter',
+      );
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriter =
+      _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerStreamWriterPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 }

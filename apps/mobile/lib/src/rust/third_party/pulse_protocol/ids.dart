@@ -113,6 +113,28 @@ class DraftId {
           field0 == other.field0;
 }
 
+class LoungeId {
+  final UuidValue field0;
+
+  const LoungeId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsLoungeIdAsUuid(that: this);
+
+  static Future<LoungeId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsLoungeIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LoungeId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
 class MessageId {
   final UuidValue field0;
 
@@ -197,6 +219,53 @@ class ShelfItemId {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is ShelfItemId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
+class StreamId {
+  final UuidValue field0;
+
+  const StreamId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsStreamIdAsUuid(that: this);
+
+  Future<ClientNonce> clientNonce() =>
+      RustLib.instance.api.pulseProtocolIdsStreamIdClientNonce(that: this);
+
+  static Future<StreamId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsStreamIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StreamId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
+class ToolCallId {
+  final UuidValue field0;
+
+  const ToolCallId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsToolCallIdAsUuid(that: this);
+
+  static Future<ToolCallId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsToolCallIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ToolCallId &&
           runtimeType == other.runtimeType &&
           field0 == other.field0;
 }

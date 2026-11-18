@@ -130,6 +130,8 @@ Future<RecordedIntents> pumpRoom(
   WidgetTester tester,
   TimelineSnapshot timeline, {
   List<ReminderPreset> presets = const [],
+  BigInt? pickerAnchorMs,
+  BigInt? pickerLatestMs,
 }) async {
   final recorded = RecordedIntents();
   await pumpView(
@@ -139,6 +141,8 @@ Future<RecordedIntents> pumpRoom(
         timeline: timeline,
         intents: recorded.intents,
         presets: presets,
+        pickerAnchorMs: pickerAnchorMs,
+        pickerLatestMs: pickerLatestMs,
       ),
     ),
   );
@@ -194,6 +198,38 @@ void main() {
       ].map((body) => tester.getTopLeft(find.text(body)).dy).toList();
       expect(tops, orderedEquals([...tops]..sort()));
     });
+  });
+
+  group('steward entries', () {
+    for (final (name, entry, badge, state) in [
+      ('a human author', gracesEntryWith(), false, null),
+      ('a steward author', gracesEntryWith(authorIsSteward: true), true, null),
+      (
+        'a streaming steward',
+        gracesEntryWith(authorIsSteward: true, stream: StreamState.streaming),
+        true,
+        'Streaming',
+      ),
+      (
+        'a finalizing steward',
+        gracesEntryWith(authorIsSteward: true, stream: StreamState.finalizing),
+        true,
+        'Finishing',
+      ),
+    ]) {
+      testWidgets('$name shows the badge and stream state it has', (
+        tester,
+      ) async {
+        await pumpRoom(tester, timelineOf([entry]));
+        expect(find.text('Steward'), badge ? findsOneWidget : findsNothing);
+        for (final label in ['Streaming', 'Finishing']) {
+          expect(
+            find.text(label),
+            label == state ? findsOneWidget : findsNothing,
+          );
+        }
+      });
+    }
   });
 
   group('body segments', () {
@@ -690,6 +726,36 @@ void main() {
         ]);
       });
     }
+
+    testWidgets('the entry menu passes remindAtMs built from the anchor', (
+      tester,
+    ) async {
+      final recorded = await pumpRoom(
+        tester,
+        timelineOf([gracesEntryWith()]),
+        presets: allPresets,
+        pickerAnchorMs: pickerAnchor,
+        pickerLatestMs: pickerLatest,
+      );
+      await tester.tap(find.text('Shelf'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('shelfCustomTime')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(recorded.calls, [
+        (
+          'updateShelf',
+          roomAId,
+          messageAId,
+          ShelfAction.save,
+          null,
+          pickerAnchor,
+        ),
+      ]);
+    });
 
     testWidgets('pending entries have no shelf menu', (tester) async {
       await pumpRoom(tester, timelineOf([pendingEntry]), presets: allPresets);

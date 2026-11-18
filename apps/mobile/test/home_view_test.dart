@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pulse_mobile/home/home_view.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/lounge.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/media.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/shelf.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
@@ -37,6 +38,22 @@ final homeCases = <HomeCase>[
     '#commons',
     '#courtyard',
   ], []),
+  HomeCase(
+    'signed in with a lounge',
+    withExtras(
+      signedInWithRooms,
+      lounges: loungesOf([
+        loungeEntryOf(
+          loungeAId,
+          LoungeScope.room,
+          roomSlug: 'commons',
+          participants: [participantOf('Grace')],
+        ),
+      ]),
+    ),
+    ['Lounges', '#commons lounge', 'Grace'],
+    ['Join'],
+  ),
   HomeCase(
     'signed in with messages',
     signedInWithMessages,

@@ -770,7 +770,16 @@ impl TimelineMachine {
             ServerFrame::AgentStreamChunk(chunk) => {
                 if chunk.campus_id == self.campus_id {
                     self.stewards.observe(chunk.steward_id);
+                    let known = chunk.message_id.is_some_and(|message_id| {
+                        self.logs
+                            .get(&chunk.room_id)
+                            .is_some_and(|log| log.messages.contains_key(&message_id))
+                    });
+                    let nonce = chunk.stream_id.client_nonce();
                     self.streams.apply(chunk, self.clock_ms);
+                    if known {
+                        self.streams.confirm(nonce);
+                    }
                 }
                 Vec::new()
             }

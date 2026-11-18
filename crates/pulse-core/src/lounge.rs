@@ -117,7 +117,11 @@ impl LoungeTracker {
                 }
             }
             LoungeIntent::MediaReported(state) => {
-                self.media = state;
+                self.media = if self.ticket.is_some() {
+                    state
+                } else {
+                    LoungeMediaState::Idle
+                };
                 Vec::new()
             }
         }

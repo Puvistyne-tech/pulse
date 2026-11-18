@@ -1,7 +1,6 @@
 use pulse_protocol::{
-    AccountId, CampusId, ClientNonce, MessageId, MessageRejection, Permission, Role, RoomCursor,
-    RoomId, RoomMessage, RoomSynced, SYNC_PAGE_LIMIT, SendMessage, normalize_message_body,
-    role_permits,
+    AccountId, CampusId, ClientNonce, MessageId, MessageRejection, Permission, RoomCursor, RoomId,
+    RoomMessage, RoomSynced, SYNC_PAGE_LIMIT, SendMessage, normalize_message_body, role_permits,
 };
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
@@ -87,14 +86,6 @@ pub async fn post_message(
     author_id: AccountId,
     request: SendMessage,
 ) -> Result<PostOutcome, PostFailure> {
-    let body = normalize_message_body(&request.body)
-        .map_err(|_| PostFailure::Rejected(MessageRejection::InvalidBody));
-    let allowed =
-        |role: Option<Role>| role.is_some_and(|role| role_permits(role, Permission::PostMessage));
-    if !allowed(campus_role(db, campus_id, author_id).await?) {
-        return Err(PostFailure::Rejected(MessageRejection::Forbidden));
-    }
-    let body = body?;
     let mut transaction = db.begin().await?;
     let room_locked = sqlx::query_scalar::<_, i32>(
         "SELECT 1 FROM rooms WHERE campus_id = $1 AND room_id = $2 FOR NO KEY UPDATE",
@@ -106,17 +97,14 @@ pub async fn post_message(
     if room_locked.is_none() {
         return Err(PostFailure::Rejected(MessageRejection::UnknownRoom));
     }
-    let role_text = sqlx::query_scalar::<_, String>(
-        "SELECT role FROM campus_members WHERE campus_id = $1 AND account_id = $2",
-    )
-    .bind(campus_id.as_uuid())
-    .bind(author_id.as_uuid())
-    .fetch_optional(&mut *transaction)
-    .await?;
-    let role = role_text.and_then(|text| text.parse::<Role>().ok());
-    if !allowed(role) {
+    let permitted = campus_role(&mut *transaction, campus_id, author_id)
+        .await?
+        .is_some_and(|role| role_permits(role, Permission::PostMessage));
+    if !permitted {
         return Err(PostFailure::Rejected(MessageRejection::Forbidden));
     }
+    let body = normalize_message_body(&request.body)
+        .map_err(|_| PostFailure::Rejected(MessageRejection::InvalidBody))?;
     if let Some(original) =
         find_by_nonce(&mut transaction, campus_id, author_id, request.client_nonce).await?
     {

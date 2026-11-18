@@ -10,12 +10,18 @@ import {
   inboxItemOf,
   inboxOf,
   noopIntents,
+  searchHitOf,
+  searchOf,
+  shelfEntryOf,
+  shelfOf,
   signedInNoCampus,
   signedInWithMessages,
   signedInWithRooms,
   signedOut,
   signedOutWithError,
   threadOf,
+  vaultEntryOf,
+  vaultOf,
   withExtras,
 } from "./test/fixtures";
 
@@ -171,5 +177,73 @@ describe("inbox keys", () => {
     unmount();
     fireEvent.keyDown(window, { key: "i", metaKey: true });
     expect(intents.toggleInbox).not.toHaveBeenCalled();
+  });
+});
+
+const openSearch = withExtras(signedInWithRooms, {
+  search: searchOf([searchHitOf(MESSAGE_A)]),
+});
+const openShelf = withExtras(signedInWithRooms, {
+  shelf: shelfOf({ due: [shelfEntryOf("due", MESSAGE_A)] }),
+});
+const openVault = withExtras(signedInWithRooms, {
+  vault: vaultOf([vaultEntryOf("links", MESSAGE_A, { link: "https://example.org/a" })]),
+});
+const reminded = withExtras(signedInWithRooms, {
+  shelf: shelfOf(
+    { due: [shelfEntryOf("due", MESSAGE_A)] },
+    { open: false, latest_reminder: shelfEntryOf("due", MESSAGE_A, { preview: "call back" }) },
+  ),
+});
+
+describe("search, vault and shelf wiring", () => {
+  test.each<[string, ClientSnapshot, string, boolean]>([
+    ["closed search hides the palette", signedInWithRooms, "Search", false],
+    ["open search shows the palette", openSearch, "Search", true],
+    ["closed shelf hides the shelf", signedInWithRooms, "Shelf", false],
+    ["open shelf shows the shelf", openShelf, "Shelf", true],
+    ["closed vault hides the vault", signedInWithRooms, "Vault", false],
+    ["open vault shows the vault", openVault, "Vault", true],
+    ["no reminder hides the notice", signedInWithRooms, "Reminder", false],
+    ["a reminder shows the notice", reminded, "Reminder", true],
+  ])("%s", (_name, snapshot, label, visible) => {
+    render(<AppView snapshot={snapshot} intents={noopIntents()} />);
+    expect(screen.queryByLabelText(label) !== null).toBe(visible);
+  });
+
+  test.each<[string, string, "toggleSearch" | "toggleShelf"]>([
+    ["the search button", "Search", "toggleSearch"],
+    ["the shelf button", "Shelf", "toggleShelf"],
+  ])("%s toggles its panel", (_name, label, call) => {
+    const intents = noopIntents();
+    render(<AppView snapshot={signedInWithRooms} intents={intents} />);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${label}`) }));
+    expectOnlyCalled(intents, call);
+  });
+
+  test("the shelf button shows the due count", () => {
+    render(<AppView snapshot={reminded} intents={noopIntents()} />);
+    expect(screen.getByLabelText("Due reminders").textContent).toBe("1");
+  });
+
+  test("dismissing the notice calls its intent", () => {
+    const intents = noopIntents();
+    render(<AppView snapshot={reminded} intents={intents} />);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expectOnlyCalled(intents, "dismissReminder");
+  });
+
+  test.each<[string, ClientSnapshot, Partial<KeyboardEventInit>, "toggleSearch" | "moveSearchSelection" | null, unknown[]]>([
+    ["cmd+k opens the palette", signedInWithRooms, { key: "k", metaKey: true }, "toggleSearch", []],
+    ["ctrl+k closes the palette", openSearch, { key: "k", ctrlKey: true }, "toggleSearch", []],
+    ["arrows move through hits", openSearch, { key: "ArrowDown" }, "moveSearchSelection", ["next"]],
+    ["arrows are ignored while closed", signedInWithRooms, { key: "ArrowDown" }, null, []],
+  ])("%s", (_name, snapshot, key, call, args) => {
+    const intents = noopIntents();
+    render(<AppView snapshot={snapshot} intents={intents} />);
+    const event = createEvent.keyDown(window, { cancelable: true, ...key });
+    fireEvent(window, event);
+    expect(event.defaultPrevented).toBe(call !== null);
+    expectOnlyCalled(intents, call, args);
   });
 });

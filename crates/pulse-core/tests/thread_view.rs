@@ -4,9 +4,9 @@ use fixtures::{
     NONCE_A, ROOM_A, SummarySpec, accepted_frame, chain_message, clock, close_thread,
     created_frame, inbox_synced_frame, mark_read_frame, message_id, open_thread, own_reply,
     peer_reply, received, rejected_frame, reply_frame, reply_intent, settled_machine, step_all,
-    subscribe, subscription_frame, sync_frame_at, sync_inbox_frame, sync_thread_frame,
-    thread_changed_frame, thread_rejected_frame, thread_synced_frame, timeline_connected,
-    title_intent, topic_title_frame, with_replies,
+    subscribe, subscription_frame, sync_frame_at, sync_inbox_frame, sync_shelf_frame,
+    sync_thread_frame, thread_changed_frame, thread_rejected_frame, thread_synced_frame,
+    timeline_connected, title_intent, topic_title_frame, with_replies,
 };
 use pulse_core::{THREAD_BURIED_DEPTH, THREAD_VIEW_FOLLOW_MS, TimelineEvent};
 use pulse_protocol::{
@@ -137,7 +137,7 @@ fn viewing_follows_after_the_injected_delay(
     vec![
         sync_thread_frame(1, None),
         resync(),
-        sync_inbox_frame(),
+        sync_inbox_frame(), sync_shelf_frame(),
         follow(1),
         sync_thread_frame(1, None),
     ],
@@ -148,7 +148,7 @@ fn viewing_follows_after_the_injected_delay(
         sync_thread_frame(1, None),
         follow(1),
         resync(),
-        sync_inbox_frame(),
+        sync_inbox_frame(), sync_shelf_frame(),
         follow(1),
         sync_thread_frame(1, None),
     ],
@@ -165,7 +165,7 @@ fn viewing_follows_after_the_injected_delay(
         sync_thread_frame(1, None),
         follow(1),
         resync(),
-        sync_inbox_frame(),
+        sync_inbox_frame(), sync_shelf_frame(),
         sync_thread_frame(1, None),
     ],
 )]
@@ -181,11 +181,11 @@ fn viewing_follows_after_the_injected_delay(
     vec![
         sync_thread_frame(1, None),
         resync(),
-        sync_inbox_frame(),
+        sync_inbox_frame(), sync_shelf_frame(),
         follow(1),
         sync_thread_frame(1, None),
         resync(),
-        sync_inbox_frame(),
+        sync_inbox_frame(), sync_shelf_frame(),
         follow(1),
         sync_thread_frame(1, None),
     ],
@@ -197,15 +197,15 @@ fn viewing_follows_after_the_injected_delay(
         TimelineEvent::Disconnected,
         reconnect(),
     ],
-    vec![sync_thread_frame(1, None), resync(), sync_inbox_frame()],
+    vec![sync_thread_frame(1, None), resync(), sync_inbox_frame(), sync_shelf_frame()],
 )]
 #[case::closed_thread_is_not_requested_after_reconnect(
     vec![open_thread(1, 1000), close_thread(), TimelineEvent::Disconnected, reconnect()],
-    vec![sync_thread_frame(1, None), resync(), sync_inbox_frame()],
+    vec![sync_thread_frame(1, None), resync(), sync_inbox_frame(), sync_shelf_frame()],
 )]
 #[case::open_while_offline_emits_nothing_until_connect(
     vec![TimelineEvent::Disconnected, open_thread(1, 1000), reconnect()],
-    vec![resync(), sync_inbox_frame(), sync_thread_frame(1, None)],
+    vec![resync(), sync_inbox_frame(), sync_shelf_frame(), sync_thread_frame(1, None)],
 )]
 fn reconnect_resumes_the_open_thread_and_pending_follow(
     #[case] events: Vec<TimelineEvent>,
@@ -561,6 +561,7 @@ fn offline_reply_is_queued_and_sent_on_connect() {
         vec![
             resync(),
             sync_inbox_frame(),
+            sync_shelf_frame(),
             reply_frame(1, NONCE_A, "later"),
             sync_thread_frame(1, None),
         ]

@@ -4,6 +4,7 @@ import 'auth.dart';
 import 'campus.dart';
 import 'frames.dart';
 import 'ids.dart';
+import 'media.dart';
 import 'mention.dart';
 import 'messaging.dart';
 
@@ -11,8 +12,48 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';
 
 import 'rbac.dart';
+import 'shelf.dart';
 import 'thread.dart';
 import 'version.dart';
+
+class AttachmentView {
+  final AttachmentId attachmentId;
+  final String fileName;
+  final String contentType;
+  final AttachmentKind kind;
+  final BigInt byteSize;
+  final String? url;
+
+  const AttachmentView({
+    required this.attachmentId,
+    required this.fileName,
+    required this.contentType,
+    required this.kind,
+    required this.byteSize,
+    this.url,
+  });
+
+  @override
+  int get hashCode =>
+      attachmentId.hashCode ^
+      fileName.hashCode ^
+      contentType.hashCode ^
+      kind.hashCode ^
+      byteSize.hashCode ^
+      url.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AttachmentView &&
+          runtimeType == other.runtimeType &&
+          attachmentId == other.attachmentId &&
+          fileName == other.fileName &&
+          contentType == other.contentType &&
+          kind == other.kind &&
+          byteSize == other.byteSize &&
+          url == other.url;
+}
 
 enum AuthPhase { signedOut, authenticating, signedIn }
 
@@ -23,6 +64,9 @@ class ClientSnapshot {
   final TimelineSnapshot timeline;
   final ThreadSnapshot thread;
   final InboxSnapshot inbox;
+  final SearchSnapshot search;
+  final VaultSnapshot vault;
+  final ShelfSnapshot shelf;
 
   const ClientSnapshot({
     required this.sequence,
@@ -31,6 +75,9 @@ class ClientSnapshot {
     required this.timeline,
     required this.thread,
     required this.inbox,
+    required this.search,
+    required this.vault,
+    required this.shelf,
   });
 
   @override
@@ -40,7 +87,10 @@ class ClientSnapshot {
       session.hashCode ^
       timeline.hashCode ^
       thread.hashCode ^
-      inbox.hashCode;
+      inbox.hashCode ^
+      search.hashCode ^
+      vault.hashCode ^
+      shelf.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -52,7 +102,10 @@ class ClientSnapshot {
           session == other.session &&
           timeline == other.timeline &&
           thread == other.thread &&
-          inbox == other.inbox;
+          inbox == other.inbox &&
+          search == other.search &&
+          vault == other.vault &&
+          shelf == other.shelf;
 }
 
 enum ConnectionPhase {
@@ -111,6 +164,63 @@ class ConnectionSnapshot {
 }
 
 enum DeliveryState { pending, confirmed, failed }
+
+class DraftAttachmentView {
+  final DraftId draftId;
+  final RoomId roomId;
+  final String fileName;
+  final AttachmentKind kind;
+  final BigInt byteSize;
+  final UploadState upload;
+
+  const DraftAttachmentView({
+    required this.draftId,
+    required this.roomId,
+    required this.fileName,
+    required this.kind,
+    required this.byteSize,
+    required this.upload,
+  });
+
+  @override
+  int get hashCode =>
+      draftId.hashCode ^
+      roomId.hashCode ^
+      fileName.hashCode ^
+      kind.hashCode ^
+      byteSize.hashCode ^
+      upload.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DraftAttachmentView &&
+          runtimeType == other.runtimeType &&
+          draftId == other.draftId &&
+          roomId == other.roomId &&
+          fileName == other.fileName &&
+          kind == other.kind &&
+          byteSize == other.byteSize &&
+          upload == other.upload;
+}
+
+class HighlightSpan {
+  final String text;
+  final bool matched;
+
+  const HighlightSpan({required this.text, required this.matched});
+
+  @override
+  int get hashCode => text.hashCode ^ matched.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HighlightSpan &&
+          runtimeType == other.runtimeType &&
+          text == other.text &&
+          matched == other.matched;
+}
 
 class InboxItem {
   final InboxItemKind kind;
@@ -272,6 +382,91 @@ class ReplyPreview {
           preview == other.preview;
 }
 
+class SearchHit {
+  final RoomId roomId;
+  final MessageId messageId;
+  final MessageId? threadRootId;
+  final String authorDisplayName;
+  final String? topicTitle;
+  final List<HighlightSpan> snippet;
+  final int score;
+
+  const SearchHit({
+    required this.roomId,
+    required this.messageId,
+    this.threadRootId,
+    required this.authorDisplayName,
+    this.topicTitle,
+    required this.snippet,
+    required this.score,
+  });
+
+  @override
+  int get hashCode =>
+      roomId.hashCode ^
+      messageId.hashCode ^
+      threadRootId.hashCode ^
+      authorDisplayName.hashCode ^
+      topicTitle.hashCode ^
+      snippet.hashCode ^
+      score.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SearchHit &&
+          runtimeType == other.runtimeType &&
+          roomId == other.roomId &&
+          messageId == other.messageId &&
+          threadRootId == other.threadRootId &&
+          authorDisplayName == other.authorDisplayName &&
+          topicTitle == other.topicTitle &&
+          snippet == other.snippet &&
+          score == other.score;
+}
+
+class SearchSnapshot {
+  final bool open;
+  final String query;
+  final List<SearchHit> hits;
+  final int? selectedIndex;
+  final bool searching;
+  final ApiError? error;
+
+  const SearchSnapshot({
+    required this.open,
+    required this.query,
+    required this.hits,
+    this.selectedIndex,
+    required this.searching,
+    this.error,
+  });
+
+  static Future<SearchSnapshot> default_() =>
+      RustLib.instance.api.pulseProtocolSnapshotSearchSnapshotDefault();
+
+  @override
+  int get hashCode =>
+      open.hashCode ^
+      query.hashCode ^
+      hits.hashCode ^
+      selectedIndex.hashCode ^
+      searching.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SearchSnapshot &&
+          runtimeType == other.runtimeType &&
+          open == other.open &&
+          query == other.query &&
+          hits == other.hits &&
+          selectedIndex == other.selectedIndex &&
+          searching == other.searching &&
+          error == other.error;
+}
+
 class SessionSnapshot {
   final AuthPhase auth;
   final AccountProfile? account;
@@ -316,6 +511,107 @@ class SessionSnapshot {
           rooms == other.rooms &&
           activeRoomId == other.activeRoomId &&
           busy == other.busy &&
+          error == other.error;
+}
+
+class ShelfEntry {
+  final ShelfItemId? shelfItemId;
+  final RoomId roomId;
+  final MessageId messageId;
+  final String authorDisplayName;
+  final String preview;
+  final BigInt? remindAtMs;
+  final BigInt? doneAtMs;
+  final ShelfBucket bucket;
+  final bool pending;
+
+  const ShelfEntry({
+    this.shelfItemId,
+    required this.roomId,
+    required this.messageId,
+    required this.authorDisplayName,
+    required this.preview,
+    this.remindAtMs,
+    this.doneAtMs,
+    required this.bucket,
+    required this.pending,
+  });
+
+  @override
+  int get hashCode =>
+      shelfItemId.hashCode ^
+      roomId.hashCode ^
+      messageId.hashCode ^
+      authorDisplayName.hashCode ^
+      preview.hashCode ^
+      remindAtMs.hashCode ^
+      doneAtMs.hashCode ^
+      bucket.hashCode ^
+      pending.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShelfEntry &&
+          runtimeType == other.runtimeType &&
+          shelfItemId == other.shelfItemId &&
+          roomId == other.roomId &&
+          messageId == other.messageId &&
+          authorDisplayName == other.authorDisplayName &&
+          preview == other.preview &&
+          remindAtMs == other.remindAtMs &&
+          doneAtMs == other.doneAtMs &&
+          bucket == other.bucket &&
+          pending == other.pending;
+}
+
+class ShelfSnapshot {
+  final bool open;
+  final List<ShelfEntry> due;
+  final List<ShelfEntry> upcoming;
+  final List<ShelfEntry> done;
+  final int dueCount;
+  final ShelfEntry? latestReminder;
+  final List<ReminderPreset> presets;
+  final ApiError? error;
+
+  const ShelfSnapshot({
+    required this.open,
+    required this.due,
+    required this.upcoming,
+    required this.done,
+    required this.dueCount,
+    this.latestReminder,
+    required this.presets,
+    this.error,
+  });
+
+  static Future<ShelfSnapshot> default_() =>
+      RustLib.instance.api.pulseProtocolSnapshotShelfSnapshotDefault();
+
+  @override
+  int get hashCode =>
+      open.hashCode ^
+      due.hashCode ^
+      upcoming.hashCode ^
+      done.hashCode ^
+      dueCount.hashCode ^
+      latestReminder.hashCode ^
+      presets.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShelfSnapshot &&
+          runtimeType == other.runtimeType &&
+          open == other.open &&
+          due == other.due &&
+          upcoming == other.upcoming &&
+          done == other.done &&
+          dueCount == other.dueCount &&
+          latestReminder == other.latestReminder &&
+          presets == other.presets &&
           error == other.error;
 }
 
@@ -418,6 +714,10 @@ class TimelineEntry {
   final ThreadPreview? thread;
   final DeliveryState delivery;
   final MessageRejection? rejection;
+  final List<AttachmentView> attachments;
+  final List<DraftAttachmentView> pendingDrafts;
+  final bool pinned;
+  final bool shelved;
 
   const TimelineEntry({
     required this.clientNonce,
@@ -433,6 +733,10 @@ class TimelineEntry {
     this.thread,
     required this.delivery,
     this.rejection,
+    required this.attachments,
+    required this.pendingDrafts,
+    required this.pinned,
+    required this.shelved,
   });
 
   @override
@@ -449,7 +753,11 @@ class TimelineEntry {
       reactions.hashCode ^
       thread.hashCode ^
       delivery.hashCode ^
-      rejection.hashCode;
+      rejection.hashCode ^
+      attachments.hashCode ^
+      pendingDrafts.hashCode ^
+      pinned.hashCode ^
+      shelved.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -468,7 +776,11 @@ class TimelineEntry {
           reactions == other.reactions &&
           thread == other.thread &&
           delivery == other.delivery &&
-          rejection == other.rejection;
+          rejection == other.rejection &&
+          attachments == other.attachments &&
+          pendingDrafts == other.pendingDrafts &&
+          pinned == other.pinned &&
+          shelved == other.shelved;
 }
 
 class TimelineSnapshot {
@@ -477,6 +789,10 @@ class TimelineSnapshot {
   final bool syncing;
   final ApiError? error;
   final List<String> reactionPalette;
+  final List<DraftAttachmentView> drafts;
+  final MessageId? focusMessageId;
+  final bool canPin;
+  final bool canUpload;
 
   const TimelineSnapshot({
     this.roomId,
@@ -484,6 +800,10 @@ class TimelineSnapshot {
     required this.syncing,
     this.error,
     required this.reactionPalette,
+    required this.drafts,
+    this.focusMessageId,
+    required this.canPin,
+    required this.canUpload,
   });
 
   @override
@@ -492,7 +812,11 @@ class TimelineSnapshot {
       entries.hashCode ^
       syncing.hashCode ^
       error.hashCode ^
-      reactionPalette.hashCode;
+      reactionPalette.hashCode ^
+      drafts.hashCode ^
+      focusMessageId.hashCode ^
+      canPin.hashCode ^
+      canUpload.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -503,5 +827,104 @@ class TimelineSnapshot {
           entries == other.entries &&
           syncing == other.syncing &&
           error == other.error &&
-          reactionPalette == other.reactionPalette;
+          reactionPalette == other.reactionPalette &&
+          drafts == other.drafts &&
+          focusMessageId == other.focusMessageId &&
+          canPin == other.canPin &&
+          canUpload == other.canUpload;
+}
+
+enum UploadState { uploading, uploaded, failed }
+
+class VaultEntry {
+  final VaultTab tab;
+  final RoomId roomId;
+  final MessageId messageId;
+  final String authorDisplayName;
+  final String preview;
+  final AttachmentView? attachment;
+  final String? link;
+  final BigInt? pinnedAtMs;
+
+  const VaultEntry({
+    required this.tab,
+    required this.roomId,
+    required this.messageId,
+    required this.authorDisplayName,
+    required this.preview,
+    this.attachment,
+    this.link,
+    this.pinnedAtMs,
+  });
+
+  @override
+  int get hashCode =>
+      tab.hashCode ^
+      roomId.hashCode ^
+      messageId.hashCode ^
+      authorDisplayName.hashCode ^
+      preview.hashCode ^
+      attachment.hashCode ^
+      link.hashCode ^
+      pinnedAtMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VaultEntry &&
+          runtimeType == other.runtimeType &&
+          tab == other.tab &&
+          roomId == other.roomId &&
+          messageId == other.messageId &&
+          authorDisplayName == other.authorDisplayName &&
+          preview == other.preview &&
+          attachment == other.attachment &&
+          link == other.link &&
+          pinnedAtMs == other.pinnedAtMs;
+}
+
+class VaultSnapshot {
+  final bool open;
+  final RoomId? roomId;
+  final VaultTab tab;
+  final List<VaultEntry> entries;
+  final bool loading;
+  final bool hasMore;
+  final ApiError? error;
+
+  const VaultSnapshot({
+    required this.open,
+    this.roomId,
+    required this.tab,
+    required this.entries,
+    required this.loading,
+    required this.hasMore,
+    this.error,
+  });
+
+  static Future<VaultSnapshot> default_() =>
+      RustLib.instance.api.pulseProtocolSnapshotVaultSnapshotDefault();
+
+  @override
+  int get hashCode =>
+      open.hashCode ^
+      roomId.hashCode ^
+      tab.hashCode ^
+      entries.hashCode ^
+      loading.hashCode ^
+      hasMore.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VaultSnapshot &&
+          runtimeType == other.runtimeType &&
+          open == other.open &&
+          roomId == other.roomId &&
+          tab == other.tab &&
+          entries == other.entries &&
+          loading == other.loading &&
+          hasMore == other.hasMore &&
+          error == other.error;
 }

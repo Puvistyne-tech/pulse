@@ -19,3 +19,4 @@ tauri-build = { workspace = true }
 tauri = { workspace = true }
 pulse-core = { workspace = true, features = ["native"] }
 pulse-protocol = { workspace = true }
+percent-encoding = "2"

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::ids::{AccountId, CampusId, ClientNonce, MessageId, RoomId};
+use crate::ids::{AccountId, AttachmentId, CampusId, ClientNonce, MessageId, RoomId};
+use crate::media::{Attachment, PinMark};
 
 pub const SYNC_PAGE_LIMIT: usize = 100;
 pub const SYNC_MAX_ROOMS: usize = 256;
@@ -34,6 +35,8 @@ pub struct RoomMessage {
     pub latest_reply_id: Option<MessageId>,
     pub mentions: Vec<MentionRef>,
     pub reactions: Vec<ReactionTally>,
+    pub attachments: Vec<Attachment>,
+    pub pin: Option<PinMark>,
     #[ts(type = "number")]
     pub activity_seq: u64,
 }
@@ -44,6 +47,8 @@ pub struct SendMessage {
     pub client_nonce: ClientNonce,
     pub body: String,
     pub thread_root_id: Option<MessageId>,
+    #[serde(default)]
+    pub attachment_ids: Vec<AttachmentId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -81,6 +86,7 @@ pub enum MessageRejection {
     InvalidBody,
     UnknownRoom,
     UnknownThread,
+    InvalidAttachment,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

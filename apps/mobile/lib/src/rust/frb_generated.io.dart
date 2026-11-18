@@ -15,10 +15,14 @@ import 'third_party/pulse_protocol/auth.dart';
 import 'third_party/pulse_protocol/campus.dart';
 import 'third_party/pulse_protocol/frames.dart';
 import 'third_party/pulse_protocol/ids.dart';
+import 'third_party/pulse_protocol/link.dart';
+import 'third_party/pulse_protocol/media.dart';
 import 'third_party/pulse_protocol/mention.dart';
 import 'third_party/pulse_protocol/messaging.dart';
 import 'third_party/pulse_protocol/rbac.dart';
 import 'third_party/pulse_protocol/reaction.dart';
+import 'third_party/pulse_protocol/search.dart';
+import 'third_party/pulse_protocol/shelf.dart';
 import 'third_party/pulse_protocol/snapshot.dart';
 import 'third_party/pulse_protocol/thread.dart';
 import 'third_party/pulse_protocol/validation.dart';
@@ -62,6 +66,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiErrorCode dco_decode_api_error_code(dynamic raw);
 
   @protected
+  AttachmentId dco_decode_attachment_id(dynamic raw);
+
+  @protected
+  AttachmentKind dco_decode_attachment_kind(dynamic raw);
+
+  @protected
+  AttachmentView dco_decode_attachment_view(dynamic raw);
+
+  @protected
   AuthPhase dco_decode_auth_phase(dynamic raw);
 
   @protected
@@ -80,6 +93,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiError dco_decode_box_autoadd_api_error(dynamic raw);
 
   @protected
+  AttachmentId dco_decode_box_autoadd_attachment_id(dynamic raw);
+
+  @protected
+  AttachmentView dco_decode_box_autoadd_attachment_view(dynamic raw);
+
+  @protected
   CampusId dco_decode_box_autoadd_campus_id(dynamic raw);
 
   @protected
@@ -90,6 +109,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CreateRoomRequest dco_decode_box_autoadd_create_room_request(dynamic raw);
+
+  @protected
+  CreateUploadRequest dco_decode_box_autoadd_create_upload_request(dynamic raw);
+
+  @protected
+  DraftId dco_decode_box_autoadd_draft_id(dynamic raw);
 
   @protected
   HandshakeRejection dco_decode_box_autoadd_handshake_rejection(dynamic raw);
@@ -107,6 +132,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   React dco_decode_box_autoadd_react(dynamic raw);
 
   @protected
+  ReminderPreset dco_decode_box_autoadd_reminder_preset(dynamic raw);
+
+  @protected
   ReplyPreview dco_decode_box_autoadd_reply_preview(dynamic raw);
 
   @protected
@@ -120,6 +148,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SetTopicTitle dco_decode_box_autoadd_set_topic_title(dynamic raw);
+
+  @protected
+  ShelfEntry dco_decode_box_autoadd_shelf_entry(dynamic raw);
+
+  @protected
+  ShelfItemId dco_decode_box_autoadd_shelf_item_id(dynamic raw);
 
   @protected
   SignInRequest dco_decode_box_autoadd_sign_in_request(dynamic raw);
@@ -138,6 +172,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  UpdateShelf dco_decode_box_autoadd_update_shelf(dynamic raw);
 
   @protected
   VersionMismatch dco_decode_box_autoadd_version_mismatch(dynamic raw);
@@ -167,10 +207,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CreateRoomRequest dco_decode_create_room_request(dynamic raw);
 
   @protected
+  CreateUploadRequest dco_decode_create_upload_request(dynamic raw);
+
+  @protected
   DeliveryState dco_decode_delivery_state(dynamic raw);
 
   @protected
+  DraftAttachmentView dco_decode_draft_attachment_view(dynamic raw);
+
+  @protected
+  DraftId dco_decode_draft_id(dynamic raw);
+
+  @protected
   HandshakeRejection dco_decode_handshake_rejection(dynamic raw);
+
+  @protected
+  HighlightSpan dco_decode_highlight_span(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -197,10 +249,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AccountId> dco_decode_list_account_id(dynamic raw);
 
   @protected
+  List<AttachmentId> dco_decode_list_attachment_id(dynamic raw);
+
+  @protected
+  List<AttachmentView> dco_decode_list_attachment_view(dynamic raw);
+
+  @protected
   List<BodySegment> dco_decode_list_body_segment(dynamic raw);
 
   @protected
   List<CampusSummary> dco_decode_list_campus_summary(dynamic raw);
+
+  @protected
+  List<DraftAttachmentView> dco_decode_list_draft_attachment_view(dynamic raw);
+
+  @protected
+  List<HighlightSpan> dco_decode_list_highlight_span(dynamic raw);
 
   @protected
   List<InboxItem> dco_decode_list_inbox_item(dynamic raw);
@@ -209,16 +273,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MentionRef> dco_decode_list_mention_ref(dynamic raw);
 
   @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
   List<ReactionSummary> dco_decode_list_reaction_summary(dynamic raw);
 
   @protected
+  List<ReminderPreset> dco_decode_list_reminder_preset(dynamic raw);
+
+  @protected
   List<Room> dco_decode_list_room(dynamic raw);
 
   @protected
+  List<SearchHit> dco_decode_list_search_hit(dynamic raw);
+
+  @protected
+  List<ShelfEntry> dco_decode_list_shelf_entry(dynamic raw);
+
+  @protected
   List<TimelineEntry> dco_decode_list_timeline_entry(dynamic raw);
+
+  @protected
+  List<VaultEntry> dco_decode_list_vault_entry(dynamic raw);
 
   @protected
   MentionRef dco_decode_mention_ref(dynamic raw);
@@ -242,6 +321,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiError? dco_decode_opt_box_autoadd_api_error(dynamic raw);
 
   @protected
+  AttachmentView? dco_decode_opt_box_autoadd_attachment_view(dynamic raw);
+
+  @protected
   CampusId? dco_decode_opt_box_autoadd_campus_id(dynamic raw);
 
   @protected
@@ -259,6 +341,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   MessageRejection? dco_decode_opt_box_autoadd_message_rejection(dynamic raw);
 
   @protected
+  ReminderPreset? dco_decode_opt_box_autoadd_reminder_preset(dynamic raw);
+
+  @protected
   ReplyPreview? dco_decode_opt_box_autoadd_reply_preview(dynamic raw);
 
   @protected
@@ -266,6 +351,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SessionId? dco_decode_opt_box_autoadd_session_id(dynamic raw);
+
+  @protected
+  ShelfEntry? dco_decode_opt_box_autoadd_shelf_entry(dynamic raw);
+
+  @protected
+  ShelfItemId? dco_decode_opt_box_autoadd_shelf_item_id(dynamic raw);
 
   @protected
   SubscriptionState? dco_decode_opt_box_autoadd_subscription_state(dynamic raw);
@@ -278,6 +369,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
   VersionMismatch? dco_decode_opt_box_autoadd_version_mismatch(dynamic raw);
@@ -298,6 +392,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ReactionSummary dco_decode_reaction_summary(dynamic raw);
 
   @protected
+  (String, List<AttachmentId>) dco_decode_record_string_list_attachment_id(
+    dynamic raw,
+  );
+
+  @protected
+  ReminderPreset dco_decode_reminder_preset(dynamic raw);
+
+  @protected
   ReplyPreview dco_decode_reply_preview(dynamic raw);
 
   @protected
@@ -308,6 +410,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RoomId dco_decode_room_id(dynamic raw);
+
+  @protected
+  SearchHit dco_decode_search_hit(dynamic raw);
+
+  @protected
+  SearchSnapshot dco_decode_search_snapshot(dynamic raw);
 
   @protected
   SegmentKind dco_decode_segment_kind(dynamic raw);
@@ -323,6 +431,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SetTopicTitle dco_decode_set_topic_title(dynamic raw);
+
+  @protected
+  ShelfAction dco_decode_shelf_action(dynamic raw);
+
+  @protected
+  ShelfBucket dco_decode_shelf_bucket(dynamic raw);
+
+  @protected
+  ShelfEntry dco_decode_shelf_entry(dynamic raw);
+
+  @protected
+  ShelfItemId dco_decode_shelf_item_id(dynamic raw);
+
+  @protected
+  ShelfSnapshot dco_decode_shelf_snapshot(dynamic raw);
 
   @protected
   SignInRequest dco_decode_sign_in_request(dynamic raw);
@@ -361,6 +484,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  UpdateShelf dco_decode_update_shelf(dynamic raw);
+
+  @protected
+  UploadState dco_decode_upload_state(dynamic raw);
+
+  @protected
+  VaultEntry dco_decode_vault_entry(dynamic raw);
+
+  @protected
+  VaultSnapshot dco_decode_vault_snapshot(dynamic raw);
+
+  @protected
+  VaultTab dco_decode_vault_tab(dynamic raw);
+
+  @protected
   VersionMismatch dco_decode_version_mismatch(dynamic raw);
 
   @protected
@@ -390,6 +528,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiErrorCode sse_decode_api_error_code(SseDeserializer deserializer);
 
   @protected
+  AttachmentId sse_decode_attachment_id(SseDeserializer deserializer);
+
+  @protected
+  AttachmentKind sse_decode_attachment_kind(SseDeserializer deserializer);
+
+  @protected
+  AttachmentView sse_decode_attachment_view(SseDeserializer deserializer);
+
+  @protected
   AuthPhase sse_decode_auth_phase(SseDeserializer deserializer);
 
   @protected
@@ -410,6 +557,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiError sse_decode_box_autoadd_api_error(SseDeserializer deserializer);
 
   @protected
+  AttachmentId sse_decode_box_autoadd_attachment_id(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AttachmentView sse_decode_box_autoadd_attachment_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   CampusId sse_decode_box_autoadd_campus_id(SseDeserializer deserializer);
 
   @protected
@@ -424,6 +581,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CreateRoomRequest sse_decode_box_autoadd_create_room_request(
     SseDeserializer deserializer,
   );
+
+  @protected
+  CreateUploadRequest sse_decode_box_autoadd_create_upload_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DraftId sse_decode_box_autoadd_draft_id(SseDeserializer deserializer);
 
   @protected
   HandshakeRejection sse_decode_box_autoadd_handshake_rejection(
@@ -445,6 +610,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   React sse_decode_box_autoadd_react(SseDeserializer deserializer);
 
   @protected
+  ReminderPreset sse_decode_box_autoadd_reminder_preset(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ReplyPreview sse_decode_box_autoadd_reply_preview(
     SseDeserializer deserializer,
   );
@@ -460,6 +630,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SetTopicTitle sse_decode_box_autoadd_set_topic_title(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ShelfEntry sse_decode_box_autoadd_shelf_entry(SseDeserializer deserializer);
+
+  @protected
+  ShelfItemId sse_decode_box_autoadd_shelf_item_id(
     SseDeserializer deserializer,
   );
 
@@ -490,6 +668,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  UpdateShelf sse_decode_box_autoadd_update_shelf(SseDeserializer deserializer);
 
   @protected
   VersionMismatch sse_decode_box_autoadd_version_mismatch(
@@ -527,12 +711,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  CreateUploadRequest sse_decode_create_upload_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   DeliveryState sse_decode_delivery_state(SseDeserializer deserializer);
+
+  @protected
+  DraftAttachmentView sse_decode_draft_attachment_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DraftId sse_decode_draft_id(SseDeserializer deserializer);
 
   @protected
   HandshakeRejection sse_decode_handshake_rejection(
     SseDeserializer deserializer,
   );
+
+  @protected
+  HighlightSpan sse_decode_highlight_span(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -559,10 +759,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AccountId> sse_decode_list_account_id(SseDeserializer deserializer);
 
   @protected
+  List<AttachmentId> sse_decode_list_attachment_id(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<AttachmentView> sse_decode_list_attachment_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<BodySegment> sse_decode_list_body_segment(SseDeserializer deserializer);
 
   @protected
   List<CampusSummary> sse_decode_list_campus_summary(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<DraftAttachmentView> sse_decode_list_draft_attachment_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<HighlightSpan> sse_decode_list_highlight_span(
     SseDeserializer deserializer,
   );
 
@@ -573,6 +793,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MentionRef> sse_decode_list_mention_ref(SseDeserializer deserializer);
 
   @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
@@ -581,12 +804,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<ReminderPreset> sse_decode_list_reminder_preset(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<Room> sse_decode_list_room(SseDeserializer deserializer);
+
+  @protected
+  List<SearchHit> sse_decode_list_search_hit(SseDeserializer deserializer);
+
+  @protected
+  List<ShelfEntry> sse_decode_list_shelf_entry(SseDeserializer deserializer);
 
   @protected
   List<TimelineEntry> sse_decode_list_timeline_entry(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<VaultEntry> sse_decode_list_vault_entry(SseDeserializer deserializer);
 
   @protected
   MentionRef sse_decode_mention_ref(SseDeserializer deserializer);
@@ -614,6 +851,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiError? sse_decode_opt_box_autoadd_api_error(SseDeserializer deserializer);
 
   @protected
+  AttachmentView? sse_decode_opt_box_autoadd_attachment_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   CampusId? sse_decode_opt_box_autoadd_campus_id(SseDeserializer deserializer);
 
   @protected
@@ -637,6 +879,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ReminderPreset? sse_decode_opt_box_autoadd_reminder_preset(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ReplyPreview? sse_decode_opt_box_autoadd_reply_preview(
     SseDeserializer deserializer,
   );
@@ -646,6 +893,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SessionId? sse_decode_opt_box_autoadd_session_id(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ShelfEntry? sse_decode_opt_box_autoadd_shelf_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ShelfItemId? sse_decode_opt_box_autoadd_shelf_item_id(
     SseDeserializer deserializer,
   );
 
@@ -668,6 +925,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
   VersionMismatch? sse_decode_opt_box_autoadd_version_mismatch(
     SseDeserializer deserializer,
   );
@@ -688,6 +948,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ReactionSummary sse_decode_reaction_summary(SseDeserializer deserializer);
 
   @protected
+  (String, List<AttachmentId>) sse_decode_record_string_list_attachment_id(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ReminderPreset sse_decode_reminder_preset(SseDeserializer deserializer);
+
+  @protected
   ReplyPreview sse_decode_reply_preview(SseDeserializer deserializer);
 
   @protected
@@ -698,6 +966,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RoomId sse_decode_room_id(SseDeserializer deserializer);
+
+  @protected
+  SearchHit sse_decode_search_hit(SseDeserializer deserializer);
+
+  @protected
+  SearchSnapshot sse_decode_search_snapshot(SseDeserializer deserializer);
 
   @protected
   SegmentKind sse_decode_segment_kind(SseDeserializer deserializer);
@@ -713,6 +987,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SetTopicTitle sse_decode_set_topic_title(SseDeserializer deserializer);
+
+  @protected
+  ShelfAction sse_decode_shelf_action(SseDeserializer deserializer);
+
+  @protected
+  ShelfBucket sse_decode_shelf_bucket(SseDeserializer deserializer);
+
+  @protected
+  ShelfEntry sse_decode_shelf_entry(SseDeserializer deserializer);
+
+  @protected
+  ShelfItemId sse_decode_shelf_item_id(SseDeserializer deserializer);
+
+  @protected
+  ShelfSnapshot sse_decode_shelf_snapshot(SseDeserializer deserializer);
 
   @protected
   SignInRequest sse_decode_sign_in_request(SseDeserializer deserializer);
@@ -751,6 +1040,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
+  UpdateShelf sse_decode_update_shelf(SseDeserializer deserializer);
+
+  @protected
+  UploadState sse_decode_upload_state(SseDeserializer deserializer);
+
+  @protected
+  VaultEntry sse_decode_vault_entry(SseDeserializer deserializer);
+
+  @protected
+  VaultSnapshot sse_decode_vault_snapshot(SseDeserializer deserializer);
+
+  @protected
+  VaultTab sse_decode_vault_tab(SseDeserializer deserializer);
+
+  @protected
   VersionMismatch sse_decode_version_mismatch(SseDeserializer deserializer);
 
   @protected
@@ -787,6 +1091,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_api_error_code(ApiErrorCode self, SseSerializer serializer);
 
   @protected
+  void sse_encode_attachment_id(AttachmentId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_attachment_kind(
+    AttachmentKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_attachment_view(
+    AttachmentView self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_auth_phase(AuthPhase self, SseSerializer serializer);
 
   @protected
@@ -814,6 +1133,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_attachment_id(
+    AttachmentId self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_attachment_view(
+    AttachmentView self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_campus_id(
     CampusId self,
     SseSerializer serializer,
@@ -836,6 +1167,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     CreateRoomRequest self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_box_autoadd_create_upload_request(
+    CreateUploadRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_draft_id(DraftId self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_handshake_rejection(
@@ -865,6 +1205,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_react(React self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_reminder_preset(
+    ReminderPreset self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_reply_preview(
     ReplyPreview self,
     SseSerializer serializer,
@@ -888,6 +1234,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_set_topic_title(
     SetTopicTitle self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_shelf_entry(
+    ShelfEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_shelf_item_id(
+    ShelfItemId self,
     SseSerializer serializer,
   );
 
@@ -923,6 +1281,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_update_shelf(
+    UpdateShelf self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_version_mismatch(
@@ -970,13 +1337,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_create_upload_request(
+    CreateUploadRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_delivery_state(DeliveryState self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_draft_attachment_view(
+    DraftAttachmentView self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_draft_id(DraftId self, SseSerializer serializer);
 
   @protected
   void sse_encode_handshake_rejection(
     HandshakeRejection self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_highlight_span(HighlightSpan self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -1006,6 +1391,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_attachment_id(
+    List<AttachmentId> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_attachment_view(
+    List<AttachmentView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_body_segment(
     List<BodySegment> self,
     SseSerializer serializer,
@@ -1014,6 +1411,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_campus_summary(
     List<CampusSummary> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_draft_attachment_view(
+    List<DraftAttachmentView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_highlight_span(
+    List<HighlightSpan> self,
     SseSerializer serializer,
   );
 
@@ -1030,6 +1439,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -1042,11 +1454,35 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_reminder_preset(
+    List<ReminderPreset> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_room(List<Room> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_search_hit(
+    List<SearchHit> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_shelf_entry(
+    List<ShelfEntry> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_timeline_entry(
     List<TimelineEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_vault_entry(
+    List<VaultEntry> self,
     SseSerializer serializer,
   );
 
@@ -1084,6 +1520,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_attachment_view(
+    AttachmentView? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_campus_id(
     CampusId? self,
     SseSerializer serializer,
@@ -1114,6 +1556,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_reminder_preset(
+    ReminderPreset? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_reply_preview(
     ReplyPreview? self,
     SseSerializer serializer,
@@ -1128,6 +1576,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_session_id(
     SessionId? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_shelf_entry(
+    ShelfEntry? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_shelf_item_id(
+    ShelfItemId? self,
     SseSerializer serializer,
   );
 
@@ -1151,6 +1611,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_version_mismatch(
@@ -1183,6 +1646,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_record_string_list_attachment_id(
+    (String, List<AttachmentId>) self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_reminder_preset(
+    ReminderPreset self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_reply_preview(ReplyPreview self, SseSerializer serializer);
 
   @protected
@@ -1193,6 +1668,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_room_id(RoomId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_search_hit(SearchHit self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_search_snapshot(
+    SearchSnapshot self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_segment_kind(SegmentKind self, SseSerializer serializer);
@@ -1211,6 +1695,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_set_topic_title(SetTopicTitle self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shelf_action(ShelfAction self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shelf_bucket(ShelfBucket self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shelf_entry(ShelfEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shelf_item_id(ShelfItemId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shelf_snapshot(ShelfSnapshot self, SseSerializer serializer);
 
   @protected
   void sse_encode_sign_in_request(SignInRequest self, SseSerializer serializer);
@@ -1256,6 +1755,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_update_shelf(UpdateShelf self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_upload_state(UploadState self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_vault_entry(VaultEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_vault_snapshot(VaultSnapshot self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_vault_tab(VaultTab self, SseSerializer serializer);
 
   @protected
   void sse_encode_version_mismatch(

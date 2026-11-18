@@ -1,14 +1,17 @@
 use std::collections::{BTreeMap, HashMap};
 
 use pulse_protocol::{
-    AccountId, CampusId, ClientNonce, MentionRef, MessageId, MessageRejection, Permission,
-    ReactionTally, RoomCursor, RoomId, RoomMessage, RoomSynced, SYNC_PAGE_LIMIT, SendMessage,
-    SyncThread, ThreadSynced, extract_mentions, normalize_message_body, role_permits,
+    AccountId, Attachment, AttachmentId, CampusId, ClientNonce, InputField, MentionRef, MessageId,
+    MessageRejection, Permission, PinMark, ReactionTally, RoomCursor, RoomId, RoomMessage,
+    RoomSynced, SYNC_PAGE_LIMIT, SendMessage, SyncThread, ThreadSynced, extract_links,
+    extract_mentions, normalize_message_content, role_permits,
 };
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::campus::campus_role;
+use crate::media::{AttachmentRow, attachment_from_row, select_attachments, verify_uploads};
+use crate::state::AppState;
 use crate::thread::{advance_read, auto_follow};
 
 #[derive(Debug, sqlx::FromRow)]
@@ -98,6 +101,21 @@ pub async fn hydrate_messages(
     .bind(&ids)
     .fetch_all(&mut *executor)
     .await?;
+    let attachment_rows = sqlx::query_as::<_, AttachmentRow>(select_attachments!(
+        "WHERE campus_id = $1 AND message_id = ANY($2) ORDER BY message_id, position"
+    ))
+    .bind(campus_id.as_uuid())
+    .bind(&ids)
+    .fetch_all(&mut *executor)
+    .await?;
+    let pin_rows = sqlx::query_as::<_, (Uuid, Uuid, i64)>(
+        "SELECT message_id, pinned_by, (EXTRACT(EPOCH FROM pinned_at) * 1000)::bigint \
+         FROM message_pins WHERE campus_id = $1 AND message_id = ANY($2)",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(&ids)
+    .fetch_all(&mut *executor)
+    .await?;
     let reply_rows = sqlx::query_as::<_, (Uuid, Uuid, i64)>(
         "SELECT DISTINCT ON (thread_root_id) thread_root_id, message_id, \
          count(*) OVER (PARTITION BY thread_root_id) \
@@ -125,6 +143,23 @@ pub async fn hydrate_messages(
             .or_default()
             .push(AccountId(account_id));
     }
+    let mut attachments: HashMap<MessageId, Vec<Attachment>> = HashMap::new();
+    for row in attachment_rows {
+        let (message_id, _, attachment) = attachment_from_row(row)?;
+        attachments.entry(message_id).or_default().push(attachment);
+    }
+    let pins: HashMap<Uuid, PinMark> = pin_rows
+        .into_iter()
+        .map(|(message_id, pinned_by, pinned_at_ms)| {
+            (
+                message_id,
+                PinMark {
+                    pinned_by: AccountId(pinned_by),
+                    pinned_at_ms: u64::try_from(pinned_at_ms).unwrap_or(0),
+                },
+            )
+        })
+        .collect();
     let replies: HashMap<Uuid, (MessageId, u32)> = reply_rows
         .into_iter()
         .map(|(root, latest, count)| {
@@ -163,6 +198,10 @@ pub async fn hydrate_messages(
                         ReactionTally { emoji, account_ids }
                     })
                     .collect(),
+                attachments: attachments
+                    .remove(&MessageId(row.message_id))
+                    .unwrap_or_default(),
+                pin: pins.get(&row.message_id).copied(),
                 activity_seq: u64::try_from(row.activity_seq).unwrap_or(0),
             }
         })
@@ -368,6 +407,59 @@ async fn record_mentions(
     Ok(recorded)
 }
 
+async fn record_links(
+    connection: &mut PgConnection,
+    campus_id: CampusId,
+    room_id: RoomId,
+    message_id: MessageId,
+    body: &str,
+) -> Result<(), sqlx::Error> {
+    for (position, url) in extract_links(body).into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO message_links (campus_id, room_id, message_id, position, url) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(room_id.as_uuid())
+        .bind(message_id.as_uuid())
+        .bind(i16::try_from(position).unwrap_or(i16::MAX))
+        .bind(url)
+        .execute(&mut *connection)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn bind_attachments(
+    connection: &mut PgConnection,
+    campus_id: CampusId,
+    room_id: RoomId,
+    message_id: MessageId,
+    uploader_id: AccountId,
+    attachment_ids: &[AttachmentId],
+) -> Result<(), PostFailure> {
+    for (position, attachment_id) in attachment_ids.iter().enumerate() {
+        let bound = sqlx::query(
+            "UPDATE attachments SET message_id = $5, position = $6 \
+             WHERE campus_id = $1 AND room_id = $2 AND attachment_id = $3 \
+             AND uploader_id = $4 AND message_id IS NULL",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(room_id.as_uuid())
+        .bind(attachment_id.as_uuid())
+        .bind(uploader_id.as_uuid())
+        .bind(message_id.as_uuid())
+        .bind(i16::try_from(position).unwrap_or(i16::MAX))
+        .execute(&mut *connection)
+        .await?
+        .rows_affected();
+        if bound != 1 {
+            return Err(PostFailure::Rejected(MessageRejection::InvalidAttachment));
+        }
+    }
+    Ok(())
+}
+
 struct Followers {
     campus_id: CampusId,
     room_id: RoomId,
@@ -428,8 +520,13 @@ pub async fn post_message(
     if !permitted {
         return Err(PostFailure::Rejected(MessageRejection::Forbidden));
     }
-    let body = normalize_message_body(&request.body)
-        .map_err(|_| PostFailure::Rejected(MessageRejection::InvalidBody))?;
+    let (body, attachment_ids) = normalize_message_content(&request.body, &request.attachment_ids)
+        .map_err(|field| {
+            PostFailure::Rejected(match field {
+                InputField::Attachments => MessageRejection::InvalidAttachment,
+                _ => MessageRejection::InvalidBody,
+            })
+        })?;
     if let Some(original) =
         find_by_nonce(&mut transaction, campus_id, author_id, request.client_nonce).await?
     {
@@ -478,6 +575,23 @@ pub async fn post_message(
             .map(PostOutcome::Replayed)
             .ok_or(PostFailure::Database(sqlx::Error::RowNotFound));
     }
+    bind_attachments(
+        &mut transaction,
+        campus_id,
+        request.room_id,
+        message_id,
+        author_id,
+        &attachment_ids,
+    )
+    .await?;
+    record_links(
+        &mut transaction,
+        campus_id,
+        request.room_id,
+        message_id,
+        &body,
+    )
+    .await?;
     let mentioned = record_mentions(
         &mut transaction,
         campus_id,
@@ -525,6 +639,35 @@ pub async fn post_message(
         .ok_or(PostFailure::Database(sqlx::Error::RowNotFound))?;
     transaction.commit().await?;
     Ok(PostOutcome::Created(created, followers.changed))
+}
+
+async fn find_replay(
+    db: &PgPool,
+    campus_id: CampusId,
+    author_id: AccountId,
+    client_nonce: ClientNonce,
+) -> Result<Option<RoomMessage>, sqlx::Error> {
+    let mut connection = db.acquire().await?;
+    find_by_nonce(&mut connection, campus_id, author_id, client_nonce).await
+}
+
+pub async fn send_message(
+    state: &AppState,
+    campus_id: CampusId,
+    author_id: AccountId,
+    request: SendMessage,
+) -> Result<PostOutcome, PostFailure> {
+    if !request.attachment_ids.is_empty() {
+        if let Some(original) =
+            find_replay(&state.db, campus_id, author_id, request.client_nonce).await?
+        {
+            return Ok(PostOutcome::Replayed(original));
+        }
+        let ids = pulse_protocol::normalize_attachment_ids(&request.attachment_ids)
+            .map_err(|_| PostFailure::Rejected(MessageRejection::InvalidAttachment))?;
+        verify_uploads(state, campus_id, request.room_id, author_id, &ids).await?;
+    }
+    post_message(&state.db, campus_id, author_id, request).await
 }
 
 pub async fn sync_room(

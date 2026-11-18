@@ -25,6 +25,7 @@ fn migrations_apply_in_order() {
             "create accounts memberships rooms".to_owned(),
             "create room messages".to_owned(),
             "create threads reactions subscriptions".to_owned(),
+            "create media vault shelf".to_owned(),
         ]
     );
 }
@@ -491,6 +492,132 @@ fn violation_code(outcome: Result<(), sqlx::Error>) -> Option<String> {
     })
 }
 
+const INSERT_ATTACHMENT: &str = "INSERT INTO attachments \
+    (campus_id, room_id, attachment_id, uploader_id, object_key, file_name, content_type, kind, byte_size) \
+    VALUES ($1, $2, $3, $4, 'campuses/' || $1::text || '/rooms/' || $2::text || '/attachments/' || $3::text, 'a.png', 'image/png', 'image', 10)";
+const INSERT_ATTACHMENT_KEYED: &str = "INSERT INTO attachments \
+    (campus_id, room_id, attachment_id, uploader_id, object_key, file_name, content_type, kind, byte_size) \
+    VALUES ($1, $2, $3, $4, $5, 'a.png', 'image/png', 'image', 10)";
+const INSERT_ATTACHMENT_SIZED: &str = "INSERT INTO attachments \
+    (campus_id, room_id, attachment_id, uploader_id, object_key, file_name, content_type, kind, byte_size) \
+    VALUES ($1, $2, $3, $4, 'campuses/' || $1::text || '/rooms/' || $2::text || '/attachments/' || $3::text, 'a.png', 'image/png', $5, 10)";
+const INSERT_ATTACHMENT_ATTACHED: &str = "INSERT INTO attachments \
+    (campus_id, room_id, attachment_id, uploader_id, object_key, file_name, content_type, kind, byte_size, message_id, position) \
+    VALUES ($1, $2, $3, $4, 'campuses/' || $1::text || '/rooms/' || $2::text || '/attachments/' || $3::text, 'a.png', 'image/png', 'image', 10, $5, 0)";
+const INSERT_ATTACHMENT_UNPOSITIONED: &str = "INSERT INTO attachments \
+    (campus_id, room_id, attachment_id, uploader_id, object_key, file_name, content_type, kind, byte_size, message_id) \
+    VALUES ($1, $2, $3, $4, 'campuses/' || $1::text || '/rooms/' || $2::text || '/attachments/' || $3::text, 'a.png', 'image/png', 'image', 10, $5)";
+const INSERT_LINK: &str = "INSERT INTO message_links (campus_id, room_id, message_id, position, url) \
+    VALUES ($1, $2, $3, 0, 'https://example.org/a')";
+const INSERT_PIN: &str = "INSERT INTO message_pins (campus_id, room_id, message_id, pinned_by) \
+    VALUES ($1, $2, $3, $4)";
+const INSERT_SHELF: &str = "INSERT INTO shelf_items \
+    (campus_id, account_id, shelf_item_id, room_id, message_id) VALUES ($1, $4, $5, $2, $3)";
+const INSERT_SHELF_REMINDED_EARLY: &str = "INSERT INTO shelf_items \
+    (campus_id, account_id, shelf_item_id, room_id, message_id, remind_at, reminded_at) \
+    VALUES ($1, $4, $5, $2, $3, now(), now() - interval '1 hour')";
+const INSERT_SHELF_REMINDED_WITHOUT_TIME: &str = "INSERT INTO shelf_items \
+    (campus_id, account_id, shelf_item_id, room_id, message_id, reminded_at) \
+    VALUES ($1, $4, $5, $2, $3, now())";
+const INSERT_SHELF_REMINDED_AFTER: &str = "INSERT INTO shelf_items \
+    (campus_id, account_id, shelf_item_id, room_id, message_id, remind_at, reminded_at) \
+    VALUES ($1, $4, $5, $2, $3, now() - interval '1 hour', now())";
+
+const ATTACHMENT_BY_OWNER: Statement = (
+    INSERT_ATTACHMENT,
+    &[Bind::Campus, Bind::Room, Bind::Nonce, Bind::Owner],
+);
+const ATTACHMENT_BY_OUTSIDER: Statement = (
+    INSERT_ATTACHMENT,
+    &[Bind::Campus, Bind::Room, Bind::Nonce, Bind::Outsider],
+);
+const ATTACHMENT_IN_FOREIGN_CAMPUS_ROOM: Statement = (
+    INSERT_ATTACHMENT,
+    &[Bind::ForeignCampus, Bind::Room, Bind::Nonce, Bind::Owner],
+);
+const ATTACHMENT_WITH_FOREIGN_KEY: Statement = (
+    INSERT_ATTACHMENT_KEYED,
+    &[
+        Bind::Campus,
+        Bind::Room,
+        Bind::Nonce,
+        Bind::Owner,
+        Bind::Text("campuses/other/rooms/other/attachments/other"),
+    ],
+);
+const ATTACHMENT_ATTACHED: Statement = (
+    INSERT_ATTACHMENT_ATTACHED,
+    &[
+        Bind::Campus,
+        Bind::Room,
+        Bind::Nonce,
+        Bind::Owner,
+        Bind::Message,
+    ],
+);
+const ATTACHMENT_WITHOUT_POSITION: Statement = (
+    INSERT_ATTACHMENT_UNPOSITIONED,
+    &[
+        Bind::Campus,
+        Bind::Room,
+        Bind::Nonce,
+        Bind::Owner,
+        Bind::Message,
+    ],
+);
+const ATTACHMENT_OF_KIND_ARCHIVE: Statement = (
+    INSERT_ATTACHMENT_SIZED,
+    &[
+        Bind::Campus,
+        Bind::Room,
+        Bind::Nonce,
+        Bind::Owner,
+        Bind::Text("archive"),
+    ],
+);
+const LINK_ON_MESSAGE: Statement = (INSERT_LINK, &[Bind::Campus, Bind::Room, Bind::Message]);
+const LINK_ON_SIBLING_ROOM: Statement = (
+    INSERT_LINK,
+    &[Bind::Campus, Bind::SiblingRoom, Bind::Message],
+);
+const PIN_BY_OWNER: Statement = (
+    INSERT_PIN,
+    &[Bind::Campus, Bind::Room, Bind::Message, Bind::Owner],
+);
+const PIN_BY_OUTSIDER: Statement = (
+    INSERT_PIN,
+    &[Bind::Campus, Bind::Room, Bind::Message, Bind::Outsider],
+);
+const PIN_ON_SIBLING_ROOM: Statement = (
+    INSERT_PIN,
+    &[Bind::Campus, Bind::SiblingRoom, Bind::Message, Bind::Owner],
+);
+
+fn shelf(sql: &'static str, account: Bind) -> Statement {
+    match account {
+        Bind::Outsider => (
+            sql,
+            &[
+                Bind::Campus,
+                Bind::Room,
+                Bind::Message,
+                Bind::Outsider,
+                Bind::Nonce,
+            ],
+        ),
+        _ => (
+            sql,
+            &[
+                Bind::Campus,
+                Bind::Room,
+                Bind::Message,
+                Bind::Owner,
+                Bind::Nonce,
+            ],
+        ),
+    }
+}
+
 const REPLY_TO_STORED: Statement = (
     INSERT_REPLY,
     &[
@@ -577,6 +704,60 @@ const REPLY_TO_STORED: Statement = (
     vec![stmt(INSERT_MENTION, &[Bind::Campus, Bind::Room, Bind::Message, Bind::Outsider])],
     Some(FOREIGN_KEY_VIOLATION),
 )]
+#[case::attachment_row(vec![ATTACHMENT_BY_OWNER], None)]
+#[case::attachment_attached_with_position(vec![ATTACHMENT_ATTACHED], None)]
+#[case::attachment_position_is_unique_per_message(
+    vec![ATTACHMENT_ATTACHED, ATTACHMENT_ATTACHED],
+    Some(UNIQUE_VIOLATION)
+)]
+#[case::attachment_key_must_match_formula(
+    vec![ATTACHMENT_WITH_FOREIGN_KEY],
+    Some(CHECK_VIOLATION)
+)]
+#[case::attachment_message_needs_position(
+    vec![ATTACHMENT_WITHOUT_POSITION],
+    Some(CHECK_VIOLATION)
+)]
+#[case::attachment_kind_is_restricted(
+    vec![ATTACHMENT_OF_KIND_ARCHIVE],
+    Some(CHECK_VIOLATION)
+)]
+#[case::attachment_needs_campus_member(
+    vec![ATTACHMENT_BY_OUTSIDER],
+    Some(FOREIGN_KEY_VIOLATION)
+)]
+#[case::attachment_room_belongs_to_campus(
+    vec![ATTACHMENT_IN_FOREIGN_CAMPUS_ROOM],
+    Some(FOREIGN_KEY_VIOLATION)
+)]
+#[case::link_row(vec![LINK_ON_MESSAGE], None)]
+#[case::link_position_is_unique(vec![LINK_ON_MESSAGE, LINK_ON_MESSAGE], Some(UNIQUE_VIOLATION))]
+#[case::link_needs_the_messages_room(vec![LINK_ON_SIBLING_ROOM], Some(FOREIGN_KEY_VIOLATION))]
+#[case::pin_row(vec![PIN_BY_OWNER], None)]
+#[case::pin_is_unique_per_message(vec![PIN_BY_OWNER, PIN_BY_OWNER], Some(UNIQUE_VIOLATION))]
+#[case::pin_needs_campus_member(vec![PIN_BY_OUTSIDER], Some(FOREIGN_KEY_VIOLATION))]
+#[case::pin_needs_the_messages_room(vec![PIN_ON_SIBLING_ROOM], Some(FOREIGN_KEY_VIOLATION))]
+#[case::shelf_row(vec![shelf(INSERT_SHELF, Bind::Owner)], None)]
+#[case::shelf_is_unique_per_account_and_message(
+    vec![shelf(INSERT_SHELF, Bind::Owner), shelf(INSERT_SHELF, Bind::Owner)],
+    Some(UNIQUE_VIOLATION)
+)]
+#[case::shelf_needs_campus_member(
+    vec![shelf(INSERT_SHELF, Bind::Outsider)],
+    Some(FOREIGN_KEY_VIOLATION)
+)]
+#[case::shelf_reminded_after_remind_at(
+    vec![shelf(INSERT_SHELF_REMINDED_AFTER, Bind::Owner)],
+    None
+)]
+#[case::shelf_reminded_before_remind_at(
+    vec![shelf(INSERT_SHELF_REMINDED_EARLY, Bind::Owner)],
+    Some(CHECK_VIOLATION)
+)]
+#[case::shelf_reminded_without_remind_at(
+    vec![shelf(INSERT_SHELF_REMINDED_WITHOUT_TIME, Bind::Owner)],
+    Some(CHECK_VIOLATION)
+)]
 #[case::mention_needs_the_messages_room(
     vec![stmt(INSERT_MENTION, &[Bind::Campus, Bind::SiblingRoom, Bind::Message, Bind::Owner])],
     Some(FOREIGN_KEY_VIOLATION),
@@ -632,4 +813,58 @@ async fn deleting_a_root_cascades_to_its_thread_rows() {
     ] {
         assert_eq!(remaining(table).await, 0, "{table}");
     }
+}
+
+#[rstest]
+#[case::attachments(
+    "attachments",
+    &[
+        "campus_id", "room_id", "attachment_id", "uploader_id", "object_key", "file_name",
+        "content_type", "kind", "byte_size", "message_id", "position", "created_at",
+    ]
+)]
+#[case::message_links(
+    "message_links",
+    &["campus_id", "room_id", "message_id", "position", "url"]
+)]
+#[case::message_pins(
+    "message_pins",
+    &["campus_id", "room_id", "message_id", "pinned_by", "pinned_at"]
+)]
+#[case::shelf_items(
+    "shelf_items",
+    &[
+        "campus_id", "account_id", "shelf_item_id", "room_id", "message_id", "remind_at",
+        "reminded_at", "done_at", "revision", "created_at", "updated_at",
+    ]
+)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn media_vault_shelf_tables_match_contract(#[case] table: &str, #[case] expected: &[&str]) {
+    let state = fresh_state().await;
+    let names = columns_of(&state, table)
+        .await
+        .into_iter()
+        .map(|(name, _, _)| name)
+        .collect::<Vec<_>>();
+    assert_eq!(names, expected);
+}
+
+#[rstest]
+#[case::attachment_position("attachments_message_position_idx")]
+#[case::attachment_vault("attachments_vault_idx")]
+#[case::link_room("message_links_room_idx")]
+#[case::pin_room("message_pins_room_idx")]
+#[case::shelf_account("shelf_items_account_idx")]
+#[case::shelf_due("shelf_items_due_idx")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn media_vault_shelf_indexes_exist(#[case] name: &str) {
+    let state = fresh_state().await;
+    let found = sqlx::query_scalar::<_, String>(
+        "SELECT indexname::text FROM pg_indexes WHERE indexname = $1",
+    )
+    .bind(name)
+    .fetch_optional(&state.db)
+    .await
+    .expect("index lookup");
+    assert_eq!(found.as_deref(), Some(name));
 }

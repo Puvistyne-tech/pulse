@@ -21,8 +21,8 @@ use pulse_protocol::{
     ReactionRejection, ReactionTally, Role, Room, RoomCursor, RoomId, RoomList, RoomMessage,
     RoomSynced, RoomUnavailable, SendMessage, ServerFrame, SessionSnapshot, SetThreadSubscription,
     SetTopicTitle, SignInRequest, SignUpRequest, SubscriptionOrigin, SubscriptionState, SyncInbox,
-    SyncRooms, SyncThread, ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary,
-    ThreadSynced, TimelineSnapshot, Welcome,
+    SyncRooms, SyncShelf, SyncThread, ThreadChanged, ThreadRejected, ThreadRejection,
+    ThreadSummary, ThreadSynced, TimelineSnapshot, Welcome,
 };
 
 pub fn token_a() -> AuthToken {
@@ -373,50 +373,24 @@ pub fn client_rooms(client: &Client) -> Vec<RoomId> {
         .collect()
 }
 
-fn indexed_id(base: u128, index: u128) -> String {
-    format!("0193a5c0-0000-7000-8000-{:012x}", base + index)
+#[path = "builders.rs"]
+mod builders;
+pub use builders::{display_name, indexed_id, message_id, nonce, room_message};
+
+pub fn message_ids(indexes: &[u128]) -> Vec<MessageId> {
+    indexes.iter().copied().map(message_id).collect()
 }
 
-pub fn message_id(index: u128) -> MessageId {
-    indexed_id(0x1000_0000, index).parse().expect("message id")
+pub fn sorted_message_ids(indexes: &[u128]) -> Vec<MessageId> {
+    let mut ids = message_ids(indexes);
+    ids.sort();
+    ids
 }
 
-pub fn nonce(index: u128) -> ClientNonce {
-    indexed_id(0x2000_0000, index).parse().expect("nonce")
-}
-
-pub fn display_name(account_id: AccountId) -> &'static str {
-    match account_id {
-        ACCOUNT_A => "Ada",
-        ACCOUNT_C => "Linus",
-        _ => "Grace",
-    }
-}
-
-pub fn room_message(
-    room_id: RoomId,
-    message_id: MessageId,
-    previous_message_id: Option<MessageId>,
-    author_id: AccountId,
-    client_nonce: ClientNonce,
-    body: &str,
-) -> RoomMessage {
+pub fn foreign(message: RoomMessage) -> RoomMessage {
     RoomMessage {
-        message_id,
-        previous_message_id,
-        campus_id: CAMPUS_A,
-        room_id,
-        author_id,
-        author_display_name: display_name(author_id).to_owned(),
-        client_nonce,
-        body: body.to_owned(),
-        thread_root_id: None,
-        topic_title: None,
-        reply_count: 0,
-        latest_reply_id: None,
-        mentions: Vec::new(),
-        reactions: Vec::new(),
-        activity_seq: 0,
+        campus_id: CAMPUS_B,
+        ..message
     }
 }
 
@@ -522,6 +496,7 @@ pub fn send_frame(room_id: RoomId, client_nonce: ClientNonce, body: &str) -> Cli
         client_nonce,
         body: body.to_owned(),
         thread_root_id: None,
+        attachment_ids: Vec::new(),
     })
 }
 
@@ -778,6 +753,10 @@ pub fn sync_inbox_frame() -> ClientFrame {
     ClientFrame::SyncInbox(SyncInbox {})
 }
 
+pub fn sync_shelf_frame() -> ClientFrame {
+    ClientFrame::SyncShelf(SyncShelf {})
+}
+
 pub fn sync_thread_frame(root_index: u128, after: Option<u128>) -> ClientFrame {
     ClientFrame::SyncThread(SyncThread {
         room_id: ROOM_A,
@@ -830,6 +809,7 @@ pub fn reply_frame(root_index: u128, client_nonce: ClientNonce, body: &str) -> C
         client_nonce,
         body: body.to_owned(),
         thread_root_id: Some(message_id(root_index)),
+        attachment_ids: Vec::new(),
     })
 }
 
@@ -958,4 +938,257 @@ pub fn permutations<T: Clone>(items: &[T]) -> Vec<Vec<T>> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+pub fn attachment_id(index: u128) -> pulse_protocol::AttachmentId {
+    indexed_id(0x3000_0000, index)
+        .parse()
+        .expect("attachment id")
+}
+
+pub fn draft_id(index: u128) -> pulse_protocol::DraftId {
+    indexed_id(0x4000_0000, index).parse().expect("draft id")
+}
+
+pub fn shelf_item_id(index: u128) -> pulse_protocol::ShelfItemId {
+    indexed_id(0x5000_0000, index)
+        .parse()
+        .expect("shelf item id")
+}
+
+pub fn attachment_of(
+    index: u128,
+    file_name: &str,
+    kind: pulse_protocol::AttachmentKind,
+) -> pulse_protocol::Attachment {
+    let content_type = match kind {
+        pulse_protocol::AttachmentKind::Image => "image/png",
+        pulse_protocol::AttachmentKind::Video => "video/mp4",
+        pulse_protocol::AttachmentKind::Audio => "audio/mpeg",
+        pulse_protocol::AttachmentKind::File => "application/pdf",
+    };
+    pulse_protocol::Attachment {
+        attachment_id: attachment_id(index),
+        file_name: file_name.to_owned(),
+        content_type: content_type.to_owned(),
+        kind,
+        byte_size: 1024,
+    }
+}
+
+pub fn with_attachments(
+    mut message: RoomMessage,
+    attachments: Vec<pulse_protocol::Attachment>,
+) -> RoomMessage {
+    message.attachments = attachments;
+    message
+}
+
+pub fn pinned(mut message: RoomMessage, pinned_at_ms: u64) -> RoomMessage {
+    message.pin = Some(pulse_protocol::PinMark {
+        pinned_by: ACCOUNT_B,
+        pinned_at_ms,
+    });
+    message
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ShelfSpec {
+    pub message: u128,
+    pub remind_at_ms: Option<u64>,
+    pub reminded_at_ms: Option<u64>,
+    pub done_at_ms: Option<u64>,
+    pub saved_at_ms: u64,
+    pub revision: u64,
+}
+
+impl ShelfSpec {
+    pub fn new(message: u128) -> Self {
+        Self {
+            message,
+            remind_at_ms: None,
+            reminded_at_ms: None,
+            done_at_ms: None,
+            saved_at_ms: 100,
+            revision: 1,
+        }
+    }
+
+    pub fn remind(self, remind_at_ms: u64) -> Self {
+        Self {
+            remind_at_ms: Some(remind_at_ms),
+            ..self
+        }
+    }
+
+    pub fn reminded(self, reminded_at_ms: u64) -> Self {
+        Self {
+            reminded_at_ms: Some(reminded_at_ms),
+            ..self
+        }
+    }
+
+    pub fn done(self, done_at_ms: u64) -> Self {
+        Self {
+            done_at_ms: Some(done_at_ms),
+            ..self
+        }
+    }
+
+    pub fn saved(self, saved_at_ms: u64) -> Self {
+        Self {
+            saved_at_ms,
+            ..self
+        }
+    }
+
+    pub fn revision(self, revision: u64) -> Self {
+        Self { revision, ..self }
+    }
+}
+
+pub fn shelf_item(spec: ShelfSpec) -> pulse_protocol::ShelfItem {
+    pulse_protocol::ShelfItem {
+        shelf_item_id: shelf_item_id(spec.message),
+        message: chain_message(ROOM_A, spec.message),
+        remind_at_ms: spec.remind_at_ms,
+        reminded_at_ms: spec.reminded_at_ms,
+        done_at_ms: spec.done_at_ms,
+        saved_at_ms: spec.saved_at_ms,
+        revision: spec.revision,
+    }
+}
+
+pub fn shelf_synced_frame(specs: &[ShelfSpec]) -> ServerFrame {
+    ServerFrame::ShelfSynced(pulse_protocol::ShelfSynced {
+        items: specs.iter().copied().map(shelf_item).collect(),
+    })
+}
+
+pub fn shelf_changed_frame(spec: ShelfSpec, removed: bool) -> ServerFrame {
+    ServerFrame::ShelfChanged(pulse_protocol::ShelfChanged {
+        item: shelf_item(spec),
+        removed,
+    })
+}
+
+pub fn shelf_rejected_frame(
+    message_index: u128,
+    action: pulse_protocol::ShelfAction,
+    reason: pulse_protocol::ShelfRejection,
+) -> ServerFrame {
+    ServerFrame::ShelfRejected(pulse_protocol::ShelfRejected {
+        room_id: ROOM_A,
+        message_id: message_id(message_index),
+        action,
+        reason,
+    })
+}
+
+pub fn vault_item(
+    message: RoomMessage,
+    attachment: Option<pulse_protocol::Attachment>,
+    link: Option<&str>,
+) -> pulse_protocol::VaultItem {
+    pulse_protocol::VaultItem {
+        message,
+        attachment,
+        link: link.map(str::to_owned),
+    }
+}
+
+pub fn vault_synced_frame(
+    room_id: RoomId,
+    tab: pulse_protocol::VaultTab,
+    items: Vec<pulse_protocol::VaultItem>,
+    next_before: Option<u128>,
+) -> ServerFrame {
+    ServerFrame::VaultSynced(pulse_protocol::VaultSynced {
+        room_id,
+        tab,
+        items,
+        next_before: next_before.map(message_id),
+    })
+}
+
+pub fn media(intent: pulse_core::MediaIntent) -> TimelineEvent {
+    TimelineEvent::Media(intent)
+}
+
+pub fn search_event(intent: pulse_core::SearchIntent) -> TimelineEvent {
+    TimelineEvent::Search(intent)
+}
+
+pub fn shelf_event(intent: pulse_core::ShelfIntent) -> TimelineEvent {
+    TimelineEvent::Shelf(intent)
+}
+
+pub fn shelf_update(
+    message_index: u128,
+    action: pulse_protocol::ShelfAction,
+    preset: Option<pulse_protocol::ReminderPreset>,
+    remind_at_ms: Option<u64>,
+) -> TimelineEvent {
+    shelf_event(pulse_core::ShelfIntent::UpdateRequested {
+        room_id: ROOM_A,
+        message_id: message_id(message_index),
+        action,
+        preset,
+        remind_at_ms,
+    })
+}
+
+pub fn attach_draft(index: u128, file_name: &str, byte_size: u64) -> TimelineEvent {
+    media(pulse_core::MediaIntent::DraftAttached {
+        draft_id: draft_id(index),
+        room_id: ROOM_A,
+        file_name: file_name.to_owned(),
+        byte_size,
+    })
+}
+
+pub fn upload_finished(
+    draft_index: u128,
+    result: Result<pulse_protocol::AttachmentId, ApiError>,
+) -> TimelineEvent {
+    TimelineEvent::EffectFinished(pulse_core::EffectOutcome::UploadFinished {
+        draft_id: draft_id(draft_index),
+        result,
+    })
+}
+
+pub fn unavailable_error() -> ApiError {
+    ApiError::new(pulse_protocol::ApiErrorCode::Unavailable)
+}
+
+pub fn welcome_as(role: Role) -> ConnectionEvent {
+    ConnectionEvent::WelcomeReceived(Welcome {
+        role,
+        ..welcome_for(CAMPUS_A)
+    })
+}
+
+pub fn connected_as(role: Role) -> Client {
+    let (mut client, _) = signed_in_client();
+    [
+        connect(),
+        ConnectionEvent::TransportOpened,
+        welcome_as(role),
+    ]
+    .into_iter()
+    .for_each(|event| {
+        client.connection_step(event);
+    });
+    client
+}
+
+pub fn settled_client() -> Client {
+    let mut client = connected_client();
+    let rooms = client_rooms(&client);
+    rooms.iter().for_each(|room_id| {
+        client.receive_frame(synced_frame(*room_id, vec![], false));
+    });
+    client.drain_outbound();
+    client.take_effects();
+    client
 }

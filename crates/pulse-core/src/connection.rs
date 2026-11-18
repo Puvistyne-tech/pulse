@@ -1,6 +1,7 @@
 use pulse_protocol::{
     AuthToken, CampusId, ClientFrame, ConnectionPhase, ConnectionSnapshot, HandshakeRejected,
-    HandshakeRejection, Hello, ProtocolVersion, ServerFrame, SessionId, VersionMismatch, Welcome,
+    HandshakeRejection, Hello, ProtocolVersion, Role, ServerFrame, SessionId, VersionMismatch,
+    Welcome,
 };
 
 use crate::backoff::BackoffPolicy;
@@ -37,6 +38,7 @@ pub struct ConnectionMachine {
     campus_id: Option<CampusId>,
     auth_token: Option<AuthToken>,
     session_id: Option<SessionId>,
+    role: Option<Role>,
     rejection: Option<VersionMismatch>,
     handshake_rejection: Option<HandshakeRejection>,
     policy: BackoffPolicy,
@@ -51,10 +53,16 @@ impl ConnectionMachine {
             campus_id: None,
             auth_token: None,
             session_id: None,
+            role: None,
             rejection: None,
             handshake_rejection: None,
             policy,
         }
+    }
+
+    pub fn role(&self) -> Option<Role> {
+        self.role
+            .filter(|_| matches!(self.phase, ConnectionPhase::Connected))
     }
 
     pub fn phase(&self) -> &ConnectionPhase {
@@ -124,6 +132,7 @@ impl ConnectionMachine {
                 if Some(welcome.campus_id) == self.campus_id {
                     self.enter(ConnectionPhase::Connected);
                     self.session_id = Some(welcome.session_id);
+                    self.role = Some(welcome.role);
                     self.attempt = 0;
                     None
                 } else {

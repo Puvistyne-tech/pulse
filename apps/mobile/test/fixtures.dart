@@ -7,14 +7,16 @@ import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/campus.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/frames.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/ids.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/mention.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/media.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/messaging.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/rbac.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/shelf.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/thread.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/version.dart';
 import 'package:uuid/uuid.dart';
 
-const _version = ProtocolVersion(field0: 3);
+const _version = ProtocolVersion(field0: 4);
 
 UuidValue _uuid(String suffix) =>
     UuidValue.fromString('0193a5c0-0000-7000-8000-0000000000$suffix');
@@ -31,8 +33,19 @@ final messageDId = MessageId(field0: _uuid('e4'));
 final nonceA = ClientNonce(field0: _uuid('f1'));
 final nonceB = ClientNonce(field0: _uuid('f2'));
 final nonceC = ClientNonce(field0: _uuid('f3'));
+final attachmentAId = AttachmentId(field0: _uuid('a1'));
+final attachmentBId = AttachmentId(field0: _uuid('a2'));
+final draftAId = DraftId(field0: _uuid('c3'));
+final draftBId = DraftId(field0: _uuid('c4'));
+final shelfItemAId = ShelfItemId(field0: _uuid('b1'));
 
 final graceId = AccountId(field0: _uuid('c2'));
+
+MessageId messageIdAt(int index) => MessageId(
+  field0: UuidValue.fromString(
+    '0193a5c0-0000-7000-8000-${(0x1000 + index).toRadixString(16).padLeft(12, '0')}',
+  ),
+);
 
 String mentionToken(AccountId accountId) => '<@${accountId.field0}>';
 
@@ -91,6 +104,10 @@ TimelineEntry _entry(
   List<ReactionSummary> reactions = const [],
   ThreadPreview? thread,
   MessageRejection? rejection,
+  List<AttachmentView> attachments = const [],
+  List<DraftAttachmentView> pendingDrafts = const [],
+  bool pinned = false,
+  bool shelved = false,
 }) {
   final author = authorId ?? account.accountId;
   return TimelineEntry(
@@ -107,6 +124,10 @@ TimelineEntry _entry(
     thread: thread,
     delivery: delivery,
     rejection: rejection,
+    attachments: attachments,
+    pendingDrafts: pendingDrafts,
+    pinned: pinned,
+    shelved: shelved,
   );
 }
 
@@ -130,6 +151,9 @@ TimelineEntry _gracesEntry({
   MessageId? threadRootId,
   List<ReactionSummary> reactions = const [],
   ThreadPreview? thread,
+  List<AttachmentView> attachments = const [],
+  bool pinned = false,
+  bool shelved = false,
 }) => _entry(
   DeliveryState.confirmed,
   clientNonce: clientNonce,
@@ -142,7 +166,34 @@ TimelineEntry _gracesEntry({
   threadRootId: threadRootId,
   reactions: reactions,
   thread: thread,
+  attachments: attachments,
+  pinned: pinned,
+  shelved: shelved,
 );
+
+TimelineEntry gracesEntryWith({
+  List<AttachmentView> attachments = const [],
+  bool pinned = false,
+  bool shelved = false,
+  List<BodySegment>? segments,
+  String body = 'welcome',
+  MessageId? messageId,
+}) => _gracesEntry(
+  clientNonce: nonceB,
+  messageId: messageId ?? messageAId,
+  body: body,
+  segments: segments,
+  attachments: attachments,
+  pinned: pinned,
+  shelved: shelved,
+);
+
+TimelineEntry ownPendingEntryWith(List<DraftAttachmentView> pendingDrafts) =>
+    _entry(
+      DeliveryState.pending,
+      clientNonce: nonceA,
+      pendingDrafts: pendingDrafts,
+    );
 
 final mentionEntry = _gracesEntry(
   clientNonce: nonceC,
@@ -223,18 +274,189 @@ TimelineSnapshot timelineOf(
   bool syncing = false,
   ApiError? error,
   List<String> palette = reactionPalette,
+  List<DraftAttachmentView> drafts = const [],
+  MessageId? focusMessageId,
+  bool canPin = false,
+  bool canUpload = false,
 }) => TimelineSnapshot(
   roomId: roomId ?? roomAId,
   entries: entries,
   syncing: syncing,
   error: error,
   reactionPalette: palette,
+  drafts: drafts,
+  focusMessageId: focusMessageId,
+  canPin: canPin,
+  canUpload: canUpload,
 );
 
 const emptyTimeline = TimelineSnapshot(
   entries: [],
   syncing: false,
   reactionPalette: reactionPalette,
+  drafts: [],
+  canPin: false,
+  canUpload: false,
+);
+
+const emptySearch = SearchSnapshot(
+  open: false,
+  query: '',
+  hits: [],
+  searching: false,
+);
+
+const emptyVault = VaultSnapshot(
+  open: false,
+  tab: VaultTab.media,
+  entries: [],
+  loading: false,
+  hasMore: false,
+);
+
+const emptyShelf = ShelfSnapshot(
+  open: false,
+  due: [],
+  upcoming: [],
+  done: [],
+  dueCount: 0,
+  presets: [],
+);
+
+const allPresets = ReminderPreset.values;
+
+String idTail(MessageId messageId) =>
+    messageId.field0.uuid.substring(messageId.field0.uuid.length - 2);
+
+AttachmentView attachmentViewOf(
+  AttachmentKind kind, {
+  AttachmentId? attachmentId,
+  String? fileName,
+  String? url = 'https://files.example.test/sample',
+}) => AttachmentView(
+  attachmentId: attachmentId ?? attachmentAId,
+  fileName: fileName ?? 'sample.${kind.name}',
+  contentType: '${kind.name}/sample',
+  kind: kind,
+  byteSize: BigInt.from(2048),
+  url: url,
+);
+
+DraftAttachmentView draftOf(
+  UploadState upload, {
+  DraftId? draftId,
+  String fileName = 'draft.png',
+}) => DraftAttachmentView(
+  draftId: draftId ?? draftAId,
+  roomId: roomAId,
+  fileName: fileName,
+  kind: AttachmentKind.image,
+  byteSize: BigInt.from(10),
+  upload: upload,
+);
+
+List<HighlightSpan> snippetOf(List<(String, bool)> spans) => [
+  for (final (text, matched) in spans)
+    HighlightSpan(text: text, matched: matched),
+];
+
+SearchHit searchHitOf(
+  MessageId messageId, {
+  String author = 'Grace',
+  String? topicTitle,
+  List<HighlightSpan>? snippet,
+}) => SearchHit(
+  roomId: roomAId,
+  messageId: messageId,
+  authorDisplayName: author,
+  topicTitle: topicTitle,
+  snippet: snippet ?? snippetOf([('say ', false), ('alpha', true)]),
+  score: 2,
+);
+
+SearchSnapshot searchOf(
+  List<SearchHit> hits, {
+  bool open = true,
+  String query = 'alpha',
+  int? selectedIndex,
+  bool selectFirst = true,
+  bool searching = false,
+  ApiError? error,
+}) => SearchSnapshot(
+  open: open,
+  query: query,
+  hits: hits,
+  selectedIndex: selectedIndex ?? (selectFirst && hits.isNotEmpty ? 0 : null),
+  searching: searching,
+  error: error,
+);
+
+VaultEntry vaultEntryOf(
+  VaultTab tab,
+  MessageId messageId, {
+  AttachmentView? attachment,
+  String? link,
+  String? preview,
+}) => VaultEntry(
+  tab: tab,
+  roomId: roomAId,
+  messageId: messageId,
+  authorDisplayName: 'Grace',
+  preview: preview ?? 'preview ${idTail(messageId)}',
+  attachment: attachment,
+  link: link,
+);
+
+VaultSnapshot vaultOf(
+  List<VaultEntry> entries, {
+  VaultTab? tab,
+  bool withRoom = true,
+  bool loading = false,
+  bool hasMore = false,
+  ApiError? error,
+}) => VaultSnapshot(
+  open: true,
+  roomId: withRoom ? roomAId : null,
+  tab: tab ?? (entries.isEmpty ? VaultTab.media : entries.first.tab),
+  entries: entries,
+  loading: loading,
+  hasMore: hasMore,
+  error: error,
+);
+
+ShelfEntry shelfEntryOf(
+  ShelfBucket bucket,
+  MessageId messageId, {
+  bool pending = false,
+  String? preview,
+}) => ShelfEntry(
+  shelfItemId: shelfItemAId,
+  roomId: roomAId,
+  messageId: messageId,
+  authorDisplayName: 'Grace',
+  preview: preview ?? 'shelved ${idTail(messageId)}',
+  remindAtMs: bucket == ShelfBucket.upcoming ? BigInt.from(4000000) : null,
+  doneAtMs: bucket == ShelfBucket.done ? BigInt.from(3000000) : null,
+  bucket: bucket,
+  pending: pending,
+);
+
+ShelfSnapshot shelfOf({
+  List<ShelfEntry> due = const [],
+  List<ShelfEntry> upcoming = const [],
+  List<ShelfEntry> done = const [],
+  bool open = true,
+  ShelfEntry? latestReminder,
+  ApiError? error,
+}) => ShelfSnapshot(
+  open: open,
+  due: due,
+  upcoming: upcoming,
+  done: done,
+  dueCount: due.length,
+  latestReminder: latestReminder,
+  presets: allPresets,
+  error: error,
 );
 
 const emptyThread = ThreadSnapshot(replies: [], syncing: false);
@@ -312,13 +534,20 @@ ClientSnapshot withExtras(
   ClientSnapshot snapshot, {
   ThreadSnapshot? thread,
   InboxSnapshot? inbox,
+  SearchSnapshot? search,
+  VaultSnapshot? vault,
+  ShelfSnapshot? shelf,
+  TimelineSnapshot? timeline,
 }) => ClientSnapshot(
   sequence: snapshot.sequence,
   network: snapshot.network,
   session: snapshot.session,
-  timeline: snapshot.timeline,
+  timeline: timeline ?? snapshot.timeline,
   thread: thread ?? snapshot.thread,
   inbox: inbox ?? snapshot.inbox,
+  search: search ?? snapshot.search,
+  vault: vault ?? snapshot.vault,
+  shelf: shelf ?? snapshot.shelf,
 );
 
 ClientSnapshot snapshotAt(ClientSnapshot snapshot, int sequence) =>
@@ -329,6 +558,9 @@ ClientSnapshot snapshotAt(ClientSnapshot snapshot, int sequence) =>
       timeline: snapshot.timeline,
       thread: snapshot.thread,
       inbox: snapshot.inbox,
+      search: snapshot.search,
+      vault: snapshot.vault,
+      shelf: snapshot.shelf,
     );
 
 ClientSnapshot _snapshot({
@@ -347,6 +579,9 @@ ClientSnapshot _snapshot({
   timeline: timeline,
   thread: emptyThread,
   inbox: emptyInbox,
+  search: emptySearch,
+  vault: emptyVault,
+  shelf: emptyShelf,
   network: network(),
   session: SessionSnapshot(
     auth: auth,
@@ -432,7 +667,7 @@ final networkCases = <NetworkCase>[
         received: ProtocolVersion(field0: 99),
       ),
     ),
-    'Version rejected: supported 3, received 99',
+    'Version rejected: supported 4, received 99',
   ),
   NetworkCase(
     'handshake rejected',
@@ -470,6 +705,33 @@ class RecordedIntents {
       archiveInboxSelection: () async => calls.add('archiveInboxSelection'),
       startInboxReply: () async => calls.add('startInboxReply'),
       cancelInboxReply: () async => calls.add('cancelInboxReply'),
+      toggleSearch: () async => calls.add('toggleSearch'),
+      search: (query) async => calls.add(('search', query)),
+      moveSearchSelection: (step) async =>
+          calls.add(('moveSearchSelection', step)),
+      openSearchSelection: () async => calls.add('openSearchSelection'),
+      openSearchHit: (messageId) async =>
+          calls.add(('openSearchHit', messageId)),
+      attachFile: (roomId, fileName, bytes) async =>
+          calls.add(('attachFile', roomId, fileName, bytes)),
+      discardDraft: (draftId) async => calls.add(('discardDraft', draftId)),
+      retryDraft: (draftId) async => calls.add(('retryDraft', draftId)),
+      setPin: (roomId, messageId, pinned) async =>
+          calls.add(('setPin', roomId, messageId, pinned)),
+      openVault: (roomId, tab) async => calls.add(('openVault', roomId, tab)),
+      loadMoreVault: () async => calls.add('loadMoreVault'),
+      closeVault: () async => calls.add('closeVault'),
+      toggleShelf: () async => calls.add('toggleShelf'),
+      updateShelf: (roomId, messageId, action, preset, remindAtMs) async =>
+          calls.add((
+            'updateShelf',
+            roomId,
+            messageId,
+            action,
+            preset,
+            remindAtMs,
+          )),
+      dismissReminder: () async => calls.add('dismissReminder'),
     );
   }
 
@@ -495,3 +757,19 @@ const createCampusRequest = CreateCampusRequest(
   slug: 'gamma',
   displayName: 'Gamma Campus',
 );
+
+List<TextSpan> richSpans(RichText rich) {
+  final spans = <TextSpan>[];
+  rich.text.visitChildren((span) {
+    if (span is TextSpan && span.text != null) {
+      spans.add(span);
+    }
+    return true;
+  });
+  return spans;
+}
+
+List<(String, bool)> boldSpans(RichText rich) => [
+  for (final span in richSpans(rich))
+    (span.text!, span.style?.fontWeight == FontWeight.bold),
+];

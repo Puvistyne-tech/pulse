@@ -11,14 +11,17 @@ use futures_util::{SinkExt, StreamExt};
 use http_body_util::BodyExt;
 use pulse_protocol::fixtures::VALID_PASSWORD;
 use pulse_protocol::{
-    AccountId, AuthSession, AuthToken, CampusCreated, CampusId, CampusList, ClientFrame,
-    ClientNonce, CreateCampusRequest, Hello, InboxSynced, MarkThreadRead, MessageId, Ping, Pong,
+    AccountId, ApiError, AttachmentId, AuthSession, AuthToken, CampusCreated, CampusId, CampusList,
+    ClientFrame, ClientNonce, CreateCampusRequest, CreateUploadRequest, DownloadTickets,
+    DownloadTicketsRequest, Hello, InboxSynced, MarkThreadRead, MessageId, Ping, Pong,
     ProtocolVersion, React, ReactionAction, Role, RoomCursor, RoomId, RoomList, RoomMessage,
-    RoomSynced, SendMessage, ServerFrame, SetThreadSubscription, SetTopicTitle, SignUpRequest,
-    SubscriptionOrigin, SubscriptionState, SyncInbox, SyncRooms, SyncThread, ThreadSummary,
-    ThreadSynced, Welcome, api_path,
+    RoomSynced, SendMessage, ServerFrame, SetPin, SetThreadSubscription, SetTopicTitle,
+    ShelfAction, SignUpRequest, SubscriptionOrigin, SubscriptionState, SyncInbox, SyncRooms,
+    SyncShelf, SyncThread, SyncVault, ThreadSummary, ThreadSynced, UpdateShelf, UploadTicket,
+    VaultTab, Welcome, api_path,
 };
 use pulse_server::auth::token_digest;
+use pulse_server::config::DEFAULT_DATABASE_URL;
 use pulse_server::{AppState, Config, MIGRATOR, router, state};
 use serde::Serialize;
 use serde_json::Value;
@@ -31,7 +34,6 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const DEFAULT_DATABASE_URL: &str = "postgres://pulse:pulse@127.0.0.1:5432/pulse";
 const DEFAULT_VALKEY_URL: &str = "redis://127.0.0.1:6379";
 const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 const START_POSTGRES: &str = "start Postgres: docker compose up -d postgres";
@@ -68,6 +70,7 @@ pub fn send_message(room_id: RoomId, client_nonce: ClientNonce, body: &str) -> O
         client_nonce,
         body: body.to_owned(),
         thread_root_id: None,
+        attachment_ids: Vec::new(),
     }))
 }
 
@@ -82,6 +85,7 @@ pub fn send_reply(
         client_nonce,
         body: body.to_owned(),
         thread_root_id: Some(root),
+        attachment_ids: Vec::new(),
     }))
 }
 
@@ -1161,4 +1165,395 @@ impl Stage {
             sibling,
         }
     }
+}
+
+pub use pulse_server::time::now_ms;
+
+pub fn ms_from_now(offset_ms: i64) -> u64 {
+    now_ms().saturating_add_signed(offset_ms)
+}
+
+pub async fn storage_ready(state: &AppState) {
+    state
+        .storage
+        .ensure_bucket()
+        .await
+        .expect("start MinIO: docker start pulse-dev-minio");
+}
+
+pub async fn request_upload(
+    state: &AppState,
+    token: &AuthToken,
+    campus_id: CampusId,
+    room_id: RoomId,
+    request: &CreateUploadRequest,
+) -> (StatusCode, Value) {
+    api(
+        state,
+        Method::POST,
+        &api_path::campus_room_uploads(campus_id, room_id),
+        Some(token),
+        Some(request),
+    )
+    .await
+}
+
+pub fn upload_request(file_name: &str, content_type: &str, byte_size: u64) -> CreateUploadRequest {
+    CreateUploadRequest {
+        file_name: file_name.to_owned(),
+        content_type: content_type.to_owned(),
+        byte_size,
+    }
+}
+
+pub async fn put_bytes(url: &str, content_type: &str, bytes: Vec<u8>) -> StatusCode {
+    let response = timeout(
+        HANDSHAKE_DEADLINE,
+        reqwest::Client::new()
+            .put(url)
+            .header(header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send(),
+    )
+    .await
+    .expect("put deadline")
+    .expect("put request");
+    response.status()
+}
+
+pub async fn get_bytes(url: &str) -> (StatusCode, Vec<u8>) {
+    let response = timeout(HANDSHAKE_DEADLINE, reqwest::get(url))
+        .await
+        .expect("get deadline")
+        .expect("get request");
+    let status = response.status();
+    (status, response.bytes().await.expect("get body").to_vec())
+}
+
+pub async fn uploaded(
+    state: &AppState,
+    session: &AuthSession,
+    campus_id: CampusId,
+    room_id: RoomId,
+    file_name: &str,
+    content_type: &str,
+    bytes: &[u8],
+) -> UploadTicket {
+    let request = upload_request(file_name, content_type, bytes.len() as u64);
+    let (status, body) = request_upload(state, &session.token, campus_id, room_id, &request).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let ticket: UploadTicket = serde_json::from_value(body).expect("upload ticket");
+    assert_eq!(
+        put_bytes(&ticket.put_url, &ticket.content_type, bytes.to_vec()).await,
+        StatusCode::OK
+    );
+    ticket
+}
+
+pub async fn download_tickets_of(
+    state: &AppState,
+    token: &AuthToken,
+    campus_id: CampusId,
+    ids: Vec<AttachmentId>,
+) -> (StatusCode, Value) {
+    api(
+        state,
+        Method::POST,
+        &api_path::campus_downloads(campus_id),
+        Some(token),
+        Some(&DownloadTicketsRequest {
+            attachment_ids: ids,
+        }),
+    )
+    .await
+}
+
+pub fn parsed_tickets(body: Value) -> DownloadTickets {
+    serde_json::from_value(body).expect("download tickets")
+}
+
+pub fn api_error_of(body: Value) -> ApiError {
+    serde_json::from_value(body).expect("api error")
+}
+
+pub fn send_attached(
+    room_id: RoomId,
+    client_nonce: ClientNonce,
+    body: &str,
+    attachment_ids: &[AttachmentId],
+) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SendMessage(SendMessage {
+        room_id,
+        client_nonce,
+        body: body.to_owned(),
+        thread_root_id: None,
+        attachment_ids: attachment_ids.to_vec(),
+    }))
+}
+
+pub async fn send_outcome(
+    socket: &mut ClientSocket,
+    room_id: RoomId,
+    body: &str,
+    attachment_ids: &[AttachmentId],
+) -> ServerFrame {
+    let nonce = ClientNonce::generate();
+    send(socket, &send_attached(room_id, nonce, body, attachment_ids)).await;
+    match observe_until(socket, |observed| {
+        matches!(
+            observed,
+            Observed::Frame(ServerFrame::MessageAccepted(_) | ServerFrame::MessageRejected(_))
+        )
+    })
+    .await
+    {
+        Observed::Frame(frame) => frame,
+        Observed::Close(code) => panic!("socket closed with {code}"),
+    }
+}
+
+pub fn pin_frame(room_id: RoomId, message_id: MessageId, pinned: bool) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SetPin(SetPin {
+        room_id,
+        message_id,
+        pinned,
+    }))
+}
+
+pub fn vault_frame(room_id: RoomId, tab: VaultTab, before: Option<MessageId>) -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncVault(SyncVault {
+        room_id,
+        tab,
+        before,
+    }))
+}
+
+pub fn shelf_update_request(
+    room_id: RoomId,
+    message_id: MessageId,
+    action: ShelfAction,
+    remind_at_ms: Option<u64>,
+) -> UpdateShelf {
+    UpdateShelf {
+        room_id,
+        message_id,
+        action,
+        remind_at_ms,
+    }
+}
+
+pub fn shelf_frame(
+    room_id: RoomId,
+    message_id: MessageId,
+    action: ShelfAction,
+    remind_at_ms: Option<u64>,
+) -> Outgoing {
+    Outgoing::Frame(ClientFrame::UpdateShelf(shelf_update_request(
+        room_id,
+        message_id,
+        action,
+        remind_at_ms,
+    )))
+}
+
+pub fn sync_shelf_frame() -> Outgoing {
+    Outgoing::Frame(ClientFrame::SyncShelf(SyncShelf {}))
+}
+
+pub async fn seed_attachments(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    uploader_id: AccountId,
+    placements: &[(MessageId, &str, &str)],
+) {
+    for (message_id, content_type, kind) in placements {
+        let attachment_id = AttachmentId::generate();
+        sqlx::query(
+            "INSERT INTO attachments \
+             (campus_id, room_id, attachment_id, uploader_id, object_key, file_name, \
+             content_type, kind, byte_size, message_id, position) \
+             VALUES ($1, $2, $3, $4, 'campuses/' || $1::text || '/rooms/' || $2::text \
+             || '/attachments/' || $3::text, 'seed', $5, $6, 10, $7, 0)",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(room_id.as_uuid())
+        .bind(attachment_id.as_uuid())
+        .bind(uploader_id.as_uuid())
+        .bind(content_type)
+        .bind(kind)
+        .bind(message_id.as_uuid())
+        .execute(&state.db)
+        .await
+        .expect("seed attachment");
+    }
+}
+
+pub async fn seed_links(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    message_ids: &[MessageId],
+) {
+    for message_id in message_ids {
+        sqlx::query(
+            "INSERT INTO message_links (campus_id, room_id, message_id, position, url) \
+             VALUES ($1, $2, $3, 0, 'https://example.org/seed')",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(room_id.as_uuid())
+        .bind(message_id.as_uuid())
+        .execute(&state.db)
+        .await
+        .expect("seed link");
+    }
+}
+
+pub async fn seed_pins(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    pinned_by: AccountId,
+    message_ids: &[MessageId],
+) {
+    for message_id in message_ids {
+        sqlx::query(
+            "INSERT INTO message_pins (campus_id, room_id, message_id, pinned_by) \
+             VALUES ($1, $2, $3, $4)",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(room_id.as_uuid())
+        .bind(message_id.as_uuid())
+        .bind(pinned_by.as_uuid())
+        .execute(&state.db)
+        .await
+        .expect("seed pin");
+    }
+}
+
+pub async fn seed_shelf(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+    account_id: AccountId,
+    message_ids: &[MessageId],
+    remind_offset_ms: Option<i64>,
+) {
+    for message_id in message_ids {
+        sqlx::query(
+            "INSERT INTO shelf_items \
+             (campus_id, account_id, shelf_item_id, room_id, message_id, remind_at) \
+             VALUES ($1, $2, $3, $4, $5, \
+             CASE WHEN $6::bigint IS NULL THEN NULL \
+             ELSE now() + ($6::bigint || ' milliseconds')::interval END)",
+        )
+        .bind(campus_id.as_uuid())
+        .bind(account_id.as_uuid())
+        .bind(Uuid::now_v7())
+        .bind(room_id.as_uuid())
+        .bind(message_id.as_uuid())
+        .bind(remind_offset_ms)
+        .execute(&state.db)
+        .await
+        .expect("seed shelf item");
+    }
+}
+
+pub async fn pin_count(state: &AppState, campus_id: CampusId, room_id: RoomId) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM message_pins WHERE campus_id = $1 AND room_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("pin count")
+}
+
+pub async fn shelf_state_of(
+    state: &AppState,
+    campus_id: CampusId,
+    account_id: AccountId,
+    message_id: MessageId,
+) -> Option<(bool, bool, bool, i64)> {
+    sqlx::query_as::<_, (bool, bool, bool, i64)>(
+        "SELECT remind_at IS NOT NULL, reminded_at IS NOT NULL, done_at IS NOT NULL, revision \
+         FROM shelf_items WHERE campus_id = $1 AND account_id = $2 AND message_id = $3",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(account_id.as_uuid())
+    .bind(message_id.as_uuid())
+    .fetch_optional(&state.db)
+    .await
+    .expect("shelf state")
+}
+
+pub async fn attachment_binding(
+    state: &AppState,
+    campus_id: CampusId,
+    attachment_id: AttachmentId,
+) -> Option<(Option<MessageId>, Option<i16>)> {
+    sqlx::query_as::<_, (Option<Uuid>, Option<i16>)>(
+        "SELECT message_id, position FROM attachments WHERE campus_id = $1 AND attachment_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(attachment_id.as_uuid())
+    .fetch_optional(&state.db)
+    .await
+    .expect("attachment binding")
+    .map(|(message_id, position)| (message_id.map(MessageId), position))
+}
+
+pub async fn collect_until<T>(
+    socket: &mut ClientSocket,
+    mut pick: impl FnMut(ServerFrame) -> Option<T>,
+    wanted: usize,
+) -> Vec<T> {
+    let mut found = Vec::new();
+    while found.len() < wanted {
+        if let Some(item) = pick(expect_frame(socket).await) {
+            found.push(item);
+        }
+    }
+    found
+}
+
+pub async fn object_key_of(
+    state: &AppState,
+    campus_id: CampusId,
+    attachment_id: AttachmentId,
+) -> String {
+    sqlx::query_scalar::<_, String>(
+        "SELECT object_key FROM attachments WHERE campus_id = $1 AND attachment_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(attachment_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("object key")
+}
+
+pub async fn skew_declared_size(
+    state: &AppState,
+    campus_id: CampusId,
+    attachment_id: AttachmentId,
+) {
+    sqlx::query(
+        "UPDATE attachments SET byte_size = byte_size + 1 WHERE campus_id = $1 AND attachment_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(attachment_id.as_uuid())
+    .execute(&state.db)
+    .await
+    .expect("skew declared size");
+}
+
+pub async fn bound_attachment_count(state: &AppState, campus_id: CampusId) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM attachments WHERE campus_id = $1 AND message_id IS NOT NULL",
+    )
+    .bind(campus_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("bound count")
 }

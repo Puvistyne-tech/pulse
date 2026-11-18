@@ -1,4 +1,4 @@
-import type { ApiError } from "@pulse/protocol";
+import type { ApiError, ApiErrorCode, InputField } from "@pulse/protocol";
 import { expect, test } from "vitest";
 import { errorMessage } from "./errorMessage";
 
@@ -43,6 +43,22 @@ test.each<[string, ApiError, string]>([
     { code: "forbidden", field: "reaction_emoji" },
     "You are not allowed to do that",
   ],
+  ["invalid file name", { code: "invalid_input", field: "file_name" }, "Choose a file with a valid name"],
+  ["conflicting file name", { code: "conflict", field: "file_name" }, "That file name cannot be used"],
+  ["invalid content type", { code: "invalid_input", field: "content_type" }, "That file type cannot be used"],
+  ["conflicting content type", { code: "conflict", field: "content_type" }, "That file type cannot be used"],
+  ["invalid byte size", { code: "invalid_input", field: "byte_size" }, "That file is empty or too large"],
+  ["conflicting byte size", { code: "conflict", field: "byte_size" }, "That file cannot be used"],
+  ["invalid attachments", { code: "invalid_input", field: "attachments" }, "Check the attachments on that message"],
+  ["conflicting attachments", { code: "conflict", field: "attachments" }, "Those attachments cannot be used"],
+  [
+    "invalid reminder time",
+    { code: "invalid_input", field: "remind_at" },
+    "Choose a reminder time that is not too far in the past or future",
+  ],
+  ["conflicting reminder time", { code: "conflict", field: "remind_at" }, "That reminder time cannot be used"],
+  ["forbidden upload", { code: "forbidden", field: "byte_size" }, "You are not allowed to do that"],
+  ["unavailable storage", { code: "unavailable", field: "attachments" }, "Pulse server unavailable"],
   [
     "not found without a field",
     { code: "not_found", field: null },
@@ -65,4 +81,42 @@ test.each<[string, ApiError]>([
   ["invalid message body", { code: "invalid_input", field: "message_body" }],
 ])("%s copy contains no limit numbers", (_name, error) => {
   expect(errorMessage(error)).not.toMatch(/\d/);
+});
+
+const inputFields: InputField[] = [
+  "email",
+  "display_name",
+  "password",
+  "slug",
+  "message_body",
+  "topic_title",
+  "reaction_emoji",
+  "file_name",
+  "content_type",
+  "byte_size",
+  "attachments",
+  "remind_at",
+];
+
+const codes: ApiErrorCode[] = [
+  "invalid_input",
+  "unauthenticated",
+  "forbidden",
+  "not_found",
+  "conflict",
+  "unavailable",
+  "internal",
+];
+
+test.each(
+  codes.flatMap((code) =>
+    [null, ...inputFields].map((field): [string, ApiError] => [
+      `${code} ${field ?? "without a field"}`,
+      { code, field },
+    ]),
+  ),
+)("%s copy never carries a limit number", (_name, error) => {
+  const text = errorMessage(error);
+  expect(text).not.toMatch(/\d/);
+  expect(text.length).toBeGreaterThan(0);
 });

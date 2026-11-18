@@ -4,13 +4,17 @@ import type {
   ClientNonce,
   ClientSnapshot,
   CreateCampusRequest,
+  DraftId,
   InboxStep,
   MessageId,
   ReactionAction,
+  ReminderPreset,
   RoomId,
+  ShelfAction,
   SignInRequest,
   SignUpRequest,
   SubscriptionState,
+  VaultTab,
 } from "@pulse/protocol";
 
 export const pulseClient = {
@@ -69,6 +73,48 @@ export const pulseClient = {
     invoke<ClientSnapshot>("archive_inbox_selection"),
   startInboxReply: () => invoke<ClientSnapshot>("start_inbox_reply"),
   cancelInboxReply: () => invoke<ClientSnapshot>("cancel_inbox_reply"),
+  toggleSearch: () => invoke<ClientSnapshot>("toggle_search"),
+  search: (query: string) => invoke<ClientSnapshot>("search", { query }),
+  moveSearchSelection: (step: InboxStep) =>
+    invoke<ClientSnapshot>("move_search_selection", { step }),
+  openSearchSelection: () => invoke<ClientSnapshot>("open_search_selection"),
+  openSearchHit: (messageId: MessageId) =>
+    invoke<ClientSnapshot>("open_search_hit", { messageId }),
+  attachFile: async (roomId: RoomId, file: File) => {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return invoke<ClientSnapshot>("attach_file", bytes, {
+      headers: {
+        "pulse-room-id": roomId,
+        "pulse-file-name": encodeURIComponent(file.name),
+      },
+    });
+  },
+  discardDraft: (draftId: DraftId) =>
+    invoke<ClientSnapshot>("discard_draft", { draftId }),
+  retryDraft: (draftId: DraftId) =>
+    invoke<ClientSnapshot>("retry_draft", { draftId }),
+  setPin: (roomId: RoomId, messageId: MessageId, pinned: boolean) =>
+    invoke<ClientSnapshot>("set_pin", { roomId, messageId, pinned }),
+  openVault: (roomId: RoomId, tab: VaultTab) =>
+    invoke<ClientSnapshot>("open_vault", { roomId, tab }),
+  loadMoreVault: () => invoke<ClientSnapshot>("load_more_vault"),
+  closeVault: () => invoke<ClientSnapshot>("close_vault"),
+  toggleShelf: () => invoke<ClientSnapshot>("toggle_shelf"),
+  updateShelf: (
+    roomId: RoomId,
+    messageId: MessageId,
+    action: ShelfAction,
+    preset: ReminderPreset | null,
+    remindAtMs: number | null,
+  ) =>
+    invoke<ClientSnapshot>("update_shelf", {
+      roomId,
+      messageId,
+      action,
+      preset,
+      remindAtMs,
+    }),
+  dismissReminder: () => invoke<ClientSnapshot>("dismiss_reminder"),
   watchSnapshots: (onSnapshot: (snapshot: ClientSnapshot) => void) => {
     const channel = new Channel<ClientSnapshot>();
     channel.onmessage = onSnapshot;

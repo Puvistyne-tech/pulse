@@ -3,8 +3,8 @@ mod fixtures;
 use fixtures::{
     CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B, Start, chain, chain_message, client_rooms, connect_for,
     connected_client, created_frame, message_id, room_list, send_frame, signed_in_client,
-    start_events, sync_frame, sync_frame_at, sync_inbox_frame, synced_frame, token_a, welcome,
-    welcome_for,
+    start_events, sync_frame, sync_frame_at, sync_inbox_frame, sync_shelf_frame, synced_frame,
+    token_a, welcome, welcome_for,
 };
 use futures::executor::block_on;
 use pulse_core::{
@@ -109,6 +109,7 @@ fn welcome_queues_sync_then_pending_sends(
     let mut expected = vec![
         sync_frame(&[(rooms[0], None), (rooms[1], None)]),
         sync_inbox_frame(),
+        sync_shelf_frame(),
     ];
     expected.extend(
         expected_sends
@@ -133,7 +134,8 @@ fn welcome_frame_connects_and_queues_sync() {
         client.drain_outbound(),
         vec![
             sync_frame(&[(rooms[0], None), (rooms[1], None)]),
-            sync_inbox_frame()
+            sync_inbox_frame(),
+            sync_shelf_frame()
         ]
     );
 }
@@ -171,7 +173,8 @@ fn reconnect_cursors_equal_chain_tips(
                 (rooms[0], Some(message_id(3)), Some(0)),
                 (rooms[1], Some(message_id(1)), None)
             ]),
-            sync_inbox_frame()
+            sync_inbox_frame(),
+            sync_shelf_frame()
         ]
     );
 }
@@ -262,7 +265,8 @@ fn campus_switch_then_reconnect_syncs_only_new_campus_rooms() {
         client.drain_outbound(),
         vec![
             sync_frame(&[(rooms[0], None), (rooms[1], None)]),
-            sync_inbox_frame()
+            sync_inbox_frame(),
+            sync_shelf_frame()
         ]
     );
 }

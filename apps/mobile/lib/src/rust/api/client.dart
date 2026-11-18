@@ -4,16 +4,21 @@ import '../third_party/pulse_protocol/auth.dart';
 import '../third_party/pulse_protocol/campus.dart';
 import '../third_party/pulse_protocol/frames.dart';
 import '../third_party/pulse_protocol/ids.dart';
+import '../third_party/pulse_protocol/media.dart';
 import '../third_party/pulse_protocol/mention.dart';
 import '../third_party/pulse_protocol/messaging.dart';
 import '../third_party/pulse_protocol/rbac.dart';
 import '../third_party/pulse_protocol/reaction.dart';
+import '../third_party/pulse_protocol/shelf.dart';
 import '../third_party/pulse_protocol/snapshot.dart';
 import '../third_party/pulse_protocol/thread.dart';
 import '../third_party/pulse_protocol/version.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';
+
+Future<void> initStorage({required String dataDir}) =>
+    RustLib.instance.api.crateApiClientInitStorage(dataDir: dataDir);
 
 Future<ClientSnapshot> clientSnapshot() =>
     RustLib.instance.api.crateApiClientClientSnapshot();
@@ -115,6 +120,78 @@ Future<ClientSnapshot> startInboxReply() =>
 
 Future<ClientSnapshot> cancelInboxReply() =>
     RustLib.instance.api.crateApiClientCancelInboxReply();
+
+Future<ClientSnapshot> toggleSearch() =>
+    RustLib.instance.api.crateApiClientToggleSearch();
+
+Future<ClientSnapshot> search({required String query}) =>
+    RustLib.instance.api.crateApiClientSearch(query: query);
+
+Future<ClientSnapshot> moveSearchSelection({required InboxStep step}) =>
+    RustLib.instance.api.crateApiClientMoveSearchSelection(step: step);
+
+Future<ClientSnapshot> openSearchSelection() =>
+    RustLib.instance.api.crateApiClientOpenSearchSelection();
+
+Future<ClientSnapshot> openSearchHit({required MessageId messageId}) =>
+    RustLib.instance.api.crateApiClientOpenSearchHit(messageId: messageId);
+
+Future<ClientSnapshot> attachFile({
+  required RoomId roomId,
+  required String fileName,
+  required List<int> bytes,
+}) => RustLib.instance.api.crateApiClientAttachFile(
+  roomId: roomId,
+  fileName: fileName,
+  bytes: bytes,
+);
+
+Future<ClientSnapshot> discardDraft({required DraftId draftId}) =>
+    RustLib.instance.api.crateApiClientDiscardDraft(draftId: draftId);
+
+Future<ClientSnapshot> retryDraft({required DraftId draftId}) =>
+    RustLib.instance.api.crateApiClientRetryDraft(draftId: draftId);
+
+Future<ClientSnapshot> setPin({
+  required RoomId roomId,
+  required MessageId messageId,
+  required bool pinned,
+}) => RustLib.instance.api.crateApiClientSetPin(
+  roomId: roomId,
+  messageId: messageId,
+  pinned: pinned,
+);
+
+Future<ClientSnapshot> openVault({
+  required RoomId roomId,
+  required VaultTab tab,
+}) => RustLib.instance.api.crateApiClientOpenVault(roomId: roomId, tab: tab);
+
+Future<ClientSnapshot> loadMoreVault() =>
+    RustLib.instance.api.crateApiClientLoadMoreVault();
+
+Future<ClientSnapshot> closeVault() =>
+    RustLib.instance.api.crateApiClientCloseVault();
+
+Future<ClientSnapshot> toggleShelf() =>
+    RustLib.instance.api.crateApiClientToggleShelf();
+
+Future<ClientSnapshot> updateShelf({
+  required RoomId roomId,
+  required MessageId messageId,
+  required ShelfAction action,
+  ReminderPreset? preset,
+  BigInt? remindAtMs,
+}) => RustLib.instance.api.crateApiClientUpdateShelf(
+  roomId: roomId,
+  messageId: messageId,
+  action: action,
+  preset: preset,
+  remindAtMs: remindAtMs,
+);
+
+Future<ClientSnapshot> dismissReminder() =>
+    RustLib.instance.api.crateApiClientDismissReminder();
 
 Stream<ClientSnapshot> watchSnapshots() =>
     RustLib.instance.api.crateApiClientWatchSnapshots();

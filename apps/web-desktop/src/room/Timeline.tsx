@@ -19,6 +19,10 @@ export function Timeline({ timeline, roomId, actions }: TimelineProps) {
             roomId={roomId}
             palette={timeline.reaction_palette}
             actions={actions}
+            focused={
+              entry.message_id !== null &&
+              entry.message_id === timeline.focus_message_id
+            }
           />
         ))}
       </ul>

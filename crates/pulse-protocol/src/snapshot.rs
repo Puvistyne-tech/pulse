@@ -5,9 +5,14 @@ use crate::api::ApiError;
 use crate::auth::AccountProfile;
 use crate::campus::{CampusSummary, Room};
 use crate::frames::{HandshakeRejection, VersionMismatch};
-use crate::ids::{AccountId, CampusId, ClientNonce, MessageId, RoomId, SessionId};
+use crate::ids::{
+    AccountId, AttachmentId, CampusId, ClientNonce, DraftId, MessageId, RoomId, SessionId,
+    ShelfItemId,
+};
+use crate::media::{AttachmentKind, VaultTab};
 use crate::mention::BodySegment;
 use crate::messaging::MessageRejection;
+use crate::shelf::{ReminderPreset, ShelfBucket};
 use crate::thread::SubscriptionState;
 use crate::version::ProtocolVersion;
 
@@ -61,6 +66,36 @@ pub enum DeliveryState {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadState {
+    Uploading,
+    Uploaded,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct AttachmentView {
+    pub attachment_id: AttachmentId,
+    pub file_name: String,
+    pub content_type: String,
+    pub kind: AttachmentKind,
+    #[ts(type = "number")]
+    pub byte_size: u64,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct DraftAttachmentView {
+    pub draft_id: DraftId,
+    pub room_id: RoomId,
+    pub file_name: String,
+    pub kind: AttachmentKind,
+    #[ts(type = "number")]
+    pub byte_size: u64,
+    pub upload: UploadState,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct ReactionSummary {
     pub emoji: String,
@@ -101,6 +136,10 @@ pub struct TimelineEntry {
     pub thread: Option<ThreadPreview>,
     pub delivery: DeliveryState,
     pub rejection: Option<MessageRejection>,
+    pub attachments: Vec<AttachmentView>,
+    pub pending_drafts: Vec<DraftAttachmentView>,
+    pub pinned: bool,
+    pub shelved: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -110,6 +149,10 @@ pub struct TimelineSnapshot {
     pub syncing: bool,
     pub error: Option<ApiError>,
     pub reaction_palette: Vec<String>,
+    pub drafts: Vec<DraftAttachmentView>,
+    pub focus_message_id: Option<MessageId>,
+    pub can_pin: bool,
+    pub can_upload: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -162,6 +205,84 @@ pub struct InboxSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct HighlightSpan {
+    pub text: String,
+    pub matched: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct SearchHit {
+    pub room_id: RoomId,
+    pub message_id: MessageId,
+    pub thread_root_id: Option<MessageId>,
+    pub author_display_name: String,
+    pub topic_title: Option<String>,
+    pub snippet: Vec<HighlightSpan>,
+    pub score: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct SearchSnapshot {
+    pub open: bool,
+    pub query: String,
+    pub hits: Vec<SearchHit>,
+    pub selected_index: Option<u32>,
+    pub searching: bool,
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct VaultEntry {
+    pub tab: VaultTab,
+    pub room_id: RoomId,
+    pub message_id: MessageId,
+    pub author_display_name: String,
+    pub preview: String,
+    pub attachment: Option<AttachmentView>,
+    pub link: Option<String>,
+    #[ts(type = "number | null")]
+    pub pinned_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct VaultSnapshot {
+    pub open: bool,
+    pub room_id: Option<RoomId>,
+    pub tab: VaultTab,
+    pub entries: Vec<VaultEntry>,
+    pub loading: bool,
+    pub has_more: bool,
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ShelfEntry {
+    pub shelf_item_id: Option<ShelfItemId>,
+    pub room_id: RoomId,
+    pub message_id: MessageId,
+    pub author_display_name: String,
+    pub preview: String,
+    #[ts(type = "number | null")]
+    pub remind_at_ms: Option<u64>,
+    #[ts(type = "number | null")]
+    pub done_at_ms: Option<u64>,
+    pub bucket: ShelfBucket,
+    pub pending: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ShelfSnapshot {
+    pub open: bool,
+    pub due: Vec<ShelfEntry>,
+    pub upcoming: Vec<ShelfEntry>,
+    pub done: Vec<ShelfEntry>,
+    pub due_count: u32,
+    pub latest_reminder: Option<ShelfEntry>,
+    pub presets: Vec<ReminderPreset>,
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct ClientSnapshot {
     #[ts(type = "number")]
     pub sequence: u64,
@@ -170,4 +291,7 @@ pub struct ClientSnapshot {
     pub timeline: TimelineSnapshot,
     pub thread: ThreadSnapshot,
     pub inbox: InboxSnapshot,
+    pub search: SearchSnapshot,
+    pub vault: VaultSnapshot,
+    pub shelf: ShelfSnapshot,
 }

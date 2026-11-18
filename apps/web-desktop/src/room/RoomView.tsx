@@ -1,4 +1,4 @@
-import type { TimelineSnapshot } from "@pulse/protocol";
+import type { ReminderPreset, TimelineSnapshot } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
 import { ErrorNotice } from "../session/ErrorNotice";
 import { Composer, useInsertion } from "./Composer";
@@ -7,9 +7,10 @@ import { Timeline } from "./Timeline";
 interface RoomViewProps {
   timeline: TimelineSnapshot;
   intents: PulseIntents;
+  presets?: ReminderPreset[];
 }
 
-export function RoomView({ timeline, intents }: RoomViewProps) {
+export function RoomView({ timeline, intents, presets = [] }: RoomViewProps) {
   const [insertion, mention] = useInsertion();
   const roomId = timeline.room_id;
 
@@ -19,6 +20,13 @@ export function RoomView({ timeline, intents }: RoomViewProps) {
 
   return (
     <section aria-label="Room" className="space-y-2">
+      <button
+        className="text-sm underline"
+        type="button"
+        onClick={() => void intents.openVault(roomId, "media")}
+      >
+        Vault
+      </button>
       <Timeline
         timeline={timeline}
         roomId={roomId}
@@ -26,12 +34,21 @@ export function RoomView({ timeline, intents }: RoomViewProps) {
           react: intents.react,
           discardMessage: intents.discardMessage,
           openThread: intents.openThread,
+          setPin: intents.setPin,
+          updateShelf: intents.updateShelf,
+          canPin: timeline.can_pin,
+          presets,
           mention,
         }}
       />
       <ErrorNotice error={timeline.error} />
       <Composer
         insertion={insertion}
+        drafts={timeline.drafts}
+        canUpload={timeline.can_upload}
+        onAttach={(file) => void intents.attachFile(roomId, file)}
+        onDiscardDraft={(draftId) => void intents.discardDraft(draftId)}
+        onRetryDraft={(draftId) => void intents.retryDraft(draftId)}
         onSend={(body) => void intents.sendMessage(roomId, body)}
       />
     </section>

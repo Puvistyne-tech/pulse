@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pulse_mobile/home/home_view.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/media.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/shelf.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
 
 import 'fixtures.dart';
@@ -57,7 +59,85 @@ final openInboxSnapshot = withExtras(
   inbox: inboxOf([inboxItemOf(messageAId, 'first root', unreadReplies: 2)]),
 );
 
+final openSearchSnapshot = withExtras(
+  signedInWithRooms,
+  search: searchOf([searchHitOf(messageAId)]),
+);
+
+final openShelfSnapshot = withExtras(
+  signedInWithRooms,
+  shelf: shelfOf(due: [shelfEntryOf(ShelfBucket.due, messageAId)]),
+);
+
+final openVaultSnapshot = withExtras(
+  signedInWithRooms,
+  vault: vaultOf([
+    vaultEntryOf(VaultTab.links, messageAId, link: 'https://example.org/a'),
+  ]),
+);
+
+final remindedSnapshot = withExtras(
+  signedInWithRooms,
+  shelf: shelfOf(
+    open: false,
+    due: [shelfEntryOf(ShelfBucket.due, messageAId)],
+    latestReminder: shelfEntryOf(
+      ShelfBucket.due,
+      messageAId,
+      preview: 'call back',
+    ),
+  ),
+);
+
 final panelCases = <PanelCase>[
+  PanelCase(
+    'closed search hides the palette',
+    signedInWithRooms,
+    const Key('searchView'),
+    false,
+  ),
+  PanelCase(
+    'open search shows the palette',
+    openSearchSnapshot,
+    const Key('searchView'),
+    true,
+  ),
+  PanelCase(
+    'closed shelf hides the shelf',
+    signedInWithRooms,
+    const Key('shelfView'),
+    false,
+  ),
+  PanelCase(
+    'open shelf shows the shelf',
+    openShelfSnapshot,
+    const Key('shelfView'),
+    true,
+  ),
+  PanelCase(
+    'closed vault hides the vault',
+    signedInWithRooms,
+    const Key('vaultView'),
+    false,
+  ),
+  PanelCase(
+    'open vault shows the vault',
+    openVaultSnapshot,
+    const Key('vaultView'),
+    true,
+  ),
+  PanelCase(
+    'no reminder hides the banner',
+    signedInWithRooms,
+    const Key('reminderBanner'),
+    false,
+  ),
+  PanelCase(
+    'a reminder shows the banner',
+    remindedSnapshot,
+    const Key('reminderBanner'),
+    true,
+  ),
   PanelCase(
     'closed inbox hides the inbox',
     signedInWithRooms,
@@ -224,6 +304,56 @@ void main() {
       );
       await tester.tap(find.text('Inbox 0'));
       expect(recorded.calls, ['toggleInbox']);
+    });
+
+    for (final (label, call) in [
+      ('Search', 'toggleSearch'),
+      ('Shelf 0', 'toggleShelf'),
+    ]) {
+      testWidgets('the $label button toggles its panel', (tester) async {
+        final recorded = RecordedIntents();
+        await pumpView(
+          tester,
+          HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
+        );
+        await tester.tap(find.text(label));
+        expect(recorded.calls, [call]);
+      });
+    }
+
+    for (final (name, due) in [
+      ('no due reminders', 0),
+      ('two due reminders', 2),
+    ]) {
+      testWidgets('the shelf button shows $name', (tester) async {
+        await pumpView(
+          tester,
+          HomeView(
+            snapshot: withExtras(
+              signedInWithRooms,
+              shelf: shelfOf(
+                open: false,
+                due: [
+                  for (var index = 0; index < due; index++)
+                    shelfEntryOf(ShelfBucket.due, messageIdAt(index)),
+                ],
+              ),
+            ),
+            intents: RecordedIntents().intents,
+          ),
+        );
+        expect(find.text('Shelf $due'), findsOneWidget);
+      });
+    }
+
+    testWidgets('dismissing the banner calls its intent', (tester) async {
+      final recorded = RecordedIntents();
+      await pumpView(
+        tester,
+        HomeView(snapshot: remindedSnapshot, intents: recorded.intents),
+      );
+      await tester.tap(find.text('Dismiss'));
+      expect(recorded.calls, ['dismissReminder']);
     });
 
     testWidgets('sending forwards the active room id and draft', (

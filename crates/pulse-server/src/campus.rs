@@ -34,20 +34,40 @@ fn conflict_on_slug(error: sqlx::Error) -> ApiFailure {
     }
 }
 
+macro_rules! select_role {
+    ($suffix:literal) => {
+        concat!(
+            "SELECT m.role FROM campus_members m \
+             JOIN campuses c ON c.campus_id = m.campus_id \
+             WHERE m.campus_id = $1 AND m.account_id = $2",
+            $suffix
+        )
+    };
+}
+
 pub async fn campus_role(
     executor: impl sqlx::PgExecutor<'_>,
     campus_id: CampusId,
     account_id: AccountId,
 ) -> Result<Option<Role>, sqlx::Error> {
-    let text = sqlx::query_scalar::<_, String>(
-        "SELECT m.role FROM campus_members m \
-         JOIN campuses c ON c.campus_id = m.campus_id \
-         WHERE m.campus_id = $1 AND m.account_id = $2",
-    )
-    .bind(campus_id.as_uuid())
-    .bind(account_id.as_uuid())
-    .fetch_optional(executor)
-    .await?;
+    let text = sqlx::query_scalar::<_, String>(select_role!(""))
+        .bind(campus_id.as_uuid())
+        .bind(account_id.as_uuid())
+        .fetch_optional(executor)
+        .await?;
+    text.as_deref().map(parse_role).transpose()
+}
+
+pub async fn campus_role_locked(
+    executor: impl sqlx::PgExecutor<'_>,
+    campus_id: CampusId,
+    account_id: AccountId,
+) -> Result<Option<Role>, sqlx::Error> {
+    let text = sqlx::query_scalar::<_, String>(select_role!(" FOR NO KEY UPDATE OF m"))
+        .bind(campus_id.as_uuid())
+        .bind(account_id.as_uuid())
+        .fetch_optional(executor)
+        .await?;
     text.as_deref().map(parse_role).transpose()
 }
 

@@ -25,6 +25,28 @@ class AccountId {
           field0 == other.field0;
 }
 
+class AttachmentId {
+  final UuidValue field0;
+
+  const AttachmentId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsAttachmentIdAsUuid(that: this);
+
+  static Future<AttachmentId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsAttachmentIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AttachmentId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
 class CampusId {
   final UuidValue field0;
 
@@ -65,6 +87,28 @@ class ClientNonce {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is ClientNonce &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
+class DraftId {
+  final UuidValue field0;
+
+  const DraftId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsDraftIdAsUuid(that: this);
+
+  static Future<DraftId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsDraftIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DraftId &&
           runtimeType == other.runtimeType &&
           field0 == other.field0;
 }
@@ -131,6 +175,28 @@ class SessionId {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is SessionId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
+class ShelfItemId {
+  final UuidValue field0;
+
+  const ShelfItemId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsShelfItemIdAsUuid(that: this);
+
+  static Future<ShelfItemId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsShelfItemIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShelfItemId &&
           runtimeType == other.runtimeType &&
           field0 == other.field0;
 }

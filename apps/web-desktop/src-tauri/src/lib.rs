@@ -1,4 +1,4 @@
-use pulse_core::NativeClient;
+use pulse_core::native::NativeClient;
 use pulse_protocol::{CampusId, ClientSnapshot, CreateCampusRequest, SignInRequest, SignUpRequest};
 use tauri::{Manager, State};
 

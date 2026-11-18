@@ -2,7 +2,8 @@ use std::future::Future;
 use std::io;
 use std::sync::LazyLock;
 
-use pulse_core::{NativeClient, unavailable_snapshot};
+use pulse_core::native::NativeClient;
+use pulse_core::unavailable_snapshot;
 use pulse_protocol::{CampusId, ClientSnapshot, CreateCampusRequest, SignInRequest, SignUpRequest};
 
 static CLIENT: LazyLock<io::Result<NativeClient>> = LazyLock::new(NativeClient::from_env);

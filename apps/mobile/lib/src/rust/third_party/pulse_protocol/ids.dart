@@ -3,6 +3,28 @@ import '../../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';
 
+class AccountId {
+  final UuidValue field0;
+
+  const AccountId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsAccountIdAsUuid(that: this);
+
+  static Future<AccountId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsAccountIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AccountId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
 class CampusId {
   final UuidValue field0;
 
@@ -21,6 +43,28 @@ class CampusId {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CampusId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
+class RoomId {
+  final UuidValue field0;
+
+  const RoomId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsRoomIdAsUuid(that: this);
+
+  static Future<RoomId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsRoomIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RoomId &&
           runtimeType == other.runtimeType &&
           field0 == other.field0;
 }

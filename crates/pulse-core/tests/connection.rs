@@ -51,7 +51,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::failed_while_connecting(
     vec![connect()],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -59,7 +59,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::failed_while_handshaking(
     vec![connect(), ConnectionEvent::TransportOpened],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -67,7 +67,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::second_failure_doubles_delay(
     vec![connect(), ConnectionEvent::TransportFailed, ConnectionEvent::BackoffElapsed],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 1000 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 1000 }),
     2,
     false,
@@ -92,7 +92,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::connected_transport_failed(
     vec![connect(), ConnectionEvent::TransportOpened, welcome(CAMPUS_A)],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -148,6 +148,11 @@ fn step_follows_transition_table(
     assert_eq!(*machine.phase(), expected_phase);
     assert_eq!(snapshot.connection, expected_phase);
     assert_eq!(command, expected_command);
+    let scheduled = match &command {
+        Some(ConnectionCommand::ScheduleRetry { delay_ms }) => Some(*delay_ms),
+        _ => None,
+    };
+    assert_eq!(snapshot.retry_in_ms, scheduled);
     assert_eq!(snapshot.attempt, expected_attempt);
     assert_eq!(snapshot.session_id.is_some(), has_session);
     if has_session {
@@ -171,6 +176,7 @@ fn version_rejection_is_recorded_and_cleared_on_next_connect() {
 fn initial_snapshot_is_disconnected_at_current_version() {
     let snapshot = initial_snapshot();
     assert_eq!(snapshot.connection, ConnectionPhase::Disconnected);
+    assert_eq!(snapshot.retry_in_ms, None);
     assert_eq!(snapshot.protocol_version, ProtocolVersion::CURRENT);
     assert_eq!(snapshot.campus_id, None);
     assert_eq!(snapshot.session_id, None);
@@ -205,21 +211,21 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
 )]
 #[case::open_failure(
     ScriptedTransport::scripted(vec![refused()], vec![]),
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     false,
     0,
     vec![],
 )]
 #[case::receive_failure(
     ScriptedTransport::scripted(vec![], vec![Err(TransportError::Closed)]),
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     false,
     0,
     vec![hello_frame(CAMPUS_A)],
 )]
 #[case::unexpected_frame(
     ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     false,
     0,
     vec![hello_frame(CAMPUS_A)],
@@ -245,6 +251,8 @@ fn handshake_scenarios(
     ));
     let snapshot = machine.snapshot();
     assert_eq!(snapshot.connection, expected_phase);
+    let expected_retry = (expected_phase == ConnectionPhase::Backoff).then_some(500);
+    assert_eq!(snapshot.retry_in_ms, expected_retry);
     assert_eq!(snapshot.session_id.is_some(), has_session);
     assert_eq!(transport.closes, expected_closes);
     assert_eq!(transport.sent, expected_sent);

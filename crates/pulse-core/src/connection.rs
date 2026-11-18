@@ -29,6 +29,7 @@ pub enum ConnectionCommand {
 pub struct ConnectionMachine {
     phase: ConnectionPhase,
     attempt: u32,
+    retry_in_ms: Option<u32>,
     campus_id: Option<CampusId>,
     session_id: Option<SessionId>,
     rejection: Option<VersionMismatch>,
@@ -40,6 +41,7 @@ impl ConnectionMachine {
         Self {
             phase: ConnectionPhase::Disconnected,
             attempt: 0,
+            retry_in_ms: None,
             campus_id: None,
             session_id: None,
             rejection: None,
@@ -57,22 +59,33 @@ impl ConnectionMachine {
             connection: self.phase,
             campus_id: self.campus_id,
             session_id: self.session_id,
+            retry_in_ms: self.retry_in_ms,
             attempt: self.attempt,
             rejection: self.rejection.clone(),
         }
     }
 
+    fn enter(&mut self, phase: ConnectionPhase) {
+        self.phase = phase;
+        self.retry_in_ms = None;
+    }
+
+    fn enter_backoff(&mut self, delay_ms: u32) {
+        self.phase = ConnectionPhase::Backoff;
+        self.retry_in_ms = Some(delay_ms);
+    }
+
     pub fn step(mut self, event: ConnectionEvent) -> (Self, Option<ConnectionCommand>) {
         let command = match (self.phase, event) {
             (ConnectionPhase::Disconnected, ConnectionEvent::ConnectRequested { campus_id }) => {
-                self.phase = ConnectionPhase::Connecting;
+                self.enter(ConnectionPhase::Connecting);
                 self.campus_id = Some(campus_id);
                 self.rejection = None;
                 Some(ConnectionCommand::OpenTransport)
             }
             (ConnectionPhase::Connecting, ConnectionEvent::TransportOpened) => {
                 self.campus_id.map(|campus_id| {
-                    self.phase = ConnectionPhase::Handshaking;
+                    self.enter(ConnectionPhase::Handshaking);
                     ConnectionCommand::SendHello(Hello {
                         protocol_version: ProtocolVersion::CURRENT,
                         campus_id,
@@ -84,45 +97,41 @@ impl ConnectionMachine {
                 ConnectionEvent::TransportFailed,
             ) => {
                 let delay_ms = self.policy.delay_ms(self.attempt);
-                self.phase = ConnectionPhase::Backoff {
-                    retry_in_ms: delay_ms,
-                };
+                self.enter_backoff(delay_ms);
                 self.attempt = self.attempt.saturating_add(1);
                 Some(ConnectionCommand::ScheduleRetry { delay_ms })
             }
             (ConnectionPhase::Handshaking, ConnectionEvent::WelcomeReceived(welcome)) => {
                 if Some(welcome.campus_id) == self.campus_id {
-                    self.phase = ConnectionPhase::Connected;
+                    self.enter(ConnectionPhase::Connected);
                     self.session_id = Some(welcome.session_id);
                     self.attempt = 0;
                     None
                 } else {
-                    self.phase = ConnectionPhase::Disconnected;
+                    self.enter(ConnectionPhase::Disconnected);
                     self.session_id = None;
                     Some(ConnectionCommand::CloseTransport)
                 }
             }
             (ConnectionPhase::Handshaking, ConnectionEvent::VersionRejected(mismatch)) => {
-                self.phase = ConnectionPhase::Disconnected;
+                self.enter(ConnectionPhase::Disconnected);
                 self.rejection = Some(mismatch);
                 Some(ConnectionCommand::CloseTransport)
             }
             (ConnectionPhase::Connected, ConnectionEvent::TransportFailed) => {
                 let delay_ms = self.policy.delay_ms(0);
-                self.phase = ConnectionPhase::Backoff {
-                    retry_in_ms: delay_ms,
-                };
+                self.enter_backoff(delay_ms);
                 self.attempt = 1;
                 self.session_id = None;
                 Some(ConnectionCommand::ScheduleRetry { delay_ms })
             }
-            (ConnectionPhase::Backoff { .. }, ConnectionEvent::BackoffElapsed) => {
-                self.phase = ConnectionPhase::Connecting;
+            (ConnectionPhase::Backoff, ConnectionEvent::BackoffElapsed) => {
+                self.enter(ConnectionPhase::Connecting);
                 Some(ConnectionCommand::OpenTransport)
             }
             (ConnectionPhase::Disconnected, ConnectionEvent::DisconnectRequested) => None,
             (_, ConnectionEvent::DisconnectRequested) => {
-                self.phase = ConnectionPhase::Disconnected;
+                self.enter(ConnectionPhase::Disconnected);
                 self.attempt = 0;
                 self.session_id = None;
                 Some(ConnectionCommand::CloseTransport)
@@ -172,7 +181,8 @@ pub async fn handshake<T: NetworkTransport>(
     campus_id: CampusId,
 ) -> ConnectionMachine {
     let machine = match machine.phase() {
-        ConnectionPhase::Backoff { .. } if machine.campus_id != Some(campus_id) => {
+        ConnectionPhase::Disconnected => machine,
+        _ if machine.campus_id != Some(campus_id) => {
             let (reset, command) = machine.step(ConnectionEvent::DisconnectRequested);
             if let Some(command) = command {
                 run_command(command, transport).await;
@@ -183,7 +193,7 @@ pub async fn handshake<T: NetworkTransport>(
     };
     let starting_event = match machine.phase() {
         ConnectionPhase::Disconnected => ConnectionEvent::ConnectRequested { campus_id },
-        ConnectionPhase::Backoff { .. } => ConnectionEvent::BackoffElapsed,
+        ConnectionPhase::Backoff => ConnectionEvent::BackoffElapsed,
         _ => return machine,
     };
     let (mut machine, mut command) = machine.step(starting_event);

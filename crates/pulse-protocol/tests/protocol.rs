@@ -68,14 +68,11 @@ fn server_frames_match_wire_format(#[case] frame: ServerFrame, #[case] expected:
 }
 
 #[rstest]
-#[case::disconnected(ConnectionPhase::Disconnected, json!({"phase": "disconnected"}))]
-#[case::connecting(ConnectionPhase::Connecting, json!({"phase": "connecting"}))]
-#[case::handshaking(ConnectionPhase::Handshaking, json!({"phase": "handshaking"}))]
-#[case::connected(ConnectionPhase::Connected, json!({"phase": "connected"}))]
-#[case::backoff(
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
-    json!({"phase": "backoff", "retry_in_ms": 500}),
-)]
+#[case::disconnected(ConnectionPhase::Disconnected, json!("disconnected"))]
+#[case::connecting(ConnectionPhase::Connecting, json!("connecting"))]
+#[case::handshaking(ConnectionPhase::Handshaking, json!("handshaking"))]
+#[case::connected(ConnectionPhase::Connected, json!("connected"))]
+#[case::backoff(ConnectionPhase::Backoff, json!("backoff"))]
 fn connection_phase_tags(#[case] phase: ConnectionPhase, #[case] expected: Value) {
     assert_wire(phase, expected);
 }

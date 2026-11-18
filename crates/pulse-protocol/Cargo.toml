@@ -1,0 +1,19 @@
+[package]
+name = "pulse-protocol"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+uuid.workspace = true
+ts-rs.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+rstest.workspace = true
+
+[lints]
+workspace = true

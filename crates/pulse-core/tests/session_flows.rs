@@ -3,13 +3,12 @@ mod fixtures;
 use std::collections::VecDeque;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, RecordedCall, ScriptedApi, auth_session, campus_summary,
-    create_campus_request, room, room_list, sign_in_request, signed_in_machine, token_a,
-    two_campuses,
+    CAMPUS_A, CAMPUS_B, CAMPUS_C, RecordedCall, ScriptedApi, auth_session, campus_summary,
+    create_campus_request, room, room_list, sign_in_request, signed_in_api, signed_in_machine,
+    token_a, two_campuses,
 };
 use futures::executor::block_on;
 use pulse_core::{SessionEvent, SessionMachine, drive_session};
-use pulse_protocol::fixtures::CAMPUS_C;
 use pulse_protocol::{ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, Role, RoomList};
 use rstest::rstest;
 
@@ -34,15 +33,6 @@ fn gamma_created() -> CampusCreated {
             .iter()
             .map(|slug| room(CAMPUS_C, slug))
             .collect(),
-    }
-}
-
-fn script_sign_in() -> ScriptedApi {
-    ScriptedApi {
-        sign_ins: VecDeque::from([Ok(auth_session())]),
-        campus_lists: VecDeque::from([Ok(two_campuses())]),
-        room_lists: VecDeque::from([Ok(room_list(CAMPUS_A, &["commons", "courtyard"]))]),
-        ..ScriptedApi::default()
     }
 }
 
@@ -108,7 +98,7 @@ fn signed_out_expect() -> Expect {
 #[rstest]
 #[case::sign_in_selects_first_campus_and_loads_rooms(
     SessionMachine::new(),
-    script_sign_in(),
+    signed_in_api(),
     SessionEvent::SignInRequested(sign_in_request()),
     Expect {
         calls: vec![

@@ -1,14 +1,15 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, auth_session, campus_list, campus_summary, create_campus_request,
-    invalid_create_campus_request, invalid_sign_in_request, room, room_list, session_after,
-    short_password_sign_up_request, sign_in_request, sign_up_request, token_a, two_campuses,
+    CAMPUS_A, CAMPUS_B, CAMPUS_C, active_room_slug, auth_session, campus_list, campus_summary,
+    create_campus_request, invalid_create_campus_request, invalid_sign_in_request, room, room_list,
+    session_after, short_password_sign_up_request, sign_in_request, sign_up_request, token_a,
+    two_campuses,
 };
 use pulse_core::{SessionCommand, SessionEvent, decode_api_response};
-use pulse_protocol::fixtures::CAMPUS_C;
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, CampusList, InputField, Role,
+    RoomId, RoomList,
 };
 use rstest::rstest;
 
@@ -18,6 +19,7 @@ struct Expect {
     campuses: Vec<CampusId>,
     active: Option<CampusId>,
     rooms: Vec<&'static str>,
+    active_room: Option<&'static str>,
     busy: bool,
     error: Option<ApiError>,
     command: Option<SessionCommand>,
@@ -31,6 +33,7 @@ fn ready() -> Expect {
         campuses: vec![CAMPUS_A, CAMPUS_B],
         active: Some(CAMPUS_A),
         rooms: vec!["commons", "courtyard"],
+        active_room: Some("commons"),
         busy: false,
         error: None,
         command: None,
@@ -45,6 +48,7 @@ fn signed_out() -> Expect {
         campuses: vec![],
         active: None,
         rooms: vec![],
+        active_room: None,
         busy: false,
         error: None,
         command: None,
@@ -178,6 +182,7 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
         campuses: vec![CAMPUS_B],
         active: Some(CAMPUS_B),
         rooms: vec![],
+        active_room: None,
         busy: true,
         command: load_rooms(CAMPUS_B),
         ..ready()
@@ -219,7 +224,7 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
 #[case::campus_created_already_listed(
     ready_events(),
     created(CAMPUS_A, "alpha", &["commons"]),
-    Expect { rooms: vec!["commons"], ..ready() },
+    Expect { rooms: vec!["commons"], active_room: Some("commons"), ..ready() },
 )]
 #[case::campus_selected(
     ready_events(),
@@ -227,6 +232,7 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
     Expect {
         active: Some(CAMPUS_B),
         rooms: vec![],
+        active_room: None,
         busy: true,
         command: load_rooms(CAMPUS_B),
         ..ready()
@@ -238,6 +244,7 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
     Expect {
         active: Some(CAMPUS_B),
         rooms: vec![],
+        active_room: None,
         busy: true,
         command: load_rooms(CAMPUS_B),
         ..ready()
@@ -251,12 +258,23 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
 #[case::rooms_loaded_for_active(
     switching_events(),
     SessionEvent::RoomsLoaded(room_list(CAMPUS_B, &["lab"])),
-    Expect { active: Some(CAMPUS_B), rooms: vec!["lab"], ..ready() },
+    Expect {
+        active: Some(CAMPUS_B),
+        rooms: vec!["lab"],
+        active_room: Some("lab"),
+        ..ready()
+    },
 )]
 #[case::rooms_loaded_for_stale_campus_ignored(
     switching_events(),
     SessionEvent::RoomsLoaded(room_list(CAMPUS_A, &["commons"])),
-    Expect { active: Some(CAMPUS_B), rooms: vec![], busy: true, ..ready() },
+    Expect {
+        active: Some(CAMPUS_B),
+        rooms: vec![],
+        active_room: None,
+        busy: true,
+        ..ready()
+    },
 )]
 #[case::request_failed_keeps_session(
     ready_events(),
@@ -316,6 +334,7 @@ fn step_follows_transition_table(
             .collect::<Vec<_>>(),
         expected.rooms
     );
+    assert_eq!(active_room_slug(&snapshot), expected.active_room);
     assert_eq!(snapshot.busy, expected.busy);
     assert_eq!(snapshot.error, expected.error);
     assert_eq!(command, expected.command);
@@ -345,4 +364,72 @@ fn decode_api_response_maps_status_and_body(
     #[case] expected: Result<CampusList, ApiError>,
 ) {
     assert_eq!(decode_api_response::<CampusList>(status, &body), expected);
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Selection {
+    Listed(usize),
+    Unlisted,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Followup {
+    Nothing,
+    SameRoomsReloaded,
+    FreshRoomsReloaded,
+    CampusSwitched,
+    SignedOut,
+}
+
+fn followup_event(followup: Followup, machine: &SessionMachine) -> Option<SessionEvent> {
+    let snapshot = machine.snapshot();
+    match followup {
+        Followup::Nothing => None,
+        Followup::SameRoomsReloaded => Some(SessionEvent::RoomsLoaded(RoomList {
+            campus_id: CAMPUS_A,
+            rooms: snapshot.rooms,
+        })),
+        Followup::FreshRoomsReloaded => Some(SessionEvent::RoomsLoaded(room_list(
+            CAMPUS_A,
+            &["lab", "commons"],
+        ))),
+        Followup::CampusSwitched => Some(SessionEvent::CampusSelected(CAMPUS_B)),
+        Followup::SignedOut => Some(SessionEvent::SignOutRequested),
+    }
+}
+
+#[rstest]
+#[case::listed_second(Selection::Listed(1), Followup::Nothing, Some("courtyard"))]
+#[case::listed_first(Selection::Listed(0), Followup::Nothing, Some("commons"))]
+#[case::unlisted_ignored(Selection::Unlisted, Followup::Nothing, Some("commons"))]
+#[case::kept_when_still_listed(
+    Selection::Listed(1),
+    Followup::SameRoomsReloaded,
+    Some("courtyard")
+)]
+#[case::falls_back_to_first_when_unlisted(
+    Selection::Listed(1),
+    Followup::FreshRoomsReloaded,
+    Some("lab")
+)]
+#[case::cleared_on_campus_switch(Selection::Listed(1), Followup::CampusSwitched, None)]
+#[case::cleared_on_sign_out(Selection::Listed(1), Followup::SignedOut, None)]
+fn room_selection_follows_listing(
+    #[case] selection: Selection,
+    #[case] followup: Followup,
+    #[case] expected: Option<&str>,
+) {
+    let machine = session_after(ready_events());
+    let target = match selection {
+        Selection::Listed(index) => machine.snapshot().rooms[index].room_id,
+        Selection::Unlisted => RoomId::generate(),
+    };
+    let (machine, _) = machine.step(SessionEvent::RoomSelected(target));
+    let machine = match followup_event(followup, &machine) {
+        Some(event) => machine.step(event).0,
+        None => machine,
+    };
+    let snapshot = machine.snapshot();
+    assert_eq!(active_room_slug(&snapshot), expected);
+    assert_eq!(snapshot.active_room_id.is_some(), expected.is_some());
 }

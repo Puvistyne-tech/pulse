@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -28,6 +29,8 @@ pub fn websocket_url(server_url: &str) -> String {
     format!("{base}{}", api_path::WEBSOCKET)
 }
 
+struct Stale;
+
 struct RunningLink {
     target: LinkTarget,
     task: JoinHandle<()>,
@@ -38,6 +41,7 @@ pub(super) struct Shared {
     pub(super) snapshots: watch::Sender<ClientSnapshot>,
     pub(super) wake: Notify,
     server_url: String,
+    generation: AtomicU64,
     link: Mutex<Option<RunningLink>>,
 }
 
@@ -50,6 +54,7 @@ impl Shared {
             snapshots,
             wake: Notify::new(),
             server_url,
+            generation: AtomicU64::new(0),
             link: Mutex::new(None),
         }
     }
@@ -66,29 +71,52 @@ impl Shared {
         if let Some(running) = link.take() {
             running.task.abort();
         }
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         if let Some(target) = target {
-            let task = tokio::spawn(run_link(Arc::clone(self), target.clone()));
+            let task = tokio::spawn(run_link(Arc::clone(self), target.clone(), generation));
             *link = Some(RunningLink { target, task });
         }
     }
 
-    async fn step(&self, event: ConnectionEvent) -> Option<ConnectionCommand> {
-        let mut guard = self.core.lock().await;
-        let command = guard.0.connection_step(event);
-        self.publish(&guard.0);
-        command
+    fn is_current(&self, generation: u64) -> bool {
+        self.generation.load(Ordering::SeqCst) == generation
     }
 
-    async fn deliver(&self, frame: ServerFrame) -> (Option<ConnectionCommand>, Vec<ClientFrame>) {
+    async fn step(
+        &self,
+        generation: u64,
+        event: ConnectionEvent,
+    ) -> Result<Option<ConnectionCommand>, Stale> {
         let mut guard = self.core.lock().await;
+        if !self.is_current(generation) {
+            return Err(Stale);
+        }
+        let command = guard.0.connection_step(event);
+        self.publish(&guard.0);
+        Ok(command)
+    }
+
+    async fn deliver(
+        &self,
+        generation: u64,
+        frame: ServerFrame,
+    ) -> Result<(Option<ConnectionCommand>, Vec<ClientFrame>), Stale> {
+        let mut guard = self.core.lock().await;
+        if !self.is_current(generation) {
+            return Err(Stale);
+        }
         let command = guard.0.receive_frame(frame);
         let outbound = guard.0.drain_outbound();
         self.publish(&guard.0);
-        (command, outbound)
+        Ok((command, outbound))
     }
 
-    async fn drain(&self) -> Vec<ClientFrame> {
-        self.core.lock().await.0.drain_outbound()
+    async fn drain(&self, generation: u64) -> Result<Vec<ClientFrame>, Stale> {
+        let mut guard = self.core.lock().await;
+        if !self.is_current(generation) {
+            return Err(Stale);
+        }
+        Ok(guard.0.drain_outbound())
     }
 }
 
@@ -108,7 +136,7 @@ async fn send_all(link: &mut Link, frames: &[ClientFrame]) -> bool {
     true
 }
 
-async fn pump(shared: &Shared, link: &mut Link, hello: Hello) {
+async fn pump(shared: &Shared, generation: u64, link: &mut Link, hello: Hello) {
     if !send_frame(link, &ClientFrame::Hello(hello)).await {
         return;
     }
@@ -119,7 +147,9 @@ async fn pump(shared: &Shared, link: &mut Link, hello: Hello) {
                     let Ok(frame) = serde_json::from_str::<ServerFrame>(text.as_str()) else {
                         return;
                     };
-                    let (command, outbound) = shared.deliver(frame).await;
+                    let Ok((command, outbound)) = shared.deliver(generation, frame).await else {
+                        return;
+                    };
                     if matches!(command, Some(ConnectionCommand::CloseTransport)) {
                         return;
                     }
@@ -128,7 +158,10 @@ async fn pump(shared: &Shared, link: &mut Link, hello: Hello) {
                 Some(Ok(Message::Close(_))) | Some(Err(_)) | None => return,
                 Some(Ok(_)) => continue,
             },
-            () = shared.wake.notified() => shared.drain().await,
+            () = shared.wake.notified() => match shared.drain(generation).await {
+                Ok(outbound) => outbound,
+                Err(Stale) => return,
+            },
         };
         if !send_all(link, &outbound).await {
             return;
@@ -136,22 +169,39 @@ async fn pump(shared: &Shared, link: &mut Link, hello: Hello) {
     }
 }
 
-async fn run_link(shared: Arc<Shared>, target: LinkTarget) {
+async fn run_link(shared: Arc<Shared>, target: LinkTarget, generation: u64) {
     let url = websocket_url(&shared.server_url);
-    shared.step(ConnectionEvent::DisconnectRequested).await;
-    let mut command = shared
-        .step(ConnectionEvent::ConnectRequested {
-            campus_id: target.campus_id,
-            auth_token: target.auth_token,
-        })
-        .await;
+    if shared
+        .step(generation, ConnectionEvent::DisconnectRequested)
+        .await
+        .is_err()
+    {
+        return;
+    }
+    let Ok(mut command) = shared
+        .step(
+            generation,
+            ConnectionEvent::ConnectRequested {
+                campus_id: target.campus_id,
+                auth_token: target.auth_token,
+            },
+        )
+        .await
+    else {
+        return;
+    };
     loop {
         let event = match command {
             Some(ConnectionCommand::OpenTransport) => match connect_async(url.as_str()).await {
                 Ok((mut link, _)) => {
-                    let opened = shared.step(ConnectionEvent::TransportOpened).await;
+                    let Ok(opened) = shared
+                        .step(generation, ConnectionEvent::TransportOpened)
+                        .await
+                    else {
+                        return;
+                    };
                     if let Some(ConnectionCommand::SendHello(hello)) = opened {
-                        pump(&shared, &mut link, hello).await;
+                        pump(&shared, generation, &mut link, hello).await;
                     }
                     ConnectionEvent::TransportFailed
                 }
@@ -165,6 +215,9 @@ async fn run_link(shared: Arc<Shared>, target: LinkTarget) {
                 return;
             }
         };
-        command = shared.step(event).await;
+        let Ok(next) = shared.step(generation, event).await else {
+            return;
+        };
+        command = next;
     }
 }

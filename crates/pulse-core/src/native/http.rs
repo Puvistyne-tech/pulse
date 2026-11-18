@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 use crate::api::{ApiTransport, decode_api_response};
 
 pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8080";
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 const SERVER_URL_VARIABLE: &str = "PULSE_SERVER_URL";
 
 pub fn server_url_from_env() -> String {
@@ -25,7 +26,10 @@ impl HttpApiTransport {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .timeout(REQUEST_TIMEOUT)
+                .build()
+                .unwrap_or_default(),
         }
     }
 

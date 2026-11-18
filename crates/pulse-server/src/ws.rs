@@ -28,6 +28,7 @@ enum Flow {
 enum Incoming {
     Frame(ClientFrame),
     Skip,
+    Reject(u16),
     Stop,
 }
 
@@ -121,18 +122,12 @@ async fn read_frame(socket: &mut WebSocket) -> Incoming {
     let text = match socket.recv().await {
         Some(Ok(Message::Text(text))) => text,
         Some(Ok(Message::Ping(_) | Message::Pong(_))) => return Incoming::Skip,
-        Some(Ok(Message::Binary(_))) => {
-            close_with(socket, close_code::INVALID_PAYLOAD).await;
-            return Incoming::Stop;
-        }
+        Some(Ok(Message::Binary(_))) => return Incoming::Reject(close_code::INVALID_PAYLOAD),
         Some(Ok(Message::Close(_)) | Err(_)) | None => return Incoming::Stop,
     };
     match serde_json::from_str::<ClientFrame>(text.as_str()) {
         Ok(frame) => Incoming::Frame(frame),
-        Err(_) => {
-            close_with(socket, close_code::INVALID_PAYLOAD).await;
-            Incoming::Stop
-        }
+        Err(_) => Incoming::Reject(close_code::INVALID_PAYLOAD),
     }
 }
 
@@ -147,6 +142,10 @@ async fn await_hello(socket: &mut WebSocket, state: &AppState) -> Option<Subscri
                 return None;
             }
             Incoming::Skip => {}
+            Incoming::Reject(code) => {
+                close_with(socket, code).await;
+                return None;
+            }
             Incoming::Stop => return None,
         }
     }
@@ -295,6 +294,7 @@ pub async fn serve_socket(mut socket: WebSocket, state: AppState) {
                     handle_frame(&mut socket, &state, &mut active, frame).await
                 }
                 Incoming::Skip => Flow::Continue,
+                Incoming::Reject(code) => stop_with(&mut socket, code).await,
                 Incoming::Stop => Flow::Stop,
             },
             received = feed.recv() => forward_feed(&mut socket, &active, received).await,

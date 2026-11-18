@@ -6,8 +6,8 @@ use common::steward::StewardClient;
 use common::{
     ClientSocket, Observed, SCENARIO_DEADLINE, Stage, agent_chunks_of, authored_count,
     expect_close, expect_frame, frames_until_pong, issue_steward, manage_on, messages_with_nonce,
-    next_of, observe_until, owner_socket, posted, send, sibling_state, spawn_server_with,
-    steward_request, stream_chunk_frame, subscribed_socket,
+    next_of, observe_until, owner_socket, posted, send, spawn_server_with, steward_request,
+    stream_chunk_frame, subscribed_socket,
 };
 use pulse_protocol::{
     AccountId, AgentStreamChunk, ClientNonce, MESSAGE_BODY_MAX_CHARS, MessageId, RoomId,

@@ -327,7 +327,7 @@ async fn two_sessions_of_one_account_share_a_single_participant() {
         );
         send(&mut first, &leave_lounge_frame(lounge_id)).await;
         changed_until(&mut watcher, lounge_id, |lounge| {
-            lounge.revision >= both.lounge.revision + 1
+            lounge.revision > both.lounge.revision
         })
         .await;
         let remaining = lounge_by_id(&mut watcher, lounge_id).await;

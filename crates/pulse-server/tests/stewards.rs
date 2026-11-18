@@ -5,9 +5,9 @@ use std::collections::BTreeSet;
 use axum::http::StatusCode;
 use common::{
     ClientSocket, Managed, Observed, SCENARIO_DEADLINE, Stage, api_get, campus_with_owner,
-    create_steward_request, handshake_outcome, issue_steward, joined_socket, manage_as,
-    manage_frame, next_of, send, sibling_state, spawn_server_with, steward_request,
-    steward_room_rows, steward_row, sync_stewards_frame,
+    create_steward_request, handshake_outcome, issue_steward, joined_socket, manage_as, manage_on,
+    next_of, send, sibling_state, spawn_server_with, steward_request, steward_room_rows,
+    steward_row, sync_stewards_frame,
 };
 use pulse_protocol::{
     AccountId, AuthToken, ClientNonce, HandshakeRejected, HandshakeRejection, Role, RoomId,

@@ -176,7 +176,7 @@ pub fn lazy_state() -> AppState {
     state::lazy(&config).expect("lazy state")
 }
 
-pub async fn fresh_state() -> AppState {
+pub async fn blank_state() -> AppState {
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_owned());
     let valkey_url = std::env::var("VALKEY_URL").unwrap_or_else(|_| DEFAULT_VALKEY_URL.to_owned());
@@ -198,11 +198,34 @@ pub async fn fresh_state() -> AppState {
         .connect_with(options.database(&name))
         .await
         .expect(START_POSTGRES);
-    MIGRATOR.run(&db).await.expect("run migrations");
     AppState::new(
         db,
         redis::Client::open(valkey_url.as_str()).expect("valkey client"),
     )
+}
+
+pub async fn fresh_state() -> AppState {
+    let state = blank_state().await;
+    MIGRATOR.run(&state.db).await.expect("run migrations");
+    state
+}
+
+pub async fn state_before(description: &str) -> AppState {
+    let state = blank_state().await;
+    let kept = MIGRATOR
+        .iter()
+        .take_while(|migration| migration.description != description)
+        .cloned()
+        .collect::<Vec<_>>();
+    let partial = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(kept),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    partial
+        .run(&state.db)
+        .await
+        .expect("run earlier migrations");
+    state
 }
 
 pub fn sibling_state(state: &AppState) -> AppState {

@@ -3,7 +3,9 @@
 use std::collections::VecDeque;
 
 use pulse_core::{NetworkTransport, TransportError};
-use pulse_protocol::{CampusId, ClientFrame, ProtocolVersion, ServerFrame, SessionId, Welcome};
+use pulse_protocol::{
+    CampusId, ClientFrame, Hello, ProtocolVersion, ServerFrame, SessionId, Welcome,
+};
 
 pub const CAMPUS_A: &str = "0193a5c0-0000-7000-8000-00000000000a";
 pub const CAMPUS_B: &str = "0193a5c0-0000-7000-8000-00000000000b";
@@ -25,6 +27,21 @@ pub fn welcome_for(campus_text: &str) -> Welcome {
     }
 }
 
+pub fn hello_frame(campus_text: &str) -> ClientFrame {
+    ClientFrame::Hello(Hello {
+        protocol_version: ProtocolVersion::CURRENT,
+        campus_id: campus(campus_text),
+    })
+}
+
+pub fn welcome_frame(campus_text: &str) -> Result<ServerFrame, TransportError> {
+    Ok(ServerFrame::Welcome(welcome_for(campus_text)))
+}
+
+pub fn refused() -> Result<(), TransportError> {
+    Err(TransportError::Failure("refused".into()))
+}
+
 #[derive(Debug, Default)]
 pub struct ScriptedTransport {
     pub open_results: VecDeque<Result<(), TransportError>>,
@@ -34,16 +51,13 @@ pub struct ScriptedTransport {
 }
 
 impl ScriptedTransport {
-    pub fn with_incoming(incoming: Vec<Result<ServerFrame, TransportError>>) -> Self {
-        Self {
-            incoming: incoming.into(),
-            ..Self::default()
-        }
-    }
-
-    pub fn with_open_results(open_results: Vec<Result<(), TransportError>>) -> Self {
+    pub fn scripted(
+        open_results: Vec<Result<(), TransportError>>,
+        incoming: Vec<Result<ServerFrame, TransportError>>,
+    ) -> Self {
         Self {
             open_results: open_results.into(),
+            incoming: incoming.into(),
             ..Self::default()
         }
     }

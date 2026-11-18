@@ -1,6 +1,9 @@
 mod fixtures;
 
-use fixtures::{CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, session, welcome_for};
+use fixtures::{
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, hello_frame, refused, session,
+    welcome_for, welcome_frame,
+};
 use futures::executor::block_on;
 use pulse_core::{
     BackoffPolicy, ConnectionCommand, ConnectionEvent, ConnectionMachine, TransportError,
@@ -48,7 +51,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::failed_while_connecting(
     vec![connect()],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -56,7 +59,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::failed_while_handshaking(
     vec![connect(), ConnectionEvent::TransportOpened],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -64,7 +67,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::second_failure_doubles_delay(
     vec![connect(), ConnectionEvent::TransportFailed, ConnectionEvent::BackoffElapsed],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 1000 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 1000 }),
     2,
     false,
@@ -89,7 +92,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::connected_transport_failed(
     vec![connect(), ConnectionEvent::TransportOpened, welcome(CAMPUS_A)],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ConnectionPhase::Backoff,
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -145,6 +148,11 @@ fn step_follows_transition_table(
     assert_eq!(*machine.phase(), expected_phase);
     assert_eq!(snapshot.connection, expected_phase);
     assert_eq!(command, expected_command);
+    let scheduled = match &command {
+        Some(ConnectionCommand::ScheduleRetry { delay_ms }) => Some(*delay_ms),
+        _ => None,
+    };
+    assert_eq!(snapshot.retry_in_ms, scheduled);
     assert_eq!(snapshot.attempt, expected_attempt);
     assert_eq!(snapshot.session_id.is_some(), has_session);
     if has_session {
@@ -168,6 +176,7 @@ fn version_rejection_is_recorded_and_cleared_on_next_connect() {
 fn initial_snapshot_is_disconnected_at_current_version() {
     let snapshot = initial_snapshot();
     assert_eq!(snapshot.connection, ConnectionPhase::Disconnected);
+    assert_eq!(snapshot.retry_in_ms, None);
     assert_eq!(snapshot.protocol_version, ProtocolVersion::CURRENT);
     assert_eq!(snapshot.campus_id, None);
     assert_eq!(snapshot.session_id, None);
@@ -187,46 +196,53 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
 
 #[rstest]
 #[case::welcome(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_A)))]),
+    ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_A)]),
     ConnectionPhase::Connected,
     true,
     0,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::version_mismatch(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
+    ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
     ConnectionPhase::Disconnected,
     false,
     1,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::open_failure(
-    ScriptedTransport::with_open_results(vec![Err(TransportError::Failure("refused".into()))]),
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ScriptedTransport::scripted(vec![refused()], vec![]),
+    ConnectionPhase::Backoff,
     false,
     0,
+    vec![],
 )]
 #[case::receive_failure(
-    ScriptedTransport::with_incoming(vec![Err(TransportError::Closed)]),
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ScriptedTransport::scripted(vec![], vec![Err(TransportError::Closed)]),
+    ConnectionPhase::Backoff,
     false,
     0,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::unexpected_frame(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
-    ConnectionPhase::Backoff { retry_in_ms: 500 },
+    ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
+    ConnectionPhase::Backoff,
     false,
     0,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::wrong_campus(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_B)))]),
+    ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_B)]),
     ConnectionPhase::Disconnected,
     false,
     1,
+    vec![hello_frame(CAMPUS_A)],
 )]
 fn handshake_scenarios(
     #[case] mut transport: ScriptedTransport,
     #[case] expected_phase: ConnectionPhase,
     #[case] has_session: bool,
     #[case] expected_closes: u32,
+    #[case] expected_sent: Vec<ClientFrame>,
 ) {
     let machine = block_on(handshake(
         ConnectionMachine::new(BackoffPolicy::default()),
@@ -235,27 +251,12 @@ fn handshake_scenarios(
     ));
     let snapshot = machine.snapshot();
     assert_eq!(snapshot.connection, expected_phase);
+    let expected_retry = (expected_phase == ConnectionPhase::Backoff).then_some(500);
+    assert_eq!(snapshot.retry_in_ms, expected_retry);
     assert_eq!(snapshot.session_id.is_some(), has_session);
     assert_eq!(transport.closes, expected_closes);
+    assert_eq!(transport.sent, expected_sent);
     assert_eq!(snapshot.campus_id, Some(campus(CAMPUS_A)));
-}
-
-#[test]
-fn handshake_sends_hello_for_requested_campus() {
-    let mut transport =
-        ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_A)))]);
-    block_on(handshake(
-        ConnectionMachine::new(BackoffPolicy::default()),
-        &mut transport,
-        campus(CAMPUS_A),
-    ));
-    assert_eq!(
-        transport.sent,
-        vec![ClientFrame::Hello(Hello {
-            protocol_version: ProtocolVersion::CURRENT,
-            campus_id: campus(CAMPUS_A),
-        })]
-    );
 }
 
 #[test]

@@ -51,13 +51,6 @@ pub struct ScriptedTransport {
 }
 
 impl ScriptedTransport {
-    pub fn with_incoming(incoming: Vec<Result<ServerFrame, TransportError>>) -> Self {
-        Self {
-            incoming: incoming.into(),
-            ..Self::default()
-        }
-    }
-
     pub fn scripted(
         open_results: Vec<Result<(), TransportError>>,
         incoming: Vec<Result<ServerFrame, TransportError>>,
@@ -65,13 +58,6 @@ impl ScriptedTransport {
         Self {
             open_results: open_results.into(),
             incoming: incoming.into(),
-            ..Self::default()
-        }
-    }
-
-    pub fn with_open_results(open_results: Vec<Result<(), TransportError>>) -> Self {
-        Self {
-            open_results: open_results.into(),
             ..Self::default()
         }
     }

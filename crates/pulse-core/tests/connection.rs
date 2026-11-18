@@ -2,7 +2,7 @@ mod fixtures;
 
 use fixtures::{
     CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, hello_frame, refused, session,
-    welcome_for,
+    welcome_for, welcome_frame,
 };
 use futures::executor::block_on;
 use pulse_core::{
@@ -190,42 +190,42 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
 
 #[rstest]
 #[case::welcome(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_A)))]),
+    ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_A)]),
     ConnectionPhase::Connected,
     true,
     0,
     vec![hello_frame(CAMPUS_A)],
 )]
 #[case::version_mismatch(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
+    ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
     ConnectionPhase::Disconnected,
     false,
     1,
     vec![hello_frame(CAMPUS_A)],
 )]
 #[case::open_failure(
-    ScriptedTransport::with_open_results(vec![refused()]),
+    ScriptedTransport::scripted(vec![refused()], vec![]),
     ConnectionPhase::Backoff { retry_in_ms: 500 },
     false,
     0,
     vec![],
 )]
 #[case::receive_failure(
-    ScriptedTransport::with_incoming(vec![Err(TransportError::Closed)]),
+    ScriptedTransport::scripted(vec![], vec![Err(TransportError::Closed)]),
     ConnectionPhase::Backoff { retry_in_ms: 500 },
     false,
     0,
     vec![hello_frame(CAMPUS_A)],
 )]
 #[case::unexpected_frame(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
+    ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
     ConnectionPhase::Backoff { retry_in_ms: 500 },
     false,
     0,
     vec![hello_frame(CAMPUS_A)],
 )]
 #[case::wrong_campus(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_B)))]),
+    ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_B)]),
     ConnectionPhase::Disconnected,
     false,
     1,

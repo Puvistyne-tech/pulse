@@ -2,14 +2,17 @@ mod common;
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use common::{
     CAMPUS_A, CAMPUS_B, Observed, campus, connect, hello, observe, ping, send, spawn_server,
 };
 use pulse_protocol::{Pong, ServerFrame, SessionId};
-use rstest::rstest;
+use tokio::time::timeout;
 
+const CLIENTS: u32 = 16;
 const PINGS_PER_CLIENT: u32 = 4;
+const DEADLINE: Duration = Duration::from_secs(10);
 
 fn campus_for(index: u32) -> &'static str {
     if index.is_multiple_of(2) {
@@ -33,7 +36,6 @@ async fn run_client(addr: SocketAddr, index: u32) -> (SessionId, Vec<u32>) {
     assert_eq!(welcome.campus_id, campus(wanted));
     for round in 0..PINGS_PER_CLIENT {
         send(&mut socket, &ping(nonce_for(index, round))).await;
-        tokio::task::yield_now().await;
     }
     let mut nonces = Vec::new();
     for _ in 0..PINGS_PER_CLIENT {
@@ -45,17 +47,18 @@ async fn run_client(addr: SocketAddr, index: u32) -> (SessionId, Vec<u32>) {
     (welcome.session_id, nonces)
 }
 
-#[rstest]
-#[case::sixteen_clients_two_campuses(16)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn concurrent_clients_keep_campus_session_and_nonce_isolation(#[case] clients: u32) {
+async fn concurrent_clients_keep_campus_session_and_nonce_isolation() {
     let addr = spawn_server().await;
-    let handles: Vec<_> = (0..clients)
-        .map(|index| tokio::spawn(run_client(addr, index)))
+    let handles: Vec<_> = (0..CLIENTS)
+        .map(|index| tokio::spawn(timeout(DEADLINE, run_client(addr, index))))
         .collect();
     let mut sessions = HashSet::new();
-    for (index, handle) in (0..clients).zip(handles) {
-        let (session_id, nonces) = handle.await.expect("client task");
+    for (index, handle) in (0..CLIENTS).zip(handles) {
+        let (session_id, nonces) = handle
+            .await
+            .expect("client task")
+            .unwrap_or_else(|_| panic!("client {index} timed out"));
         assert!(
             sessions.insert(session_id),
             "duplicate session for client {index}"
@@ -68,5 +71,5 @@ async fn concurrent_clients_keep_campus_session_and_nonce_isolation(#[case] clie
             "client {index} saw foreign or reordered pongs"
         );
     }
-    assert_eq!(sessions.len(), clients as usize);
+    assert_eq!(sessions.len(), CLIENTS as usize);
 }

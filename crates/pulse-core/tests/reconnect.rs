@@ -13,11 +13,7 @@ type Opens = Vec<Result<(), TransportError>>;
 type Incoming = Vec<Result<ServerFrame, TransportError>>;
 
 enum Step {
-    Run {
-        campus: &'static str,
-        opens: Opens,
-        incoming: Incoming,
-    },
+    Run { opens: Opens, incoming: Incoming },
     Drop(ConnectionEvent),
 }
 
@@ -28,11 +24,7 @@ struct Expected {
 }
 
 fn run(opens: Opens, incoming: Incoming) -> Step {
-    Step::Run {
-        campus: CAMPUS_A,
-        opens,
-        incoming,
-    }
+    Step::Run { opens, incoming }
 }
 
 fn backoff(retry_in_ms: u32, attempt: u32) -> Expected {
@@ -64,21 +56,20 @@ fn fresh() -> ConnectionMachine {
 }
 
 fn backed_off() -> ConnectionMachine {
-    let mut transport = ScriptedTransport::with_open_results(vec![refused()]);
+    let mut transport = ScriptedTransport::scripted(vec![refused()], vec![]);
     block_on(handshake(fresh(), &mut transport, campus(CAMPUS_A)))
 }
 
 #[rstest]
-#[case::failures_then_success(vec![
-    (run(vec![refused()], vec![]), backoff(500, 1)),
-    (run(vec![refused()], vec![]), backoff(1_000, 2)),
-    (run(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]), connected()),
-])]
-#[case::delay_escalates_to_cap(vec![
+#[case::delay_doubles_to_cap_then_plateaus(vec![
     (run(vec![refused()], vec![]), backoff(500, 1)),
     (run(vec![refused()], vec![]), backoff(1_000, 2)),
     (run(vec![refused()], vec![]), backoff(2_000, 3)),
     (run(vec![refused()], vec![]), backoff(4_000, 4)),
+    (run(vec![refused()], vec![]), backoff(8_000, 5)),
+    (run(vec![refused()], vec![]), backoff(16_000, 6)),
+    (run(vec![refused()], vec![]), backoff(30_000, 7)),
+    (run(vec![refused()], vec![]), backoff(30_000, 8)),
     (run(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]), connected()),
 ])]
 #[case::receive_failure_then_success(vec![
@@ -119,13 +110,9 @@ fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
     let mut machine = fresh();
     for (index, (step, expected)) in script.into_iter().enumerate() {
         machine = match step {
-            Step::Run {
-                campus: target,
-                opens,
-                incoming,
-            } => {
+            Step::Run { opens, incoming } => {
                 let mut transport = ScriptedTransport::scripted(opens, incoming);
-                block_on(handshake(machine, &mut transport, campus(target)))
+                block_on(handshake(machine, &mut transport, campus(CAMPUS_A)))
             }
             Step::Drop(event) => machine.step(event).0,
         };
@@ -147,13 +134,21 @@ fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
 }
 
 #[rstest]
-#[case::same_campus_resumes(CAMPUS_A, CAMPUS_A, ConnectionPhase::Connected, true, 0)]
-#[case::other_campus_restarts_for_argument(CAMPUS_B, CAMPUS_B, ConnectionPhase::Connected, true, 1)]
+#[case::same_campus_resumes(CAMPUS_A, CAMPUS_A, ConnectionPhase::Connected, true, 0, 0)]
+#[case::other_campus_restarts_for_argument(
+    CAMPUS_B,
+    CAMPUS_B,
+    ConnectionPhase::Connected,
+    true,
+    0,
+    1
+)]
 #[case::other_campus_rejects_stale_welcome(
     CAMPUS_B,
     CAMPUS_A,
     ConnectionPhase::Disconnected,
     false,
+    0,
     2
 )]
 fn resume_from_backoff_targets_argument_campus(
@@ -161,6 +156,7 @@ fn resume_from_backoff_targets_argument_campus(
     #[case] welcome_campus: &str,
     #[case] expected_phase: ConnectionPhase,
     #[case] has_session: bool,
+    #[case] expected_attempt: u32,
     #[case] expected_closes: u32,
 ) {
     let mut transport =
@@ -170,6 +166,7 @@ fn resume_from_backoff_targets_argument_campus(
     assert_eq!(snapshot.connection, expected_phase);
     assert_eq!(snapshot.campus_id, Some(campus(argument)));
     assert_eq!(snapshot.session_id.is_some(), has_session);
+    assert_eq!(snapshot.attempt, expected_attempt);
     assert_eq!(transport.sent, vec![hello_frame(argument)]);
     assert_eq!(transport.closes, expected_closes);
 }

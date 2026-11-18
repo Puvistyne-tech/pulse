@@ -10,7 +10,7 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 flutter_rust_bridge = { workspace = true, features = ["uuid"] }
-pulse-core = { workspace = true }
+pulse-core = { workspace = true, features = ["native"] }
 pulse-protocol = { workspace = true }
 uuid = { workspace = true }
 

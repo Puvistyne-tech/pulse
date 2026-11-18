@@ -8,16 +8,17 @@ use std::time::Duration;
 
 use fixtures::{
     ACCOUNT_A, CAMPUS_A, CAMPUS_B, ROOM_A, ROOM_B, attachment_id, auth_session, campus_list,
-    campus_summary, chain_message, confirmed_key, entry_keys, hello_frame, message_id, pending_key,
-    room_message, send_frame, sign_in_request, subscription_frame, sync_thread_frame, token_a,
-    vault_item, vault_synced_frame, welcome_for,
+    campus_summary, chain_message, confirmed_key, connect_burst, entry_keys, hello_frame,
+    message_id, pending_key, room_message, send_frame, sign_in_request, subscription_frame,
+    sync_thread_frame, token_a, vault_item, vault_synced_frame, welcome_for,
 };
 use futures_util::{SinkExt, StreamExt};
 use pulse_core::THREAD_VIEW_FOLLOW_MS;
 use pulse_core::native::{ClientStorage, NativeClient, websocket_url};
 use pulse_protocol::{
-    CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Role, Room, RoomList, ServerFrame,
-    SubscriptionOrigin, SubscriptionState, UploadState, UploadTicket, VaultTab, api_path,
+    CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Role, Room, RoomId, RoomList,
+    ServerFrame, SubscriptionOrigin, SubscriptionState, UploadState, UploadTicket, VaultTab,
+    api_path,
 };
 use rstest::rstest;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

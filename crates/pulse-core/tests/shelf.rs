@@ -8,7 +8,8 @@ use fixtures::{
 use pulse_core::{ShelfIntent, TimelineEvent, TimelineMachine};
 use pulse_protocol::{
     ApiError, ApiErrorCode, ClientFrame, InputField, MessageId, REMIND_AT_HORIZON_MS,
-    ReminderPreset, ShelfAction, ShelfBucket, ShelfEntry, ShelfRejection, UpdateShelf,
+    REMINDER_PICKER_STEP_MS, ReminderPreset, ShelfAction, ShelfBucket, ShelfEntry, ShelfRejection,
+    UpdateShelf,
 };
 use rstest::rstest;
 
@@ -515,4 +516,36 @@ fn the_latest_reminder_tracks_newly_delivered_items(
         snapshot.latest_reminder.map(|entry| entry.message_id),
         expected.map(message_id)
     );
+}
+
+#[rstest]
+#[case::clock_not_started(vec![], None, None)]
+#[case::first_tick(
+    vec![clock(1)],
+    Some(REMINDER_PICKER_STEP_MS),
+    Some(1 + REMIND_AT_HORIZON_MS)
+)]
+#[case::on_a_step(
+    vec![clock(REMINDER_PICKER_STEP_MS)],
+    Some(REMINDER_PICKER_STEP_MS),
+    Some(REMINDER_PICKER_STEP_MS + REMIND_AT_HORIZON_MS)
+)]
+#[case::past_a_step(
+    vec![clock(REMINDER_PICKER_STEP_MS + 1)],
+    Some(2 * REMINDER_PICKER_STEP_MS),
+    Some(REMINDER_PICKER_STEP_MS + 1 + REMIND_AT_HORIZON_MS)
+)]
+#[case::clock_only_moves_forward(
+    vec![clock(400_000), clock(10)],
+    Some(2 * REMINDER_PICKER_STEP_MS),
+    Some(400_000 + REMIND_AT_HORIZON_MS)
+)]
+fn the_picker_is_anchored_on_the_core_clock(
+    #[case] events: Vec<TimelineEvent>,
+    #[case] anchor: Option<u64>,
+    #[case] latest: Option<u64>,
+) {
+    let snapshot = shelf_machine(events).shelf_snapshot();
+    assert_eq!(snapshot.picker_anchor_ms, anchor);
+    assert_eq!(snapshot.picker_latest_ms, latest);
 }

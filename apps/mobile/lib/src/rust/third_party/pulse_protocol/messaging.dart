@@ -23,19 +23,27 @@ class MentionRef {
           displayName == other.displayName;
 }
 
-enum MessageRejection { forbidden, invalidBody, unknownRoom, unknownThread }
+enum MessageRejection {
+  forbidden,
+  invalidBody,
+  unknownRoom,
+  unknownThread,
+  invalidAttachment,
+}
 
 class SendMessage {
   final RoomId roomId;
   final ClientNonce clientNonce;
   final String body;
   final MessageId? threadRootId;
+  final List<AttachmentId> attachmentIds;
 
   const SendMessage({
     required this.roomId,
     required this.clientNonce,
     required this.body,
     this.threadRootId,
+    required this.attachmentIds,
   });
 
   Future<void> validate() => RustLib.instance.api
@@ -46,7 +54,8 @@ class SendMessage {
       roomId.hashCode ^
       clientNonce.hashCode ^
       body.hashCode ^
-      threadRootId.hashCode;
+      threadRootId.hashCode ^
+      attachmentIds.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -56,5 +65,6 @@ class SendMessage {
           roomId == other.roomId &&
           clientNonce == other.clientNonce &&
           body == other.body &&
-          threadRootId == other.threadRootId;
+          threadRootId == other.threadRootId &&
+          attachmentIds == other.attachmentIds;
 }

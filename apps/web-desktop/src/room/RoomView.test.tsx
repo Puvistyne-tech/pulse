@@ -1,11 +1,24 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { TimelineEntry, TimelineSnapshot } from "@pulse/protocol";
-import { afterEach, describe, expect, test } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type {
+  AttachmentKind,
+  ReminderPreset,
+  TimelineEntry,
+  TimelineSnapshot,
+  UploadState,
+} from "@pulse/protocol";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  DRAFT_A,
+  DRAFT_B,
   GRACE_ID,
   MESSAGE_A,
+  MESSAGE_B,
   NONCE_C,
   ROOM_A,
+  allPresets,
+  attachmentViewOf,
+  draftOf,
+  expectOnlyCalled,
   confirmedEntry,
   confirmedOwnEntry,
   emptyTimeline,
@@ -24,11 +37,21 @@ import { RoomView } from "./RoomView";
 
 afterEach(cleanup);
 
-function renderRoom(timeline: TimelineSnapshot = timelineOf([])) {
+function renderRoom(
+  timeline: TimelineSnapshot = timelineOf([]),
+  presets: ReminderPreset[] = [],
+) {
   const intents = noopIntents();
-  const view = render(<RoomView timeline={timeline} intents={intents} />);
+  const view = render(
+    <RoomView timeline={timeline} intents={intents} presets={presets} />,
+  );
   return { ...view, intents };
 }
+
+const confirmedWith = (overrides: Partial<TimelineEntry>): TimelineEntry => ({
+  ...confirmedEntry,
+  ...overrides,
+});
 
 const entryRows: ReadonlyArray<
   [string, TimelineEntry, string, string, string | null, boolean]
@@ -324,5 +347,272 @@ describe("room view shell", () => {
     } else {
       expect(screen.getByText(notice)).not.toBeNull();
     }
+  });
+});
+
+describe("vault button", () => {
+  test("opens the media tab of the active room", () => {
+    const { intents } = renderRoom();
+    fireEvent.click(screen.getByRole("button", { name: "Vault" }));
+    expectOnlyCalled(intents, "openVault", [ROOM_A, "media"]);
+  });
+});
+
+describe("attachments", () => {
+  test.each<[string, AttachmentKind, string | null, string, string | null]>([
+    ["an image with a ticket", "image", "https://files.example.test/i", "IMG", "https://files.example.test/i"],
+    ["a video with a ticket", "video", "https://files.example.test/v", "A", "https://files.example.test/v"],
+    ["audio with a ticket", "audio", "https://files.example.test/a", "A", "https://files.example.test/a"],
+    ["a file with a ticket", "file", "https://files.example.test/f", "A", "https://files.example.test/f"],
+    ["an image without a ticket", "image", null, "SPAN", null],
+    ["a file without a ticket", "file", null, "SPAN", null],
+  ])("%s", (_name, kind, url, tag, target) => {
+    renderRoom(
+      timelineOf([
+        confirmedWith({ attachments: [attachmentViewOf(kind, { url, file_name: "named" })] }),
+      ]),
+    );
+    const list = screen.getByRole("list", { name: "Attachments" });
+    const image = list.querySelector("img");
+    const anchor = list.querySelector("a");
+    const plain = list.querySelector("li > span");
+    expect([image !== null, anchor !== null, plain !== null]).toEqual([
+      tag === "IMG",
+      tag === "A",
+      tag === "SPAN",
+    ]);
+    expect(image?.getAttribute("src") ?? target).toBe(target);
+    expect(image?.getAttribute("alt") ?? "named").toBe("named");
+    expect(anchor?.getAttribute("href") ?? target).toBe(target);
+    expect(anchor?.getAttribute("rel") ?? "noreferrer").toBe("noreferrer");
+    expect((anchor ?? plain)?.textContent ?? "named").toBe("named");
+  });
+
+  test("attachments render in message order", () => {
+    renderRoom(
+      timelineOf([
+        confirmedWith({
+          attachments: [
+            attachmentViewOf("file", { attachment_id: "a1", file_name: "first", url: null }),
+            attachmentViewOf("file", { attachment_id: "a2", file_name: "second", url: null }),
+          ],
+        }),
+      ]),
+    );
+    const names = within(screen.getByRole("list", { name: "Attachments" }))
+      .getAllByRole("listitem")
+      .map((item) => item.textContent);
+    expect(names).toEqual(["first", "second"]);
+  });
+
+  test("entries without attachments render no list", () => {
+    renderRoom(timelineOf([confirmedEntry]));
+    expect(screen.queryByRole("list", { name: "Attachments" })).toBeNull();
+  });
+
+  test("a sending message lists its uploading files", () => {
+    renderRoom(
+      timelineOf([
+        {
+          ...pendingEntry,
+          pending_drafts: [
+            draftOf("uploading", { file_name: "a.png" }),
+            draftOf("uploaded", { draft_id: DRAFT_B, file_name: "b.pdf", kind: "file" }),
+          ],
+        },
+      ]),
+    );
+    const list = screen.getByRole("list", { name: "Uploading attachments" });
+    expect(within(list).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "a.png",
+      "b.pdf",
+    ]);
+  });
+});
+
+describe("links", () => {
+  test("link segments render as anchors without a referrer", () => {
+    renderRoom(
+      timelineOf([
+        confirmedWith({
+          segments: [
+            { kind: "text", text: "see ", account_id: null, url: null },
+            { kind: "link", text: "https://example.org/a", account_id: null, url: "https://example.org/a" },
+          ],
+        }),
+      ]),
+    );
+    const anchor = screen.getByRole("link", { name: "https://example.org/a" });
+    expect(anchor.getAttribute("href")).toBe("https://example.org/a");
+    expect(anchor.getAttribute("rel")).toBe("noreferrer");
+    expect(anchor.getAttribute("target")).toBe("_blank");
+  });
+
+  test("a link segment without a url stays plain text", () => {
+    renderRoom(
+      timelineOf([
+        confirmedWith({
+          segments: [{ kind: "link", text: "broken", account_id: null, url: null }],
+        }),
+      ]),
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("broken")).not.toBeNull();
+  });
+});
+
+describe("drafts", () => {
+  test.each<[UploadState, string, boolean]>([
+    ["uploading", "Uploading", false],
+    ["uploaded", "Ready", false],
+    ["failed", "Failed", true],
+  ])("a %s draft reads %s and retry is %s", (upload, label, retry) => {
+    renderRoom(timelineOf([], { drafts: [draftOf(upload)] }));
+    const chip = screen.getByRole("list", { name: "Drafts" }).querySelector("li")!;
+    expect(chip.getAttribute("data-upload")).toBe(upload);
+    expect(chip.textContent).toContain(`draft.png ${label}`);
+    expect(screen.queryByRole("button", { name: "Retry" }) !== null).toBe(retry);
+    expect(screen.getByRole("button", { name: "Remove" })).not.toBeNull();
+  });
+
+  test("retry and remove call their intents with the draft", () => {
+    const { intents } = renderRoom(
+      timelineOf([], {
+        drafts: [draftOf("failed"), draftOf("uploaded", { draft_id: DRAFT_B })],
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expectOnlyCalled(intents, "retryDraft", [DRAFT_A]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[1]!);
+    expect(intents.discardDraft).toHaveBeenCalledExactlyOnceWith(DRAFT_B);
+  });
+
+  test("no drafts render no chip list", () => {
+    renderRoom(timelineOf([]));
+    expect(screen.queryByRole("list", { name: "Drafts" })).toBeNull();
+  });
+
+  test.each([
+    ["without drafts and text", [], "", true],
+    ["with a draft and no text", [draftOf("uploaded")], "", false],
+    ["with text and no drafts", [], "x", false],
+  ])("send %s is disabled %s", (_name, drafts, text, disabled) => {
+    renderRoom(timelineOf([], { drafts }));
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: text } });
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(disabled);
+  });
+
+  test.each([
+    [true, true],
+    [false, false],
+  ])("can_upload %s shows the file input %s", (canUpload, visible) => {
+    renderRoom(timelineOf([], { can_upload: canUpload }));
+    expect(screen.queryByLabelText("Attach file") !== null).toBe(visible);
+  });
+
+  test("choosing a file attaches it to the room", () => {
+    const { intents } = renderRoom(timelineOf([], { can_upload: true }));
+    const input = screen.getByLabelText("Attach file");
+    const file = new File(["bytes"], "plan.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [file] } });
+    expectOnlyCalled(intents, "attachFile", [ROOM_A, file]);
+  });
+
+  test("an empty file selection attaches nothing", () => {
+    const { intents } = renderRoom(timelineOf([], { can_upload: true }));
+    fireEvent.change(screen.getByLabelText("Attach file"), { target: { files: [] } });
+    expectOnlyCalled(intents, null);
+  });
+});
+
+describe("pinning", () => {
+  test.each<[string, boolean, TimelineEntry, string | null]>([
+    ["allowed on a confirmed entry", true, confirmedWith({ pinned: false }), "Pin"],
+    ["allowed on a pinned entry", true, confirmedWith({ pinned: true }), "Unpin"],
+    ["hidden without permission", false, confirmedWith({ pinned: false }), null],
+    ["hidden for a pending entry", true, pendingEntry, null],
+  ])("pin button %s", (_name, canPin, entry, label) => {
+    renderRoom(timelineOf([entry], { can_pin: canPin }));
+    const button = screen.queryByRole("button", { name: /^(Pin|Unpin)$/ });
+    expect(button?.textContent ?? null).toBe(label);
+  });
+
+  test.each<[boolean, boolean]>([
+    [false, true],
+    [true, false],
+  ])("a pinned=%s entry sends pinned=%s", (pinned, next) => {
+    const { intents } = renderRoom(
+      timelineOf([confirmedWith({ pinned })], { can_pin: true }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: pinned ? "Unpin" : "Pin" }));
+    expectOnlyCalled(intents, "setPin", [ROOM_A, MESSAGE_A, next]);
+  });
+
+  test.each([
+    [true, true],
+    [false, false],
+  ])("pinned=%s shows the pinned marker %s", (pinned, visible) => {
+    renderRoom(timelineOf([confirmedWith({ pinned })]));
+    expect(screen.queryByText("Pinned") !== null).toBe(visible);
+  });
+});
+
+describe("shelf menu on entries", () => {
+  test.each<[string, boolean, string]>([
+    ["unshelved offers saving", false, "Save to shelf"],
+    ["shelved offers removal", true, "Remove from shelf"],
+  ])("a %s entry", (_name, shelved, label) => {
+    renderRoom(timelineOf([confirmedWith({ shelved })]), allPresets);
+    fireEvent.click(screen.getByRole("button", { name: "Shelf" }));
+    expect(screen.getByRole("button", { name: label })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: shelved ? "Save to shelf" : "Remove from shelf" })).toBeNull();
+  });
+
+  test.each<[string, string, unknown[]]>([
+    ["save", "Save to shelf", ["save", null, null]],
+    ["a preset", "Tomorrow", ["save", "tomorrow", null]],
+  ])("choosing %s updates the shelf for that message", (_name, label, tail) => {
+    const { intents } = renderRoom(timelineOf([confirmedEntry]), allPresets);
+    fireEvent.click(screen.getByRole("button", { name: "Shelf" }));
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    expectOnlyCalled(intents, "updateShelf", [ROOM_A, MESSAGE_A, ...tail]);
+  });
+
+  test("pending entries have no shelf menu", () => {
+    renderRoom(timelineOf([pendingEntry]), allPresets);
+    expect(screen.queryByRole("button", { name: "Shelf" })).toBeNull();
+  });
+});
+
+describe("focus", () => {
+  test("only the focused entry is marked and scrolled into view", () => {
+    const scroll = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scroll,
+    });
+    const { container } = renderRoom(
+      timelineOf(
+        [
+          confirmedWith({ message_id: MESSAGE_A }),
+          confirmedWith({ message_id: MESSAGE_B, client_nonce: NONCE_C }),
+        ],
+        { focus_message_id: MESSAGE_B },
+      ),
+    );
+    const flags = [...container.querySelectorAll("li[data-focused]")].map((row) =>
+      row.getAttribute("data-focused"),
+    );
+    expect(flags).toEqual(["false", "true"]);
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: "center" });
+    Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  });
+
+  test("without a focus nothing is marked", () => {
+    const { container } = renderRoom(timelineOf([confirmedEntry, pendingEntry]));
+    const flags = [...container.querySelectorAll("li[data-focused]")].map((row) =>
+      row.getAttribute("data-focused"),
+    );
+    expect(flags).toEqual(["false", "false"]);
   });
 });

@@ -2,17 +2,24 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Bound;
 
 use pulse_protocol::{
-    AccountProfile, ApiError, ApiErrorCode, CampusId, ClientFrame, ClientNonce, DeliveryState,
-    InboxSnapshot, InboxStep, InputField, MarkThreadRead, MessageId, MessageRejection,
-    REACTION_PALETTE, React, ReactionAction, ReactionRejection, ReactionSummary, RoomCursor,
-    RoomId, RoomMessage, SYNC_MAX_ROOMS, SendMessage, ServerFrame, SetThreadSubscription,
-    SetTopicTitle, SubscriptionOrigin, SubscriptionState, SyncInbox, SyncRooms, SyncThread,
-    ThreadPreview, ThreadRejection, ThreadSnapshot, ThreadSynced, TimelineEntry, TimelineSnapshot,
-    body_segments, mention_token, normalize_message_body, normalize_reaction_emoji,
-    normalize_topic_title,
+    AccountProfile, ApiError, ApiErrorCode, AttachmentId, CampusId, ClientFrame, ClientNonce,
+    CreateUploadRequest, DeliveryState, DraftId, InboxSnapshot, InboxStep, InputField,
+    MarkThreadRead, MessageId, MessageRejection, PinRejection, REACTION_PALETTE, React,
+    ReactionAction, ReactionRejection, ReactionSummary, RoomCursor, RoomId, RoomMessage,
+    SEARCH_CANDIDATE_LIMIT, SYNC_MAX_ROOMS, SearchSnapshot, SendMessage, ServerFrame, SetPin,
+    SetThreadSubscription, SetTopicTitle, ShelfSnapshot, ShelfSynced, SubscriptionOrigin,
+    SubscriptionState, SyncInbox, SyncRooms, SyncShelf, SyncThread, ThreadPreview, ThreadRejection,
+    ThreadSnapshot, ThreadSynced, TimelineEntry, TimelineSnapshot, UpdateShelf, Validate,
+    VaultSnapshot, VaultSynced, body_segments, mention_token, normalize_message_content,
+    normalize_reaction_emoji, normalize_topic_title, validate_remind_at,
 };
 
+use crate::effects::{Effect, EffectOutcome, UploadJob};
 use crate::inbox::{InboxTracker, is_newer, reply_preview};
+use crate::media::{MediaIntent, MediaTracker, Readiness};
+use crate::search::{SearchDocument, SearchQuery};
+use crate::search_view::{SearchIntent, SearchTracker};
+use crate::shelf::{ShelfIntent, ShelfTracker};
 use crate::thread_view::{THREAD_BURIED_DEPTH, ThreadView};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +82,13 @@ pub enum TimelineEvent {
     },
     FrameReceived(ServerFrame),
     Thread(ThreadIntent),
+    Search(SearchIntent),
+    Media(MediaIntent),
+    Shelf(ShelfIntent),
+    EffectFinished(EffectOutcome),
+    FocusRequested {
+        message_id: MessageId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,6 +175,13 @@ pub struct TimelineMachine {
     inbox: InboxTracker,
     thread_view: Option<ThreadView>,
     clock_ms: u64,
+    generation: u64,
+    effects: Vec<Effect>,
+    documents: BTreeMap<MessageId, SearchDocument>,
+    search: SearchTracker,
+    media: MediaTracker,
+    shelf: ShelfTracker,
+    focus: Option<MessageId>,
 }
 
 fn sync_frames(cursors: Vec<RoomCursor>) -> Vec<ClientFrame> {
@@ -188,6 +209,10 @@ pub(crate) fn empty_timeline(error: Option<ApiError>) -> TimelineSnapshot {
         syncing: false,
         error,
         reaction_palette: reaction_palette(),
+        drafts: Vec::new(),
+        focus_message_id: None,
+        can_pin: false,
+        can_upload: false,
     }
 }
 
@@ -221,7 +246,57 @@ impl TimelineMachine {
             inbox: InboxTracker::default(),
             thread_view: None,
             clock_ms: 0,
+            generation: 0,
+            effects: Vec::new(),
+            documents: BTreeMap::new(),
+            search: SearchTracker::default(),
+            media: MediaTracker::default(),
+            shelf: ShelfTracker::default(),
+            focus: None,
         }
+    }
+
+    pub(crate) fn seed_generation(&mut self, floor: u64) {
+        self.generation = self.generation.max(floor);
+    }
+
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    fn next_generation(&mut self) -> u64 {
+        self.generation += 1;
+        self.generation
+    }
+
+    pub(crate) fn take_effects(&mut self) -> Vec<Effect> {
+        core::mem::take(&mut self.effects)
+    }
+
+    pub(crate) fn search_hit(&self, message_id: MessageId) -> Option<(RoomId, Option<MessageId>)> {
+        self.search
+            .hit(message_id)
+            .map(|hit| (hit.room_id, hit.thread_root_id))
+    }
+
+    pub(crate) fn selected_search_hit(&self) -> Option<MessageId> {
+        self.search.selected_message_id()
+    }
+
+    pub(crate) fn live_draft_ids(&self) -> Vec<DraftId> {
+        self.media.live_draft_ids()
+    }
+
+    pub fn search_snapshot(&self) -> SearchSnapshot {
+        self.search.snapshot()
+    }
+
+    pub fn vault_snapshot(&self) -> VaultSnapshot {
+        self.media.vault_snapshot(self.clock_ms)
+    }
+
+    pub fn shelf_snapshot(&self) -> ShelfSnapshot {
+        self.shelf.snapshot(self.clock_ms)
     }
 
     pub fn campus_id(&self) -> CampusId {
@@ -233,9 +308,15 @@ impl TimelineMachine {
     }
 
     pub fn next_deadline_ms(&self) -> Option<u64> {
-        self.thread_view
-            .as_ref()
-            .and_then(ThreadView::follow_deadline_ms)
+        [
+            self.thread_view
+                .as_ref()
+                .and_then(ThreadView::follow_deadline_ms),
+            self.shelf.next_deadline_ms(self.clock_ms),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     fn guarded(&self, frames: Vec<ClientFrame>) -> Vec<ClientFrame> {
@@ -255,19 +336,69 @@ impl TimelineMachine {
         sync_frames(cursors)
     }
 
-    fn resend_frames(&self) -> Vec<ClientFrame> {
-        self.outbox
-            .iter()
-            .filter(|(_, outgoing)| outgoing.failed.is_none())
-            .map(|(client_nonce, outgoing)| {
-                ClientFrame::SendMessage(SendMessage {
-                    room_id: outgoing.room_id,
-                    client_nonce: *client_nonce,
-                    body: outgoing.body.clone(),
-                    thread_root_id: outgoing.thread_root_id,
-                })
-            })
+    fn send_frame_for(&mut self, client_nonce: ClientNonce) -> Option<ClientFrame> {
+        let outgoing = self.outbox.get(&client_nonce)?;
+        if outgoing.failed.is_some() {
+            return None;
+        }
+        let attachment_ids = match self.media.readiness(client_nonce) {
+            Readiness::NoDrafts => Vec::new(),
+            Readiness::Waiting => return None,
+            Readiness::Ready(ids) => ids,
+            Readiness::Failed => {
+                if let Some(outgoing) = self.outbox.get_mut(&client_nonce) {
+                    outgoing.failed = Some(MessageRejection::InvalidAttachment);
+                }
+                return None;
+            }
+        };
+        let outgoing = self.outbox.get(&client_nonce)?;
+        Some(ClientFrame::SendMessage(SendMessage {
+            room_id: outgoing.room_id,
+            client_nonce,
+            body: outgoing.body.clone(),
+            thread_root_id: outgoing.thread_root_id,
+            attachment_ids,
+        }))
+    }
+
+    fn resend_frames(&mut self) -> Vec<ClientFrame> {
+        let nonces = self.outbox.keys().copied().collect::<Vec<_>>();
+        nonces
+            .into_iter()
+            .filter_map(|client_nonce| self.send_frame_for(client_nonce))
             .collect()
+    }
+
+    fn release_drafts(&mut self, client_nonce: ClientNonce) {
+        for draft_id in self.media.release_claimed(client_nonce) {
+            self.effects.push(Effect::ReleaseDraft(draft_id));
+        }
+    }
+
+    fn want_tickets(&mut self, ids: impl IntoIterator<Item = AttachmentId>) {
+        let generation = self.next_generation();
+        let needed = self.media.plan_fetch(ids, self.clock_ms, generation);
+        for attachment_ids in MediaTracker::chunked(needed) {
+            self.effects.push(Effect::FetchDownloadTickets {
+                generation,
+                campus_id: self.campus_id,
+                attachment_ids,
+            });
+        }
+    }
+
+    fn index_message(&mut self, message: &RoomMessage) {
+        if message.campus_id != self.campus_id {
+            return;
+        }
+        self.documents.insert(
+            message.message_id,
+            SearchDocument::from_message(self.account.account_id, message),
+        );
+        if !message.attachments.is_empty() {
+            self.want_tickets(message.attachments.iter().map(|a| a.attachment_id));
+        }
     }
 
     fn gap_frames(&mut self, room_id: RoomId) -> Vec<ClientFrame> {
@@ -311,6 +442,15 @@ impl TimelineMachine {
         self.forget_own_outgoing(message);
         let first = self.store(message, allow_new);
         self.inbox.observe(message, self.account.account_id);
+        let current = self
+            .logs
+            .get(&message.room_id)
+            .and_then(|log| log.messages.get(&message.message_id))
+            .filter(|stored| is_newer(stored, message))
+            .cloned()
+            .unwrap_or_else(|| message.clone());
+        self.index_message(&current);
+        self.media.observe_pin(&current);
         first
     }
 
@@ -471,8 +611,10 @@ impl TimelineMachine {
     }
 
     fn forget_own_outgoing(&mut self, message: &RoomMessage) {
-        if message.author_id == self.account.account_id {
-            self.outbox.remove(&message.client_nonce);
+        if message.author_id == self.account.account_id
+            && self.outbox.remove(&message.client_nonce).is_some()
+        {
+            self.release_drafts(message.client_nonce);
         }
     }
 
@@ -535,6 +677,55 @@ impl TimelineMachine {
                 }
                 Vec::new()
             }
+            ServerFrame::PinRejected(rejected) => {
+                self.error = Some(match rejected.reason {
+                    PinRejection::Forbidden => ApiError::new(ApiErrorCode::Forbidden),
+                    PinRejection::UnknownMessage => ApiError::new(ApiErrorCode::NotFound),
+                    PinRejection::LimitReached => ApiError::new(ApiErrorCode::Conflict),
+                });
+                Vec::new()
+            }
+            ServerFrame::VaultSynced(synced) => {
+                let campus_id = self.campus_id;
+                let items = synced
+                    .items
+                    .into_iter()
+                    .filter(|item| item.message.campus_id == campus_id)
+                    .collect::<Vec<_>>();
+                for item in &items {
+                    self.index_message(&item.message);
+                }
+                self.media.receive_vault(VaultSynced { items, ..synced });
+                Vec::new()
+            }
+            ServerFrame::VaultRejected(rejected) => {
+                self.media.reject_vault(&rejected);
+                Vec::new()
+            }
+            ServerFrame::ShelfSynced(synced) => {
+                let campus_id = self.campus_id;
+                let items = synced
+                    .items
+                    .into_iter()
+                    .filter(|item| item.message.campus_id == campus_id)
+                    .collect::<Vec<_>>();
+                for item in &items {
+                    self.index_message(&item.message);
+                }
+                self.shelf.apply_synced(ShelfSynced { items });
+                Vec::new()
+            }
+            ServerFrame::ShelfChanged(changed) => {
+                if changed.item.message.campus_id == self.campus_id {
+                    self.index_message(&changed.item.message);
+                    self.shelf.apply_changed(changed);
+                }
+                Vec::new()
+            }
+            ServerFrame::ShelfRejected(rejected) => {
+                self.shelf.apply_rejected(&rejected);
+                Vec::new()
+            }
             ServerFrame::Welcome(_)
             | ServerFrame::Pong(_)
             | ServerFrame::VersionMismatch(_)
@@ -549,19 +740,26 @@ impl TimelineMachine {
         body: &str,
         thread_root_id: Option<MessageId>,
     ) -> Vec<ClientFrame> {
-        match normalize_message_body(body) {
+        let draft_ids = if thread_root_id.is_none() {
+            self.media.room_draft_ids(room_id)
+        } else {
+            Vec::new()
+        };
+        let placeholders = draft_ids
+            .iter()
+            .map(|draft_id| AttachmentId(draft_id.0))
+            .collect::<Vec<_>>();
+        match normalize_message_content(body, &placeholders) {
             Err(field) => {
                 self.error = Some(ApiError::invalid(field));
                 Vec::new()
             }
-            Ok(body) => {
+            Ok((body, _)) => {
                 self.error = None;
-                let frame = ClientFrame::SendMessage(SendMessage {
-                    room_id,
-                    client_nonce,
-                    body: body.clone(),
-                    thread_root_id,
-                });
+                self.focus = None;
+                if !draft_ids.is_empty() {
+                    self.media.claim(room_id, client_nonce);
+                }
                 self.outbox.insert(
                     client_nonce,
                     Outgoing {
@@ -571,7 +769,8 @@ impl TimelineMachine {
                         failed: None,
                     },
                 );
-                self.guarded(vec![frame])
+                let frame = self.send_frame_for(client_nonce);
+                self.guarded(frame.into_iter().collect())
             }
         }
     }
@@ -593,6 +792,7 @@ impl TimelineMachine {
 
     fn advance_clock(&mut self, now_ms: u64) -> Vec<ClientFrame> {
         self.clock_ms = self.clock_ms.max(now_ms);
+        self.want_tickets(core::iter::empty());
         let due = self
             .thread_view
             .as_ref()
@@ -610,6 +810,190 @@ impl TimelineMachine {
                 view.pending_follow = true;
             }
             Vec::new()
+        }
+    }
+
+    fn apply_search(&mut self, intent: SearchIntent) {
+        match intent {
+            SearchIntent::Toggled => {
+                self.search.toggle();
+                self.focus = None;
+            }
+            SearchIntent::QueryChanged(query) => {
+                let generation = self.next_generation();
+                if let Some(terms) = self.search.change_query(query, generation) {
+                    self.effects.push(Effect::RunSearch {
+                        generation,
+                        query: SearchQuery {
+                            account_id: self.account.account_id,
+                            campus_id: self.campus_id,
+                            terms,
+                            limit: SEARCH_CANDIDATE_LIMIT,
+                        },
+                    });
+                }
+            }
+            SearchIntent::SelectionMoved(step) => self.search.step_selection(step),
+            SearchIntent::Closed => self.search.close(),
+        }
+    }
+
+    fn start_upload(&mut self, draft_id: DraftId, room_id: RoomId, request: CreateUploadRequest) {
+        self.effects.push(Effect::Upload(UploadJob {
+            draft_id,
+            campus_id: self.campus_id,
+            room_id,
+            request,
+        }));
+    }
+
+    fn apply_media(&mut self, intent: MediaIntent) -> Vec<ClientFrame> {
+        match intent {
+            MediaIntent::DraftAttached {
+                draft_id,
+                room_id,
+                file_name,
+                byte_size,
+            } => {
+                match self.media.attach(draft_id, room_id, &file_name, byte_size) {
+                    Err(field) => {
+                        self.error = Some(ApiError::invalid(field));
+                        self.effects.push(Effect::ReleaseDraft(draft_id));
+                    }
+                    Ok(None) => {}
+                    Ok(Some(request)) => {
+                        self.error = None;
+                        self.start_upload(draft_id, room_id, request);
+                    }
+                }
+                Vec::new()
+            }
+            MediaIntent::DraftDiscarded(draft_id) => {
+                if self.media.discard(draft_id) {
+                    self.effects.push(Effect::ReleaseDraft(draft_id));
+                }
+                Vec::new()
+            }
+            MediaIntent::DraftRetried(draft_id) => {
+                if let Some((room_id, request, claimant)) = self.media.retry(draft_id) {
+                    self.start_upload(draft_id, room_id, request);
+                    if let Some(client_nonce) = claimant
+                        && !self.media.has_failed_claim(client_nonce)
+                        && let Some(outgoing) = self.outbox.get_mut(&client_nonce)
+                        && outgoing.failed == Some(MessageRejection::InvalidAttachment)
+                    {
+                        outgoing.failed = None;
+                    }
+                }
+                Vec::new()
+            }
+            MediaIntent::PinRequested {
+                room_id,
+                message_id,
+                pinned,
+            } => self.guarded(vec![ClientFrame::SetPin(SetPin {
+                room_id,
+                message_id,
+                pinned,
+            })]),
+            MediaIntent::VaultOpened { room_id, tab } => {
+                let request = self.media.open_vault(room_id, tab);
+                self.guarded(vec![ClientFrame::SyncVault(request)])
+            }
+            MediaIntent::VaultMoreRequested => {
+                let request = self.media.vault_more();
+                self.guarded(
+                    request
+                        .into_iter()
+                        .map(ClientFrame::SyncVault)
+                        .collect::<Vec<_>>(),
+                )
+            }
+            MediaIntent::VaultClosed => {
+                self.media.close_vault();
+                Vec::new()
+            }
+        }
+    }
+
+    fn find_message(&self, room_id: RoomId, message_id: MessageId) -> Option<RoomMessage> {
+        self.logs
+            .get(&room_id)
+            .and_then(|log| log.messages.get(&message_id))
+            .cloned()
+    }
+
+    fn apply_shelf(&mut self, intent: ShelfIntent) -> Vec<ClientFrame> {
+        match intent {
+            ShelfIntent::Toggled => {
+                self.shelf.toggle();
+                Vec::new()
+            }
+            ShelfIntent::ReminderDismissed => {
+                self.shelf.dismiss_reminder();
+                Vec::new()
+            }
+            ShelfIntent::UpdateRequested {
+                room_id,
+                message_id,
+                action,
+                preset,
+                remind_at_ms,
+            } => {
+                if !self.connected {
+                    self.shelf
+                        .set_error(Some(ApiError::new(ApiErrorCode::Unavailable)));
+                    return Vec::new();
+                }
+                let remind_at_ms = remind_at_ms
+                    .or_else(|| preset.map(|preset| self.clock_ms + preset.offset_ms()));
+                let request = UpdateShelf {
+                    room_id,
+                    message_id,
+                    action,
+                    remind_at_ms,
+                };
+                let validated = Validate::validate(&request).and_then(|()| {
+                    remind_at_ms.map_or(Ok(0), |remind| {
+                        validate_remind_at(remind, self.clock_ms).map_err(ApiError::invalid)
+                    })
+                });
+                if let Err(error) = validated {
+                    self.shelf.set_error(Some(error));
+                    return Vec::new();
+                }
+                let message = self.find_message(room_id, message_id).or_else(|| {
+                    self.shelf
+                        .messages()
+                        .find(|m| m.message_id == message_id)
+                        .cloned()
+                });
+                let Some(message) = message else {
+                    self.shelf
+                        .set_error(Some(ApiError::new(ApiErrorCode::NotFound)));
+                    return Vec::new();
+                };
+                self.shelf.request(message, action, remind_at_ms);
+                vec![ClientFrame::UpdateShelf(request)]
+            }
+        }
+    }
+
+    fn finish_effect(&mut self, outcome: EffectOutcome) -> Vec<ClientFrame> {
+        match outcome {
+            EffectOutcome::SearchCompleted { generation, result } => {
+                self.search.complete(generation, result);
+                Vec::new()
+            }
+            EffectOutcome::TicketsReceived { generation, result } => {
+                self.media.apply_tickets(generation, result, self.clock_ms);
+                Vec::new()
+            }
+            EffectOutcome::UploadFinished { draft_id, result } => {
+                let claimant = self.media.finish(draft_id, result).flatten();
+                let frame = claimant.and_then(|client_nonce| self.send_frame_for(client_nonce));
+                self.guarded(frame.into_iter().collect())
+            }
         }
     }
 
@@ -748,6 +1132,7 @@ impl TimelineMachine {
         self.synced.clear();
         let mut frames = self.begin_sync(&rooms);
         frames.push(ClientFrame::SyncInbox(SyncInbox {}));
+        frames.push(ClientFrame::SyncShelf(SyncShelf {}));
         frames.extend(self.resend_frames());
         let pending = self
             .thread_view
@@ -763,6 +1148,7 @@ impl TimelineMachine {
                 after: None,
             }));
         }
+        frames.extend(self.media.vault_resume().map(ClientFrame::SyncVault));
         frames
     }
 
@@ -785,6 +1171,7 @@ impl TimelineMachine {
                 self.synced.clear();
                 self.logs.values_mut().for_each(|log| log.syncing = false);
                 self.inbox.clear_requests();
+                self.shelf.clear_pending();
                 let unconfirmed = self.thread_view.as_ref().is_some_and(|view| {
                     view.follow_sent && self.inbox.thread_state(view.root_message_id).is_none()
                 });
@@ -805,12 +1192,31 @@ impl TimelineMachine {
                     .is_some_and(|outgoing| outgoing.failed.is_some());
                 if failed {
                     self.outbox.remove(&client_nonce);
+                    self.release_drafts(client_nonce);
                 }
                 Vec::new()
             }
             TimelineEvent::FrameReceived(frame) => self.receive_frame(frame),
             TimelineEvent::Thread(intent) => self.apply_intent(intent),
+            TimelineEvent::Search(intent) => {
+                self.apply_search(intent);
+                Vec::new()
+            }
+            TimelineEvent::Media(intent) => self.apply_media(intent),
+            TimelineEvent::Shelf(intent) => self.apply_shelf(intent),
+            TimelineEvent::EffectFinished(outcome) => self.finish_effect(outcome),
+            TimelineEvent::FocusRequested { message_id } => {
+                self.focus = Some(message_id);
+                self.search.close();
+                Vec::new()
+            }
         };
+        if !self.documents.is_empty() {
+            let documents = core::mem::take(&mut self.documents)
+                .into_values()
+                .collect::<Vec<_>>();
+            self.effects.push(Effect::IndexDocuments(documents));
+        }
         self.inbox.refresh();
         (self, frames)
     }
@@ -827,7 +1233,12 @@ impl TimelineMachine {
             .collect()
     }
 
-    fn message_entry(&self, message: &RoomMessage, thread: Option<ThreadPreview>) -> TimelineEntry {
+    fn message_entry(
+        &self,
+        message: &RoomMessage,
+        thread: Option<ThreadPreview>,
+        shelved: &BTreeSet<MessageId>,
+    ) -> TimelineEntry {
         TimelineEntry {
             client_nonce: message.client_nonce,
             message_id: Some(message.message_id),
@@ -842,6 +1253,14 @@ impl TimelineMachine {
             thread,
             delivery: DeliveryState::Confirmed,
             rejection: None,
+            attachments: message
+                .attachments
+                .iter()
+                .map(|attachment| self.media.view_of(attachment, self.clock_ms))
+                .collect(),
+            pending_drafts: Vec::new(),
+            pinned: message.pin.is_some(),
+            shelved: shelved.contains(&message.message_id),
         }
     }
 
@@ -864,6 +1283,10 @@ impl TimelineMachine {
                 DeliveryState::Pending
             },
             rejection: outgoing.failed,
+            attachments: Vec::new(),
+            pending_drafts: self.media.claimed_drafts(client_nonce),
+            pinned: false,
+            shelved: false,
         }
     }
 
@@ -901,12 +1324,13 @@ impl TimelineMachine {
             return ThreadSnapshot::default();
         };
         let root = self.best_root(view.room_id, view.root_message_id);
+        let shelved = self.shelf.shelved_ids();
         let confirmed = self
             .logs
             .get(&view.room_id)
             .into_iter()
             .flat_map(|log| log.replies_to(view.root_message_id))
-            .map(|reply| self.message_entry(reply, None));
+            .map(|reply| self.message_entry(reply, None, &shelved));
         let unconfirmed = self
             .outbox
             .iter()
@@ -918,7 +1342,7 @@ impl TimelineMachine {
         ThreadSnapshot {
             room_id: Some(view.room_id),
             root_message_id: Some(view.root_message_id),
-            root: root.map(|message| self.message_entry(message, None)),
+            root: root.map(|message| self.message_entry(message, None, &shelved)),
             replies: confirmed.chain(unconfirmed).collect(),
             topic_title: root.and_then(|message| message.topic_title.clone()),
             subscription: self
@@ -937,11 +1361,15 @@ impl TimelineMachine {
         let Some(room_id) = room_id else {
             return empty_timeline(self.error);
         };
+        let shelved = self.shelf.shelved_ids();
         let confirmed = self.logs.get(&room_id).into_iter().flat_map(|log| {
+            let shelved = &shelved;
             log.messages
                 .values()
                 .filter(|message| log.in_stream(message))
-                .map(|message| self.message_entry(message, self.thread_preview(log, message)))
+                .map(move |message| {
+                    self.message_entry(message, self.thread_preview(log, message), shelved)
+                })
         });
         let unconfirmed = self
             .outbox
@@ -956,6 +1384,10 @@ impl TimelineMachine {
             syncing: self.logs.get(&room_id).is_some_and(|log| log.syncing),
             error: self.error,
             reaction_palette: reaction_palette(),
+            drafts: self.media.composer_drafts(room_id),
+            focus_message_id: self.focus,
+            can_pin: false,
+            can_upload: false,
         }
     }
 }

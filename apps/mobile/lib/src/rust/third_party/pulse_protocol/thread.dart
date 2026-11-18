@@ -33,4 +33,11 @@ class SetTopicTitle {
           topicTitle == other.topicTitle;
 }
 
-enum SubscriptionState { following, muted, archived }
+enum SubscriptionState {
+  following,
+  muted,
+  archived;
+
+  Future<void> asStr() => RustLib.instance.api
+      .pulseProtocolThreadSubscriptionStateAsStr(that: this);
+}

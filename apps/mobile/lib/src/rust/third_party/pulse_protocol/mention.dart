@@ -23,11 +23,18 @@ class BodySegment {
   final SegmentKind kind;
   final String text;
   final AccountId? accountId;
+  final String? url;
 
-  const BodySegment({required this.kind, required this.text, this.accountId});
+  const BodySegment({
+    required this.kind,
+    required this.text,
+    this.accountId,
+    this.url,
+  });
 
   @override
-  int get hashCode => kind.hashCode ^ text.hashCode ^ accountId.hashCode;
+  int get hashCode =>
+      kind.hashCode ^ text.hashCode ^ accountId.hashCode ^ url.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -36,7 +43,8 @@ class BodySegment {
           runtimeType == other.runtimeType &&
           kind == other.kind &&
           text == other.text &&
-          accountId == other.accountId;
+          accountId == other.accountId &&
+          url == other.url;
 }
 
-enum SegmentKind { text, mention }
+enum SegmentKind { text, mention, link }

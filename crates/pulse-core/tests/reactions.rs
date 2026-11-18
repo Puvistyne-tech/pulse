@@ -3,7 +3,8 @@ mod fixtures;
 use fixtures::{
     ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, EMOJI_A, EMOJI_B, ROOM_A, chain_message, created_frame,
     permutations, react_frame, react_intent, reacted, reaction_rejected_frame, received,
-    settled_machine, step_all, sync_frame_at, sync_inbox_frame, timeline_connected, updated_frame,
+    settled_machine, step_all, sync_frame_at, sync_inbox_frame, sync_shelf_frame,
+    timeline_connected, updated_frame,
 };
 use pulse_core::TimelineEvent;
 use pulse_protocol::{
@@ -165,7 +166,8 @@ fn react_while_disconnected_emits_nothing_and_is_not_queued() {
         frames,
         vec![
             sync_frame_at(&[(ROOM_A, None, Some(0))]),
-            sync_inbox_frame()
+            sync_inbox_frame(),
+            sync_shelf_frame()
         ]
     );
     assert_eq!(machine.snapshot(Some(ROOM_A)).error, None);

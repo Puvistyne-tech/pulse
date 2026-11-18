@@ -1,12 +1,17 @@
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthToken, CampusId, ClientFrame, ClientNonce, ClientSnapshot,
-    ConnectionPhase, InboxSnapshot, RoomId, ServerFrame, ThreadSnapshot,
+    ConnectionPhase, DraftId, InboxSnapshot, MessageId, Permission, RoomId, SearchSnapshot,
+    ServerFrame, ShelfSnapshot, ThreadSnapshot, VaultSnapshot, role_permits,
 };
 
 use crate::api::ApiTransport;
 use crate::backoff::BackoffPolicy;
 use crate::connection::{ConnectionCommand, ConnectionEvent, ConnectionMachine};
+use crate::effects::{Effect, EffectOutcome};
+use crate::media::MediaIntent;
+use crate::search_view::SearchIntent;
 use crate::session::{SessionEvent, SessionMachine, drive_session};
+use crate::shelf::ShelfIntent;
 use crate::timeline::{ThreadIntent, TimelineEvent, TimelineMachine, empty_timeline};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +27,7 @@ pub struct Client {
     timeline: Option<TimelineMachine>,
     outbound: Vec<ClientFrame>,
     sequence: u64,
+    generation_floor: u64,
 }
 
 impl Default for Client {
@@ -38,15 +44,20 @@ impl Client {
             timeline: None,
             outbound: Vec::new(),
             sequence: 0,
+            generation_floor: 0,
         }
     }
 
     pub fn snapshot(&self) -> ClientSnapshot {
         let active_room_id = self.session.snapshot().active_room_id;
-        let timeline = self.timeline.as_ref().map_or_else(
+        let mut timeline = self.timeline.as_ref().map_or_else(
             || empty_timeline(None),
             |machine| machine.snapshot(active_room_id),
         );
+        let role = self.connection.role();
+        timeline.can_pin = role.is_some_and(|role| role_permits(role, Permission::PinMessage));
+        timeline.can_upload =
+            role.is_some_and(|role| role_permits(role, Permission::UploadAttachment));
         let thread = self
             .timeline
             .as_ref()
@@ -62,6 +73,18 @@ impl Client {
             timeline,
             thread,
             inbox,
+            search: self
+                .timeline
+                .as_ref()
+                .map_or_else(SearchSnapshot::default, TimelineMachine::search_snapshot),
+            vault: self
+                .timeline
+                .as_ref()
+                .map_or_else(VaultSnapshot::default, TimelineMachine::vault_snapshot),
+            shelf: self
+                .timeline
+                .as_ref()
+                .map_or_else(ShelfSnapshot::default, TimelineMachine::shelf_snapshot),
         }
     }
 
@@ -139,10 +162,85 @@ impl Client {
         self.snapshot()
     }
 
+    pub fn search_intent(&mut self, intent: SearchIntent) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::Search(intent));
+        self.snapshot()
+    }
+
+    pub fn media_intent(&mut self, intent: MediaIntent) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::Media(intent));
+        self.snapshot()
+    }
+
+    pub fn shelf_intent(&mut self, intent: ShelfIntent) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::Shelf(intent));
+        self.snapshot()
+    }
+
+    pub async fn open_search_hit<A: ApiTransport>(
+        &mut self,
+        api: &mut A,
+        message_id: MessageId,
+        now_ms: u64,
+    ) -> ClientSnapshot {
+        let hit = self
+            .timeline
+            .as_ref()
+            .and_then(|machine| machine.search_hit(message_id));
+        let Some((room_id, thread_root_id)) = hit else {
+            return self.snapshot();
+        };
+        self.apply(api, SessionEvent::RoomSelected(room_id)).await;
+        self.sequence += 1;
+        if let Some(root_message_id) = thread_root_id {
+            self.feed_timeline(TimelineEvent::Thread(ThreadIntent::ThreadOpened {
+                room_id,
+                root_message_id,
+                now_ms,
+            }));
+        }
+        self.feed_timeline(TimelineEvent::FocusRequested { message_id });
+        self.snapshot()
+    }
+
+    pub fn selected_search_hit(&self) -> Option<MessageId> {
+        self.timeline
+            .as_ref()
+            .and_then(TimelineMachine::selected_search_hit)
+    }
+
+    pub fn live_draft_ids(&self) -> Vec<DraftId> {
+        self.timeline
+            .as_ref()
+            .map_or_else(Vec::new, TimelineMachine::live_draft_ids)
+    }
+
+    pub fn take_effects(&mut self) -> Vec<Effect> {
+        self.timeline
+            .as_mut()
+            .map_or_else(Vec::new, TimelineMachine::take_effects)
+    }
+
+    pub fn effect_finished(&mut self, outcome: EffectOutcome) -> ClientSnapshot {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::EffectFinished(outcome));
+        self.snapshot()
+    }
+
     pub fn next_deadline_ms(&self) -> Option<u64> {
         self.timeline
             .as_ref()
             .and_then(TimelineMachine::next_deadline_ms)
+    }
+
+    pub fn advance_clock(&mut self, now_ms: u64) {
+        self.sequence += 1;
+        self.feed_timeline(TimelineEvent::Thread(ThreadIntent::ClockAdvanced {
+            now_ms,
+        }));
     }
 
     pub fn drain_outbound(&mut self) -> Vec<ClientFrame> {
@@ -195,18 +293,28 @@ impl Client {
         self.outbound.clear();
     }
 
+    fn replace_timeline(&mut self, next: Option<TimelineMachine>) {
+        if let Some(previous) = self.timeline.take() {
+            self.generation_floor = self.generation_floor.max(previous.generation());
+        }
+        self.timeline = next.map(|mut machine| {
+            machine.seed_generation(self.generation_floor);
+            machine
+        });
+    }
+
     fn reconcile(&mut self, rooms_before: Vec<RoomId>) {
         let account = self.session.account().cloned();
         let campus_id = self.session.active_campus_id();
         let Some((account, campus_id)) = account.zip(campus_id) else {
             self.reset_connection();
-            self.timeline = None;
+            self.replace_timeline(None);
             return;
         };
         let current = self.timeline.as_ref().map(TimelineMachine::campus_id);
         if current != Some(campus_id) {
             self.reset_connection();
-            self.timeline = Some(TimelineMachine::new(campus_id, account));
+            self.replace_timeline(Some(TimelineMachine::new(campus_id, account)));
             return;
         }
         let rooms = self.room_ids();

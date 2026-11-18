@@ -1,8 +1,15 @@
 use crate::api::{ApiError, InputField};
 use crate::auth::{SignInRequest, SignUpRequest};
 use crate::campus::{CreateCampusRequest, CreateRoomRequest};
+use crate::ids::AttachmentId;
+use crate::media::{
+    ATTACHMENT_MAX_BYTES, CONTENT_TYPE_MAX_CHARS, CreateUploadRequest, FILE_NAME_MAX_CHARS,
+    MESSAGE_ATTACHMENTS_MAX,
+};
 use crate::messaging::SendMessage;
 use crate::reaction::React;
+use crate::search::{SEARCH_QUERY_MAX_CHARS, SEARCH_TERMS_MAX, search_terms};
+use crate::shelf::{REMIND_AT_HORIZON_MS, REMIND_AT_PAST_TOLERANCE_MS, ShelfAction, UpdateShelf};
 use crate::thread::SetTopicTitle;
 
 pub const EMAIL_MAX_CHARS: usize = 254;
@@ -88,6 +95,100 @@ pub fn normalize_reaction_emoji(raw: &str) -> Result<String, InputField> {
     }
 }
 
+pub fn normalize_file_name(raw: &str) -> Result<String, InputField> {
+    let name = raw.rsplit(['/', '\\']).next().unwrap_or_default().trim();
+    let valid = !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.chars().any(char::is_control)
+        && name.chars().count() <= FILE_NAME_MAX_CHARS;
+    if valid {
+        Ok(name.to_owned())
+    } else {
+        Err(InputField::FileName)
+    }
+}
+
+fn is_token_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || "!#$&^_.+-".contains(character)
+}
+
+pub fn normalize_content_type(raw: &str) -> Result<String, InputField> {
+    let essence = raw
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    let valid = essence.chars().count() <= CONTENT_TYPE_MAX_CHARS
+        && essence.split_once('/').is_some_and(|(major, minor)| {
+            !major.is_empty()
+                && !minor.is_empty()
+                && major.chars().all(is_token_char)
+                && minor.chars().all(is_token_char)
+        });
+    if valid {
+        Ok(essence)
+    } else {
+        Err(InputField::ContentType)
+    }
+}
+
+pub fn validate_byte_size(byte_size: u64) -> Result<u64, InputField> {
+    if (1..=ATTACHMENT_MAX_BYTES).contains(&byte_size) {
+        Ok(byte_size)
+    } else {
+        Err(InputField::ByteSize)
+    }
+}
+
+pub fn normalize_attachment_ids(ids: &[AttachmentId]) -> Result<Vec<AttachmentId>, InputField> {
+    let mut unique: Vec<AttachmentId> = Vec::with_capacity(ids.len());
+    for id in ids {
+        if !unique.contains(id) {
+            unique.push(*id);
+        }
+    }
+    if unique.len() <= MESSAGE_ATTACHMENTS_MAX {
+        Ok(unique)
+    } else {
+        Err(InputField::Attachments)
+    }
+}
+
+pub fn normalize_message_content(
+    body: &str,
+    attachment_ids: &[AttachmentId],
+) -> Result<(String, Vec<AttachmentId>), InputField> {
+    let attachments = normalize_attachment_ids(attachment_ids)?;
+    if body.trim().is_empty() && !attachments.is_empty() {
+        return Ok((String::new(), attachments));
+    }
+    normalize_message_body(body).map(|normalized| (normalized, attachments))
+}
+
+pub fn validate_remind_at(remind_at_ms: u64, now_ms: u64) -> Result<u64, InputField> {
+    let earliest = now_ms.saturating_sub(REMIND_AT_PAST_TOLERANCE_MS);
+    let latest = now_ms.saturating_add(REMIND_AT_HORIZON_MS);
+    if (earliest..=latest).contains(&remind_at_ms) {
+        Ok(remind_at_ms)
+    } else {
+        Err(InputField::RemindAt)
+    }
+}
+
+pub fn normalize_search_query(raw: &str) -> Vec<String> {
+    let clipped: String = raw.chars().take(SEARCH_QUERY_MAX_CHARS).collect();
+    let mut terms: Vec<String> = Vec::new();
+    for term in search_terms(&clipped) {
+        if !terms.contains(&term) {
+            terms.push(term);
+        }
+    }
+    terms.truncate(SEARCH_TERMS_MAX);
+    terms
+}
+
 pub fn validate_display_name(raw: &str) -> Result<(), InputField> {
     normalize_display_name(raw).map(|_| ())
 }
@@ -156,7 +257,7 @@ impl Validate for CreateRoomRequest {
 
 impl Validate for SendMessage {
     fn validate(&self) -> Result<(), ApiError> {
-        normalize_message_body(&self.body)
+        normalize_message_content(&self.body, &self.attachment_ids)
             .map(|_| ())
             .map_err(invalid)
     }
@@ -175,5 +276,32 @@ impl Validate for SetTopicTitle {
         normalize_topic_title(&self.topic_title)
             .map(|_| ())
             .map_err(invalid)
+    }
+}
+
+impl Validate for CreateUploadRequest {
+    fn validate(&self) -> Result<(), ApiError> {
+        normalize_file_name(&self.file_name).map_err(invalid)?;
+        normalize_content_type(&self.content_type).map_err(invalid)?;
+        validate_byte_size(self.byte_size)
+            .map(|_| ())
+            .map_err(invalid)
+    }
+}
+
+impl Validate for UpdateShelf {
+    fn validate(&self) -> Result<(), ApiError> {
+        let valid = match self.action {
+            ShelfAction::Reschedule => self.remind_at_ms.is_some(),
+            ShelfAction::Complete | ShelfAction::Reopen | ShelfAction::Remove => {
+                self.remind_at_ms.is_none()
+            }
+            ShelfAction::Save => true,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(ApiError::invalid(InputField::RemindAt))
+        }
     }
 }

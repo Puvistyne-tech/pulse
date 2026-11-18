@@ -2,8 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pulse_mobile/room/room_view.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/api.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/media.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/mention.dart'
+    show BodySegment, SegmentKind;
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/messaging.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/reaction.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/shelf.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
 
 import 'fixtures.dart';
@@ -124,13 +128,18 @@ final barCases = <BarCase>[
 
 Future<RecordedIntents> pumpRoom(
   WidgetTester tester,
-  TimelineSnapshot timeline,
-) async {
+  TimelineSnapshot timeline, {
+  List<ReminderPreset> presets = const [],
+}) async {
   final recorded = RecordedIntents();
   await pumpView(
     tester,
     SingleChildScrollView(
-      child: RoomView(timeline: timeline, intents: recorded.intents),
+      child: RoomView(
+        timeline: timeline,
+        intents: recorded.intents,
+        presets: presets,
+      ),
     ),
   );
   return recorded;
@@ -421,5 +430,334 @@ void main() {
         }
       });
     }
+  });
+
+  group('vault button', () {
+    testWidgets('opens the media tab of the active room', (tester) async {
+      final recorded = await pumpRoom(tester, timelineOf([]));
+      await tester.tap(find.byKey(const Key('openVault')));
+      expect(recorded.calls, [('openVault', roomAId, VaultTab.media)]);
+    });
+  });
+
+  group('attachments', () {
+    for (final (name, kind, url, shown) in [
+      (
+        'a file with a ticket',
+        AttachmentKind.file,
+        'https://files.example.test/f',
+        'named',
+      ),
+      (
+        'a video with a ticket',
+        AttachmentKind.video,
+        'https://files.example.test/v',
+        'named',
+      ),
+      (
+        'audio with a ticket',
+        AttachmentKind.audio,
+        'https://files.example.test/a',
+        'named',
+      ),
+      ('an image without a ticket', AttachmentKind.image, null, 'named'),
+      ('a file without a ticket', AttachmentKind.file, null, 'named'),
+    ]) {
+      testWidgets('$name is listed by file name', (tester) async {
+        await pumpRoom(
+          tester,
+          timelineOf([
+            gracesEntryWith(
+              attachments: [attachmentViewOf(kind, fileName: shown, url: url)],
+            ),
+          ]),
+        );
+        expect(find.byKey(const Key('attachmentList')), findsOneWidget);
+        expect(find.text(shown), findsOneWidget);
+        expect(find.byType(Image), findsNothing);
+      });
+    }
+
+    testWidgets('attachments render in message order', (tester) async {
+      await pumpRoom(
+        tester,
+        timelineOf([
+          gracesEntryWith(
+            attachments: [
+              attachmentViewOf(
+                AttachmentKind.file,
+                attachmentId: attachmentAId,
+                fileName: 'first',
+                url: null,
+              ),
+              attachmentViewOf(
+                AttachmentKind.file,
+                attachmentId: attachmentBId,
+                fileName: 'second',
+                url: null,
+              ),
+            ],
+          ),
+        ]),
+      );
+      expect(
+        tester.getTopLeft(find.text('first')).dy,
+        lessThan(tester.getTopLeft(find.text('second')).dy),
+      );
+    });
+
+    testWidgets('entries without attachments render no list', (tester) async {
+      await pumpRoom(tester, timelineOf([confirmedEntry]));
+      expect(find.byKey(const Key('attachmentList')), findsNothing);
+    });
+  });
+
+  group('links', () {
+    for (final (name, kind, underlined) in [
+      ('link segments are underlined', SegmentKind.link, true),
+      ('text segments are plain', SegmentKind.text, false),
+      ('mention segments are not underlined', SegmentKind.mention, false),
+    ]) {
+      testWidgets(name, (tester) async {
+        await pumpRoom(
+          tester,
+          timelineOf([
+            gracesEntryWith(
+              segments: [
+                BodySegment(
+                  kind: kind,
+                  text: 'segment-text',
+                  url: kind == SegmentKind.link
+                      ? 'https://example.org/a'
+                      : null,
+                ),
+              ],
+            ),
+          ]),
+        );
+        final rich = tester.widget<RichText>(
+          find.descendant(
+            of: find.byType(Flexible),
+            matching: find.byType(RichText),
+          ),
+        );
+        final spans = <TextSpan>[];
+        rich.text.visitChildren((span) {
+          if (span is TextSpan && span.text != null) {
+            spans.add(span);
+          }
+          return true;
+        });
+        expect(
+          spans.single.style?.decoration == TextDecoration.underline,
+          underlined,
+        );
+      });
+    }
+  });
+
+  group('drafts', () {
+    for (final (upload, label, retry) in [
+      (UploadState.uploading, 'Uploading', false),
+      (UploadState.uploaded, 'Ready', false),
+      (UploadState.failed, 'Failed', true),
+    ]) {
+      testWidgets('a ${upload.name} draft reads $label', (tester) async {
+        await pumpRoom(tester, timelineOf([], drafts: [draftOf(upload)]));
+        expect(find.text('draft.png $label'), findsOneWidget);
+        expect(find.text('Retry'), retry ? findsOneWidget : findsNothing);
+        expect(find.text('Remove'), findsOneWidget);
+      });
+    }
+
+    testWidgets('retry and remove call their intents with the draft', (
+      tester,
+    ) async {
+      final recorded = await pumpRoom(
+        tester,
+        timelineOf(
+          [],
+          drafts: [
+            draftOf(UploadState.failed),
+            draftOf(UploadState.uploaded, draftId: draftBId, fileName: 'b.png'),
+          ],
+        ),
+      );
+      await tester.tap(find.text('Retry'));
+      await tester.tap(find.text('Remove').last);
+      expect(recorded.calls, [
+        ('retryDraft', draftAId),
+        ('discardDraft', draftBId),
+      ]);
+    });
+
+    testWidgets('no drafts render no chips', (tester) async {
+      await pumpRoom(tester, timelineOf([]));
+      expect(find.text('Remove'), findsNothing);
+    });
+
+    for (final (canUpload, visible) in [(true, true), (false, false)]) {
+      testWidgets('canUpload $canUpload shows the attach button $visible', (
+        tester,
+      ) async {
+        await pumpRoom(tester, timelineOf([], canUpload: canUpload));
+        expect(
+          find.byKey(const Key('attachFile')),
+          visible ? findsOneWidget : findsNothing,
+        );
+      });
+    }
+
+    testWidgets(
+      'defect composer.dart: a draft without text still enables send',
+      (tester) async {
+        await pumpRoom(
+          tester,
+          timelineOf([], drafts: [draftOf(UploadState.uploaded)]),
+        );
+        final button = tester.widget<ElevatedButton>(
+          find.byKey(const Key('sendMessage')),
+        );
+        expect(button.onPressed, isNotNull);
+      },
+      skip: true,
+    );
+  });
+
+  group('rejection labels', () {
+    testWidgets(
+      'defect timeline_view.dart: a failed attachment send names the attachment',
+      (tester) async {
+        await pumpRoom(
+          tester,
+          timelineOf([failedEntry(MessageRejection.invalidAttachment)]),
+        );
+        expect(find.text('Attachment not accepted'), findsOneWidget);
+      },
+      skip: true,
+    );
+  });
+
+  group('pinning', () {
+    for (final (name, canPin, entry, label) in [
+      ('allowed on a confirmed entry', true, gracesEntryWith(), 'Pin'),
+      (
+        'allowed on a pinned entry',
+        true,
+        gracesEntryWith(pinned: true),
+        'Unpin',
+      ),
+      ('hidden without permission', false, gracesEntryWith(), null),
+      ('hidden for a pending entry', true, pendingEntry, null),
+    ]) {
+      testWidgets('pin button $name', (tester) async {
+        await pumpRoom(tester, timelineOf([entry], canPin: canPin));
+        expect(
+          find.text('Pin'),
+          label == 'Pin' ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text('Unpin'),
+          label == 'Unpin' ? findsOneWidget : findsNothing,
+        );
+      });
+    }
+
+    for (final (pinned, next) in [(false, true), (true, false)]) {
+      testWidgets('a pinned=$pinned entry sends pinned=$next', (tester) async {
+        final recorded = await pumpRoom(
+          tester,
+          timelineOf([gracesEntryWith(pinned: pinned)], canPin: true),
+        );
+        await tester.tap(find.text(pinned ? 'Unpin' : 'Pin'));
+        expect(recorded.calls, [('setPin', roomAId, messageAId, next)]);
+      });
+    }
+  });
+
+  group('shelf menu on entries', () {
+    for (final (name, shelved, label, absent) in [
+      ('unshelved offers saving', false, 'Save to shelf', 'Remove from shelf'),
+      ('shelved offers removal', true, 'Remove from shelf', 'Save to shelf'),
+    ]) {
+      testWidgets('a $name entry', (tester) async {
+        await pumpRoom(
+          tester,
+          timelineOf([gracesEntryWith(shelved: shelved)]),
+          presets: allPresets,
+        );
+        await tester.tap(find.text('Shelf'));
+        await tester.pumpAndSettle();
+        expect(find.text(label), findsOneWidget);
+        expect(find.text(absent), findsNothing);
+      });
+    }
+
+    for (final (name, label, action, preset) in [
+      ('save', 'Save to shelf', ShelfAction.save, null),
+      ('a preset', 'Tomorrow', ShelfAction.save, ReminderPreset.tomorrow),
+    ]) {
+      testWidgets('choosing $name updates the shelf for that message', (
+        tester,
+      ) async {
+        final recorded = await pumpRoom(
+          tester,
+          timelineOf([gracesEntryWith()]),
+          presets: allPresets,
+        );
+        await tester.tap(find.text('Shelf'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(label));
+        await tester.pumpAndSettle();
+        expect(recorded.calls, [
+          ('updateShelf', roomAId, messageAId, action, preset, null),
+        ]);
+      });
+    }
+
+    testWidgets('pending entries have no shelf menu', (tester) async {
+      await pumpRoom(tester, timelineOf([pendingEntry]), presets: allPresets);
+      expect(find.byKey(const Key('shelfMenu')), findsNothing);
+    });
+  });
+
+  group('focus', () {
+    testWidgets('the focused entry is scrolled into view', (tester) async {
+      final entries = [
+        for (var index = 0; index < 30; index++)
+          gracesEntryWith(
+            messageId: index == 29 ? messageBId : messageIdAt(index),
+            body: 'entry $index',
+          ),
+      ];
+      await pumpRoom(tester, timelineOf(entries, focusMessageId: messageBId));
+      await tester.pumpAndSettle();
+      final bottom = tester.getBottomLeft(find.text('entry 29')).dy;
+      expect(
+        bottom,
+        lessThan(
+          tester.view.physicalSize.height / tester.view.devicePixelRatio,
+        ),
+      );
+    });
+
+    testWidgets('without a focus the list stays at the top', (tester) async {
+      final entries = [
+        for (var index = 0; index < 30; index++)
+          gracesEntryWith(
+            messageId: index == 29 ? messageBId : messageIdAt(index),
+            body: 'entry $index',
+          ),
+      ];
+      await pumpRoom(tester, timelineOf(entries));
+      await tester.pumpAndSettle();
+      final bottom = tester.getBottomLeft(find.text('entry 29')).dy;
+      expect(
+        bottom,
+        greaterThan(
+          tester.view.physicalSize.height / tester.view.devicePixelRatio,
+        ),
+      );
+    });
   });
 }

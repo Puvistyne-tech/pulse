@@ -39,6 +39,13 @@ flutter_rust_bridge = "=2.13.0"
 argon2 = { version = "0.5", features = ["std"] }
 sha2 = "0.10"
 base64 = "0.22"
+rusqlite = { version = "0.37", features = ["bundled"] }
+rusty-s3 = "0.8"
+url = "2"
+idb = "0.6"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+wasm-bindgen-test = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 [profile.dev.package.argon2]

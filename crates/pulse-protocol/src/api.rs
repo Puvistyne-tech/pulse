@@ -49,6 +49,11 @@ pub enum InputField {
     MessageBody,
     TopicTitle,
     ReactionEmoji,
+    FileName,
+    ContentType,
+    ByteSize,
+    Attachments,
+    RemindAt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -78,16 +83,26 @@ impl ApiError {
 }
 
 pub mod api_path {
-    use crate::ids::CampusId;
+    use crate::ids::{CampusId, RoomId};
 
     pub const ACCOUNTS: &str = "/v1/accounts";
     pub const AUTH_TOKENS: &str = "/v1/auth-tokens";
     pub const CURRENT_AUTH_TOKEN: &str = "/v1/auth-tokens/current";
     pub const CAMPUSES: &str = "/v1/campuses";
     pub const CAMPUS_ROOMS_ROUTE: &str = "/v1/campuses/{campus_id}/rooms";
+    pub const CAMPUS_ROOM_UPLOADS_ROUTE: &str = "/v1/campuses/{campus_id}/rooms/{room_id}/uploads";
+    pub const CAMPUS_DOWNLOADS_ROUTE: &str = "/v1/campuses/{campus_id}/downloads";
     pub const WEBSOCKET: &str = "/ws";
 
     pub fn campus_rooms(campus_id: CampusId) -> String {
         format!("{CAMPUSES}/{campus_id}/rooms")
+    }
+
+    pub fn campus_room_uploads(campus_id: CampusId, room_id: RoomId) -> String {
+        format!("{CAMPUSES}/{campus_id}/rooms/{room_id}/uploads")
+    }
+
+    pub fn campus_downloads(campus_id: CampusId) -> String {
+        format!("{CAMPUSES}/{campus_id}/downloads")
     }
 }

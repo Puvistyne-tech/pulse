@@ -3,12 +3,14 @@ use ts_rs::TS;
 
 use crate::auth::AuthToken;
 use crate::ids::{AccountId, CampusId, SessionId};
+use crate::media::{PinRejected, SetPin, SyncVault, VaultRejected, VaultSynced};
 use crate::messaging::{
     MessageAccepted, MessageCreated, MessageRejected, MessageUpdated, RoomSynced, RoomUnavailable,
     SendMessage, SyncRooms,
 };
 use crate::rbac::Role;
 use crate::reaction::{React, ReactionRejected};
+use crate::shelf::{ShelfChanged, ShelfRejected, ShelfSynced, SyncShelf, UpdateShelf};
 use crate::thread::{
     InboxSynced, MarkThreadRead, SetThreadSubscription, SetTopicTitle, SyncInbox, SyncThread,
     ThreadChanged, ThreadRejected, ThreadSynced,
@@ -72,6 +74,10 @@ pub enum ClientFrame {
     MarkThreadRead(MarkThreadRead),
     SyncThread(SyncThread),
     SyncInbox(SyncInbox),
+    SetPin(SetPin),
+    SyncVault(SyncVault),
+    UpdateShelf(UpdateShelf),
+    SyncShelf(SyncShelf),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -93,6 +99,12 @@ pub enum ServerFrame {
     ThreadSynced(ThreadSynced),
     InboxSynced(InboxSynced),
     ThreadChanged(ThreadChanged),
+    PinRejected(PinRejected),
+    VaultSynced(VaultSynced),
+    VaultRejected(VaultRejected),
+    ShelfSynced(ShelfSynced),
+    ShelfChanged(ShelfChanged),
+    ShelfRejected(ShelfRejected),
 }
 
 pub mod close_code {

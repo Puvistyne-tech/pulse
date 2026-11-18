@@ -3,6 +3,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::ids::AccountId;
+use crate::link::{link_span, next_scheme};
 use crate::messaging::MentionRef;
 
 pub const MESSAGE_MENTIONS_MAX: usize = 16;
@@ -16,6 +17,7 @@ const UUID_TEXT_LEN: usize = 36;
 pub enum SegmentKind {
     Text,
     Mention,
+    Link,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -23,10 +25,12 @@ pub struct BodySegment {
     pub kind: SegmentKind,
     pub text: String,
     pub account_id: Option<AccountId>,
+    pub url: Option<String>,
 }
 
-enum Piece<'a> {
+pub(crate) enum Piece<'a> {
     Text(&'a str),
+    Link(&'a str),
     Token { raw: &'a str, account_id: AccountId },
 }
 
@@ -45,25 +49,50 @@ fn token_at(rest: &str) -> Option<(usize, AccountId)> {
     ))
 }
 
-fn scan(body: &str) -> Vec<Piece<'_>> {
+pub(crate) fn scan(body: &str) -> Vec<Piece<'_>> {
     let mut pieces = Vec::new();
     let mut text_start = 0;
     let mut cursor = 0;
-    while let Some(offset) = body[cursor..].find(TOKEN_OPEN) {
+    while cursor < body.len() {
+        let rest = &body[cursor..];
+        let (offset, is_token) = match (rest.find(TOKEN_OPEN), next_scheme(rest)) {
+            (Some(token), Some(scheme)) if token < scheme => (token, true),
+            (_, Some(scheme)) => (scheme, false),
+            (Some(token), None) => (token, true),
+            (None, None) => break,
+        };
         let start = cursor + offset;
-        match token_at(&body[start..]) {
-            Some((length, account_id)) => {
+        if is_token {
+            match token_at(&body[start..]) {
+                Some((length, account_id)) => {
+                    if start > text_start {
+                        pieces.push(Piece::Text(&body[text_start..start]));
+                    }
+                    pieces.push(Piece::Token {
+                        raw: &body[start..start + length],
+                        account_id,
+                    });
+                    cursor = start + length;
+                    text_start = cursor;
+                }
+                None => cursor = start + TOKEN_OPEN.len(),
+            }
+            continue;
+        }
+        let Some(span) = link_span(&body[start..]) else {
+            cursor = start + 1;
+            continue;
+        };
+        match span.url_len {
+            Some(url_len) => {
                 if start > text_start {
                     pieces.push(Piece::Text(&body[text_start..start]));
                 }
-                pieces.push(Piece::Token {
-                    raw: &body[start..start + length],
-                    account_id,
-                });
-                cursor = start + length;
+                pieces.push(Piece::Link(&body[start..start + url_len]));
+                cursor = start + url_len;
                 text_start = cursor;
             }
-            None => cursor = start + TOKEN_OPEN.len(),
+            None => cursor = start + span.raw_len,
         }
     }
     if text_start < body.len() {
@@ -96,6 +125,7 @@ fn push_text(segments: &mut Vec<BodySegment>, text: &str) {
             kind: SegmentKind::Text,
             text: text.to_owned(),
             account_id: None,
+            url: None,
         });
     }
 }
@@ -105,6 +135,12 @@ pub fn body_segments(body: &str, mentions: &[MentionRef]) -> Vec<BodySegment> {
     for piece in scan(body) {
         match piece {
             Piece::Text(text) => push_text(&mut segments, text),
+            Piece::Link(url) => segments.push(BodySegment {
+                kind: SegmentKind::Link,
+                text: url.to_owned(),
+                account_id: None,
+                url: Some(url.to_owned()),
+            }),
             Piece::Token { raw, account_id } => {
                 match mentions
                     .iter()
@@ -114,6 +150,7 @@ pub fn body_segments(body: &str, mentions: &[MentionRef]) -> Vec<BodySegment> {
                         kind: SegmentKind::Mention,
                         text: format!("@{}", mention.display_name),
                         account_id: Some(account_id),
+                        url: None,
                     }),
                     None => push_text(&mut segments, raw),
                 }

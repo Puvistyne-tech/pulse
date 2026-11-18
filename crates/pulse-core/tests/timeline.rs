@@ -1,9 +1,9 @@
 mod fixtures;
 
 use fixtures::{
-    ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, CAMPUS_B, EMOJI_A, EMOJI_B, EntryKey, NONCE_A, NONCE_B,
-    ROOM_A, ROOM_B, accepted_frame, chain, chain_message, confirmed_key, created_frame, entry_keys,
-    failed_key, message_id, nonce, own_message, peer_reply, pending_key, reacted, received,
+    ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, EMOJI_A, EMOJI_B, EntryKey, NONCE_A, NONCE_B, ROOM_A, ROOM_B,
+    accepted_frame, chain, chain_message, confirmed_key, created_frame, entry_keys, failed_key,
+    foreign, message_id, nonce, own_message, peer_reply, pending_key, reacted, received,
     rejected_frame, room_message, send_frame, send_requested, sync_frame, sync_frame_at,
     sync_inbox_frame, sync_shelf_frame, synced_frame, synced_frame_with, timeline_after,
     timeline_connected, timeline_run, titled, unavailable_frame, updated_frame, with_replies,
@@ -49,13 +49,6 @@ fn settled() -> TimelineEvent {
 
 fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
     received(rejected_frame(NONCE_A, reason))
-}
-
-fn foreign(message: RoomMessage) -> RoomMessage {
-    RoomMessage {
-        campus_id: CAMPUS_B,
-        ..message
-    }
 }
 
 #[rstest]

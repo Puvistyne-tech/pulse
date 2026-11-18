@@ -2,8 +2,9 @@ mod common;
 
 use common::{
     ClientSocket, Person, SCENARIO_DEADLINE, Stage, api_error_of, attachment_binding,
-    campus_with_owner, download_tickets_of, get_bytes, message_count, parsed_tickets, put_bytes,
-    request_upload, send_outcome, signed_up, storage_ready, synced_page, upload_request, uploaded,
+    bound_attachment_count, campus_with_owner, count_rows, download_tickets_of, get_bytes,
+    message_count, object_key_of, parsed_tickets, put_bytes, request_upload, send_outcome,
+    signed_up, storage_ready, synced_page, upload_request, uploaded,
 };
 use pulse_protocol::{
     ATTACHMENT_MAX_BYTES, ApiError, ApiErrorCode, AttachmentId, AttachmentKind,
@@ -117,11 +118,9 @@ async fn upload_tickets_are_scoped_to_campus_and_room() {
             assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
             assert_eq!(api_error_of(body).code, ApiErrorCode::NotFound);
         }
-        let pending: i64 = sqlx::query_scalar("SELECT count(*) FROM attachments")
-            .fetch_one(&stage.state.db)
-            .await
-            .expect("attachment rows");
-        assert_eq!(pending, 0);
+        for campus_id in [stage.campus.id, foreign.id] {
+            assert_eq!(count_rows(&stage.state, "attachments", campus_id).await, 0);
+        }
     })
     .await
     .expect("scenario deadline");
@@ -150,10 +149,7 @@ async fn presigned_path_equals_the_object_location_key() {
         .key();
         let url = url::Url::parse(&ticket.put_url).expect("put url");
         assert_eq!(url.path(), format!("/pulse-attachments/{key}"));
-        let stored: String = sqlx::query_scalar("SELECT object_key FROM attachments")
-            .fetch_one(&stage.state.db)
-            .await
-            .expect("object key");
+        let stored = object_key_of(&stage.state, stage.campus.id, ticket.attachment_id).await;
         assert_eq!(stored, key);
         assert_eq!(ticket.content_type, "image/png");
     })
@@ -475,12 +471,10 @@ async fn concurrent_sends_claim_an_attachment_exactly_once(#[case] senders: usiz
             Some((Some(accepted[0].message_id), Some(0)))
         );
         assert_eq!(message_count(&stage.state, stage.campus.id).await, 1);
-        let bound: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM attachments WHERE message_id IS NOT NULL")
-                .fetch_one(&stage.state.db)
-                .await
-                .expect("bound count");
-        assert_eq!(bound, 1);
+        assert_eq!(
+            bound_attachment_count(&stage.state, stage.campus.id).await,
+            1
+        );
     })
     .await
     .expect("scenario deadline");

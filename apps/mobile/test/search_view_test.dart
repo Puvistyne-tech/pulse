@@ -105,18 +105,7 @@ void main() {
             )
             .last,
       );
-      final spans = <TextSpan>[];
-      rich.text.visitChildren((span) {
-        if (span is TextSpan && span.text != null) {
-          spans.add(span);
-        }
-        return true;
-      });
-      expect(spans.map((span) => span.text), ['first ', 'alpha']);
-      expect(spans.map((span) => span.style?.fontWeight == FontWeight.bold), [
-        false,
-        true,
-      ]);
+      expect(boldSpans(rich), [('first ', false), ('alpha', true)]);
     });
 
     for (final (name, search, text) in [

@@ -1,13 +1,13 @@
 #![cfg(target_arch = "wasm32")]
 
+#[path = "../../pulse-core/tests/fixtures/builders.rs"]
+mod builders;
 #[path = "../../pulse-core/tests/fixtures/search_cases.rs"]
 mod search_cases;
 
-use pulse_core::{SearchIndex, SearchQuery, run_search};
+use pulse_core::{SearchIndex, run_search};
 use pulse_core_wasm::IndexedDbSearchIndex;
-use pulse_protocol::fixtures::{ACCOUNT_A, CAMPUS_A};
-use pulse_protocol::normalize_search_query;
-use search_cases::{assert_search_case, documents_of, search_cases};
+use search_cases::{assert_search_case, case_named, documents_of, query_of, search_cases};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -27,10 +27,7 @@ async fn every_case_passes_on_the_indexed_db_backend() {
 
 #[wasm_bindgen_test]
 async fn documents_survive_reopening_the_database() {
-    let case = search_cases()
-        .into_iter()
-        .find(|case| case.name == "and_semantics_require_every_term")
-        .expect("case");
+    let case = case_named("and_semantics_require_every_term");
     let name = database_name("reopen");
     {
         let mut index = IndexedDbSearchIndex::open(&name).await.expect("open");
@@ -39,12 +36,7 @@ async fn documents_survive_reopening_the_database() {
         }
     }
     let reopened = IndexedDbSearchIndex::open(&name).await.expect("reopen");
-    let query = SearchQuery {
-        account_id: ACCOUNT_A,
-        campus_id: CAMPUS_A,
-        terms: normalize_search_query(case.query),
-        limit: 10,
-    };
+    let query = query_of(&case, 10);
     let hits = run_search(&reopened, &query).await.expect("search");
     assert_eq!(hits.len(), case.expected.len());
 }

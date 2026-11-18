@@ -3,9 +3,9 @@ mod common;
 use std::collections::BTreeSet;
 
 use common::{
-    Person, SCENARIO_DEADLINE, Stage, campus_with_owner, collect_until, epoch_ms, expect_frame,
-    frames_until_pong, grant_role, ms_from_now, seed_messages, seed_shelf, send, shelf_frame,
-    shelf_state_of, shelf_update_request, sibling_state, signed_up, sync_shelf_frame,
+    Person, SCENARIO_DEADLINE, Stage, campus_with_owner, collect_until, count_rows, expect_frame,
+    frames_until_pong, grant_role, ms_from_now, now_ms, seed_messages, seed_shelf, send,
+    shelf_frame, shelf_state_of, shelf_update_request, sibling_state, signed_up, sync_shelf_frame,
 };
 use pulse_protocol::{
     AccountId, MessageId, REMIND_AT_HORIZON_MS, Role, SHELF_ITEMS_MAX, ServerFrame, ShelfAction,
@@ -63,7 +63,7 @@ async fn shelve(
         stage.campus.id,
         account_id,
         shelf_update_request(stage.room, message_id, action, offset_ms.map(ms_from_now)),
-        epoch_ms(),
+        now_ms(),
     )
     .await
 }
@@ -165,7 +165,7 @@ async fn concurrent_saves_of_one_message_leave_one_row(
                     campus_id,
                     ada,
                     shelf_update_request(room, message, ShelfAction::Save, None),
-                    epoch_ms(),
+                    now_ms(),
                 )
                 .await
             });
@@ -176,10 +176,7 @@ async fn concurrent_saves_of_one_message_leave_one_row(
                 Expect::Changed { .. }
             ));
         }
-        let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM shelf_items")
-            .fetch_one(&stage.state.db)
-            .await
-            .expect("rows");
+        let rows = count_rows(&stage.state, "shelf_items", stage.campus.id).await;
         assert_eq!(rows, 1);
         let state = shelf_state_of(&stage.state, stage.campus.id, ada, message).await;
         assert_eq!(state, Some((false, false, false, revision)));
@@ -229,7 +226,7 @@ async fn concurrent_saves_never_exceed_the_shelf_cap(
                     campus_id,
                     ada,
                     shelf_update_request(room, target, ShelfAction::Save, None),
-                    epoch_ms(),
+                    now_ms(),
                 )
                 .await
             });
@@ -248,10 +245,7 @@ async fn concurrent_saves_never_exceed_the_shelf_cap(
             .count();
         assert_eq!(changed, free_slots.min(savers));
         assert_eq!(full, savers - changed);
-        let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM shelf_items")
-            .fetch_one(&stage.state.db)
-            .await
-            .expect("rows");
+        let rows = count_rows(&stage.state, "shelf_items", stage.campus.id).await;
         assert_eq!(rows, i64::try_from(SHELF_ITEMS_MAX).expect("cap"));
     })
     .await
@@ -367,7 +361,7 @@ async fn rescheduling_while_scanning_never_breaks_the_reminder_invariant(#[case]
                         ShelfAction::Reschedule,
                         Some(ms_from_now(HOUR)),
                     ),
-                    epoch_ms(),
+                    now_ms(),
                 )
                 .await
                 .expect("reschedule");

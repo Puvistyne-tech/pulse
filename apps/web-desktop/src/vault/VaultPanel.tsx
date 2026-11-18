@@ -1,5 +1,6 @@
 import type { VaultSnapshot, VaultTab } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
+import { AttachmentLink } from "../room/AttachmentList";
 import { ErrorNotice } from "../session/ErrorNotice";
 
 const tabs: { tab: VaultTab; label: string }[] = [
@@ -80,34 +81,5 @@ export function VaultPanel({ vault, intents }: VaultPanelProps) {
         </button>
       )}
     </section>
-  );
-}
-
-function AttachmentLink({
-  attachment,
-}: {
-  attachment: NonNullable<VaultSnapshot["entries"][number]["attachment"]>;
-}) {
-  if (attachment.url === null) {
-    return <span>{attachment.file_name}</span>;
-  }
-  if (attachment.kind === "image") {
-    return (
-      <img
-        alt={attachment.file_name}
-        className="max-h-32 rounded"
-        src={attachment.url}
-      />
-    );
-  }
-  return (
-    <a
-      className="underline"
-      href={attachment.url}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {attachment.file_name}
-    </a>
   );
 }

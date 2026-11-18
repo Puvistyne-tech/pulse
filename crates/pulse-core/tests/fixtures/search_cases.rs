@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
+use crate::builders::{message_id, room_message};
 use pulse_core::{SearchDocument, SearchIndex, SearchQuery, run_search};
 use pulse_protocol::fixtures::{ACCOUNT_A, ACCOUNT_B, CAMPUS_A, CAMPUS_B, NONCE_A, ROOM_A};
 use pulse_protocol::{
-    AccountId, CampusId, MessageId, RoomMessage, SEARCH_CANDIDATE_LIMIT, SEARCH_HITS_LIMIT,
+    AccountId, CampusId, RoomMessage, SEARCH_CANDIDATE_LIMIT, SEARCH_HITS_LIMIT,
     normalize_search_query,
 };
 
@@ -25,12 +26,6 @@ pub struct SearchCase {
     pub limit: usize,
     pub expected: Vec<u128>,
     pub top_snippet: Option<Vec<(&'static str, bool)>>,
-}
-
-pub fn message_id_of(index: u128) -> MessageId {
-    format!("0193a5c0-0000-7000-8000-{:012x}", 0x6000_0000 + index)
-        .parse()
-        .expect("message id")
 }
 
 fn seed(index: u128, body: &'static str) -> Seed {
@@ -76,23 +71,33 @@ fn case(
 
 fn message_of(seed: &Seed) -> RoomMessage {
     RoomMessage {
-        message_id: message_id_of(seed.index),
-        previous_message_id: None,
         campus_id: seed.campus,
-        room_id: ROOM_A,
-        author_id: seed.account,
         author_display_name: seed.author.to_owned(),
-        client_nonce: NONCE_A,
-        body: seed.body.to_owned(),
-        thread_root_id: None,
         topic_title: seed.title.map(str::to_owned),
-        reply_count: 0,
-        latest_reply_id: None,
-        mentions: Vec::new(),
-        reactions: Vec::new(),
-        activity_seq: 0,
-        attachments: Vec::new(),
-        pin: None,
+        ..room_message(
+            ROOM_A,
+            message_id(seed.index),
+            None,
+            seed.account,
+            NONCE_A,
+            seed.body,
+        )
+    }
+}
+
+pub fn case_named(name: &str) -> SearchCase {
+    search_cases()
+        .into_iter()
+        .find(|case| case.name == name)
+        .unwrap_or_else(|| panic!("unknown case {name}"))
+}
+
+pub fn query_of(case: &SearchCase, limit: usize) -> SearchQuery {
+    SearchQuery {
+        account_id: ACCOUNT_A,
+        campus_id: CAMPUS_A,
+        terms: normalize_search_query(case.query),
+        limit,
     }
 }
 
@@ -308,12 +313,7 @@ pub async fn assert_search_case<I: SearchIndex>(index: &mut I, case: &SearchCase
             .await
             .unwrap_or_else(|error| panic!("{}: upsert failed: {error:?}", case.name));
     }
-    let query = SearchQuery {
-        account_id: ACCOUNT_A,
-        campus_id: CAMPUS_A,
-        terms: normalize_search_query(case.query),
-        limit: case.limit,
-    };
+    let query = query_of(case, case.limit);
     let hits = run_search(index, &query)
         .await
         .unwrap_or_else(|error| panic!("{}: search failed: {error:?}", case.name));
@@ -321,7 +321,7 @@ pub async fn assert_search_case<I: SearchIndex>(index: &mut I, case: &SearchCase
         .iter()
         .map(|hit| {
             (0..=u128::try_from(SEARCH_CANDIDATE_LIMIT).expect("cap") + 10)
-                .find(|index| message_id_of(*index) == hit.message_id)
+                .find(|index| message_id(*index) == hit.message_id)
                 .unwrap_or_else(|| panic!("{}: unknown hit {:?}", case.name, hit.message_id))
         })
         .collect();

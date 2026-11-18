@@ -1,9 +1,9 @@
 mod fixtures;
 
 use fixtures::{
-    ROOM_A, ShelfSpec, chain, clock, message_id, open_thread, received, settled_machine,
-    shelf_changed_frame, shelf_event, shelf_rejected_frame, shelf_synced_frame, shelf_update,
-    step_all, synced_frame, timeline_run,
+    ROOM_A, ShelfSpec, chain, clock, message_id, message_ids, open_thread, received,
+    settled_machine, shelf_changed_frame, shelf_event, shelf_rejected_frame, shelf_synced_frame,
+    shelf_update, step_all, synced_frame, timeline_run,
 };
 use pulse_core::{ShelfIntent, TimelineEvent, TimelineMachine};
 use pulse_protocol::{
@@ -14,10 +14,6 @@ use rstest::rstest;
 
 fn ids(entries: &[ShelfEntry]) -> Vec<MessageId> {
     entries.iter().map(|entry| entry.message_id).collect()
-}
-
-fn indexes(items: &[u128]) -> Vec<MessageId> {
-    items.iter().copied().map(message_id).collect()
 }
 
 fn shelf_machine(events: Vec<TimelineEvent>) -> TimelineMachine {
@@ -47,9 +43,9 @@ fn buckets_follow_the_core_clock(
 ) {
     let machine = shelf_machine(vec![clock(clock_ms), received(shelf_synced_frame(&[spec]))]);
     let snapshot = machine.shelf_snapshot();
-    assert_eq!(ids(&snapshot.due), indexes(due));
-    assert_eq!(ids(&snapshot.upcoming), indexes(upcoming));
-    assert_eq!(ids(&snapshot.done), indexes(done));
+    assert_eq!(ids(&snapshot.due), message_ids(due));
+    assert_eq!(ids(&snapshot.upcoming), message_ids(upcoming));
+    assert_eq!(ids(&snapshot.done), message_ids(done));
     assert_eq!(snapshot.due_count, due_count);
     let entries: Vec<_> = [&snapshot.due, &snapshot.upcoming, &snapshot.done]
         .into_iter()
@@ -78,7 +74,7 @@ fn an_upcoming_reminder_turns_due_when_the_clock_reaches_it() {
     let (machine, _) = step_all(machine, vec![clock(5_000)]);
     let snapshot = machine.shelf_snapshot();
     assert_eq!(snapshot.due_count, 1);
-    assert_eq!(ids(&snapshot.due), indexes(&[1]));
+    assert_eq!(ids(&snapshot.due), message_ids(&[1]));
     let (machine, _) = step_all(machine, vec![clock(100)]);
     assert_eq!(machine.shelf_snapshot().due_count, 1);
 }
@@ -100,9 +96,9 @@ fn buckets_are_sorted_by_reminder_then_recency() {
     ];
     let machine = shelf_machine(vec![clock(1_000), received(shelf_synced_frame(&specs))]);
     let snapshot = machine.shelf_snapshot();
-    assert_eq!(ids(&snapshot.due), indexes(&[2, 3, 1]));
-    assert_eq!(ids(&snapshot.upcoming), indexes(&[8, 5, 4, 7, 6]));
-    assert_eq!(ids(&snapshot.done), indexes(&[10, 11, 9]));
+    assert_eq!(ids(&snapshot.due), message_ids(&[2, 3, 1]));
+    assert_eq!(ids(&snapshot.upcoming), message_ids(&[8, 5, 4, 7, 6]));
+    assert_eq!(ids(&snapshot.done), message_ids(&[10, 11, 9]));
     assert_eq!(snapshot.due_count, 3);
     assert_eq!(snapshot.presets, ReminderPreset::ALL.to_vec());
 }
@@ -316,7 +312,7 @@ fn the_server_echo_confirms_an_optimistic_save() {
         received(shelf_changed_frame(ShelfSpec::new(2), false)),
     ]);
     let snapshot = machine.shelf_snapshot();
-    assert_eq!(ids(&snapshot.upcoming), indexes(&[2]));
+    assert_eq!(ids(&snapshot.upcoming), message_ids(&[2]));
     assert!(!snapshot.upcoming[0].pending);
     assert_eq!(
         snapshot.upcoming[0].shelf_item_id,
@@ -338,7 +334,7 @@ fn a_stale_echo_does_not_confirm_a_newer_optimistic_change() {
         ],
     );
     let snapshot = machine.shelf_snapshot();
-    assert_eq!(ids(&snapshot.done), indexes(&[2]));
+    assert_eq!(ids(&snapshot.done), message_ids(&[2]));
     assert!(snapshot.done[0].pending);
 }
 
@@ -376,8 +372,11 @@ fn optimistic_changes_to_a_saved_item_show_at_once_and_roll_back(
     let (during, frames) = step_all(saved, vec![shelf_update(2, action, None, None)]);
     assert_eq!(shelf_frames(frames), vec![update_frame(2, action, None)]);
     let snapshot = during.shelf_snapshot();
-    assert_eq!(ids(&snapshot.upcoming), indexes(&expected_upcoming_during));
-    assert_eq!(ids(&snapshot.done), indexes(&expected_done_during));
+    assert_eq!(
+        ids(&snapshot.upcoming),
+        message_ids(&expected_upcoming_during)
+    );
+    assert_eq!(ids(&snapshot.done), message_ids(&expected_done_during));
     let (after, _) = step_all(
         during,
         vec![received(shelf_rejected_frame(
@@ -387,7 +386,7 @@ fn optimistic_changes_to_a_saved_item_show_at_once_and_roll_back(
         ))],
     );
     let restored = after.shelf_snapshot();
-    assert_eq!(ids(&restored.upcoming), indexes(&[2]));
+    assert_eq!(ids(&restored.upcoming), message_ids(&[2]));
     assert!(restored.done.is_empty());
     assert!(!restored.upcoming[0].pending);
 }

@@ -208,18 +208,7 @@ void main() {
           matching: find.byType(RichText),
         ),
       );
-      final spans = <TextSpan>[];
-      rich.text.visitChildren((span) {
-        if (span is TextSpan && span.text != null) {
-          spans.add(span);
-        }
-        return true;
-      });
-      expect(spans.map((span) => span.text), ['hi ', '@Ada']);
-      expect(spans.map((span) => span.style?.fontWeight == FontWeight.bold), [
-        false,
-        true,
-      ]);
+      expect(boldSpans(rich), [('hi ', false), ('@Ada', true)]);
     });
 
     testWidgets('the raw mention token is never shown', (tester) async {
@@ -541,15 +530,8 @@ void main() {
             matching: find.byType(RichText),
           ),
         );
-        final spans = <TextSpan>[];
-        rich.text.visitChildren((span) {
-          if (span is TextSpan && span.text != null) {
-            spans.add(span);
-          }
-          return true;
-        });
         expect(
-          spans.single.style?.decoration == TextDecoration.underline,
+          richSpans(rich).single.style?.decoration == TextDecoration.underline,
           underlined,
         );
       });

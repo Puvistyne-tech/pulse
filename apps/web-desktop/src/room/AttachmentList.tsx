@@ -1,5 +1,30 @@
 import type { AttachmentView } from "@pulse/protocol";
 
+export function AttachmentLink({ attachment }: { attachment: AttachmentView }) {
+  if (attachment.url === null) {
+    return <span>{attachment.file_name}</span>;
+  }
+  if (attachment.kind === "image") {
+    return (
+      <img
+        alt={attachment.file_name}
+        className="max-h-48 rounded"
+        src={attachment.url}
+      />
+    );
+  }
+  return (
+    <a
+      className="underline"
+      href={attachment.url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      {attachment.file_name}
+    </a>
+  );
+}
+
 export function AttachmentList({
   attachments,
 }: {
@@ -12,24 +37,7 @@ export function AttachmentList({
     <ul aria-label="Attachments" className="space-y-1 text-sm">
       {attachments.map((attachment) => (
         <li key={attachment.attachment_id}>
-          {attachment.url === null ? (
-            <span>{attachment.file_name}</span>
-          ) : attachment.kind === "image" ? (
-            <img
-              alt={attachment.file_name}
-              className="max-h-48 rounded"
-              src={attachment.url}
-            />
-          ) : (
-            <a
-              className="underline"
-              href={attachment.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {attachment.file_name}
-            </a>
-          )}
+          <AttachmentLink attachment={attachment} />
         </li>
       ))}
     </ul>

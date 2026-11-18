@@ -2,16 +2,16 @@ mod fixtures;
 
 use fixtures::{
     ACCOUNT_A, CAMPUS_A, CAMPUS_B, ROOM_A, ScriptedApi, ShelfSpec, SummarySpec, accepted_frame,
-    chain, chain_message, client_rooms, created_frame, inbox_synced_frame, message_id, nonce,
-    own_message, pinned, room_list, settled_client, shelf_changed_frame, shelf_synced_frame,
-    signed_in_client, synced_frame, thread_changed_frame, thread_synced_frame, updated_frame,
-    vault_item, vault_synced_frame,
+    chain, chain_message, client_rooms, created_frame, foreign, inbox_synced_frame, message_id,
+    nonce, own_message, pinned, room_list, settled_client, shelf_changed_frame, shelf_synced_frame,
+    signed_in_client, sorted_message_ids, synced_frame, thread_changed_frame, thread_synced_frame,
+    updated_frame, vault_item, vault_synced_frame,
 };
 use futures::executor::block_on;
 use pulse_core::{Client, Effect, EffectOutcome, SearchIntent, SessionEvent, StoreError};
 use pulse_protocol::{
-    ApiErrorCode, CampusId, HighlightSpan, InboxStep, MessageId, RoomId, RoomMessage,
-    SEARCH_CANDIDATE_LIMIT, SearchHit, ServerFrame, VaultTab,
+    ApiErrorCode, CampusId, HighlightSpan, InboxStep, MessageId, RoomId, SEARCH_CANDIDATE_LIMIT,
+    SearchHit, ServerFrame, VaultTab,
 };
 use rstest::rstest;
 
@@ -27,21 +27,6 @@ fn indexed_ids(effects: &[Effect]) -> Vec<MessageId> {
         .collect::<Vec<_>>();
     ids.sort();
     ids
-}
-
-fn sorted(indexes: &[u128]) -> Vec<MessageId> {
-    let mut ids = indexes.iter().copied().map(message_id).collect::<Vec<_>>();
-    ids.sort();
-    ids
-}
-
-fn foreign(mut message: RoomMessage) -> RoomMessage {
-    message.campus_id = CAMPUS_B;
-    message
-}
-
-fn reply_of(index: u128, root: u128) -> RoomMessage {
-    fixtures::peer_reply(index, root)
 }
 
 fn hit_in(room_id: RoomId, index: u128, thread_root: Option<u128>) -> SearchHit {
@@ -95,7 +80,7 @@ fn complete(client: &mut Client, generation: u64, hits: Vec<SearchHit>) {
 #[case::own_accepted(accepted_frame(own_message(ROOM_A, 1, nonce(9))), &[1])]
 #[case::updated(updated_frame(pinned(chain_message(ROOM_A, 1), 5)), &[1])]
 #[case::thread_page(
-    thread_synced_frame(1, vec![chain_message(ROOM_A, 1), reply_of(2, 1)], false),
+    thread_synced_frame(1, vec![chain_message(ROOM_A, 1), fixtures::peer_reply(2, 1)], false),
     &[1, 2]
 )]
 #[case::shelf_page(shelf_synced_frame(&[ShelfSpec::new(4), ShelfSpec::new(5)]), &[4, 5])]
@@ -134,7 +119,7 @@ fn ingested_messages_queue_index_documents(#[case] frame: ServerFrame, #[case] e
     let mut client = settled_client();
     client.receive_frame(frame);
     let effects = client.take_effects();
-    assert_eq!(indexed_ids(&effects), sorted(expected));
+    assert_eq!(indexed_ids(&effects), sorted_message_ids(expected));
     for effect in &effects {
         if let Effect::IndexDocuments(documents) = effect {
             assert!(documents.iter().all(|document| {
@@ -151,11 +136,14 @@ fn ingested_messages_queue_index_documents(#[case] frame: ServerFrame, #[case] e
 fn inbox_summaries_queue_index_documents(#[case] frame: ServerFrame, #[case] expected: &[u128]) {
     let mut client = settled_client();
     client.receive_frame(frame);
-    assert_eq!(indexed_ids(&client.take_effects()), sorted(expected));
+    assert_eq!(
+        indexed_ids(&client.take_effects()),
+        sorted_message_ids(expected)
+    );
 }
 
 #[test]
-fn indexed_text_is_the_rendered_message_and_terms_are_sorted() {
+fn indexed_text_is_the_rendered_message_and_terms_are_sorted_message_ids() {
     let mut client = settled_client();
     let mut message = chain_message(ROOM_A, 1);
     message.body = "Zebra apple zebra".to_owned();
@@ -180,7 +168,10 @@ fn reindexing_the_same_message_in_one_step_queues_it_once() {
     client.receive_frame(synced_frame(ROOM_A, chain(ROOM_A, 2), false));
     client.take_effects();
     client.receive_frame(updated_frame(pinned(chain_message(ROOM_A, 2), 3)));
-    assert_eq!(indexed_ids(&client.take_effects()), sorted(&[2]));
+    assert_eq!(
+        indexed_ids(&client.take_effects()),
+        sorted_message_ids(&[2])
+    );
 }
 
 #[rstest]

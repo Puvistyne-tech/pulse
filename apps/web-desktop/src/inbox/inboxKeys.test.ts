@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   emptyInbox,
   expectOnlyCalled,
+  keyInput,
   noopIntents,
   type IntentName,
 } from "../test/fixtures";
@@ -13,22 +14,14 @@ import {
   type KeyInput,
 } from "./inboxKeys";
 
-const plain = (key: string, editableTarget = false): KeyInput => ({
-  key,
-  metaKey: false,
-  ctrlKey: false,
-  editableTarget,
-});
+const plain = (key: string, editableTarget = false): KeyInput =>
+  keyInput(key, { editableTarget });
 
-const withMeta = (key: string, editableTarget = false): KeyInput => ({
-  ...plain(key, editableTarget),
-  metaKey: true,
-});
+const withMeta = (key: string, editableTarget = false): KeyInput =>
+  keyInput(key, { metaKey: true, editableTarget });
 
-const withCtrl = (key: string, editableTarget = false): KeyInput => ({
-  ...plain(key, editableTarget),
-  ctrlKey: true,
-});
+const withCtrl = (key: string, editableTarget = false): KeyInput =>
+  keyInput(key, { ctrlKey: true, editableTarget });
 
 const closed: InboxSnapshot = emptyInbox;
 const open: InboxSnapshot = { ...emptyInbox, open: true };

@@ -41,6 +41,7 @@ import type {
 } from "@pulse/protocol";
 import { expect, vi } from "vitest";
 import type { PulseIntents } from "../client/usePulseClient";
+import type { KeyInput } from "../inbox/inboxKeys";
 
 export const CAMPUS_A: CampusId = "0193a5c0-0000-7000-8000-00000000000a";
 export const CAMPUS_B: CampusId = "0193a5c0-0000-7000-8000-00000000000b";
@@ -674,3 +675,14 @@ export function expectOnlyCalled(
     }
   }
 }
+
+export const keyInput = (
+  key: string,
+  overrides: Partial<KeyInput> = {},
+): KeyInput => ({
+  key,
+  metaKey: false,
+  ctrlKey: false,
+  editableTarget: false,
+  ...overrides,
+});

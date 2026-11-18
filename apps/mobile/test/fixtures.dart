@@ -757,3 +757,19 @@ const createCampusRequest = CreateCampusRequest(
   slug: 'gamma',
   displayName: 'Gamma Campus',
 );
+
+List<TextSpan> richSpans(RichText rich) {
+  final spans = <TextSpan>[];
+  rich.text.visitChildren((span) {
+    if (span is TextSpan && span.text != null) {
+      spans.add(span);
+    }
+    return true;
+  });
+  return spans;
+}
+
+List<(String, bool)> boldSpans(RichText rich) => [
+  for (final span in richSpans(rich))
+    (span.text!, span.style?.fontWeight == FontWeight.bold),
+];

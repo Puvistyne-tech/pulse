@@ -1167,18 +1167,10 @@ impl Stage {
     }
 }
 
-pub fn epoch_ms() -> u64 {
-    u64::try_from(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("epoch")
-            .as_millis(),
-    )
-    .expect("epoch millis")
-}
+pub use pulse_server::time::now_ms;
 
 pub fn ms_from_now(offset_ms: i64) -> u64 {
-    epoch_ms().saturating_add_signed(offset_ms)
+    now_ms().saturating_add_signed(offset_ms)
 }
 
 pub async fn storage_ready(state: &AppState) {
@@ -1524,4 +1516,29 @@ pub async fn collect_until<T>(
         }
     }
     found
+}
+
+pub async fn object_key_of(
+    state: &AppState,
+    campus_id: CampusId,
+    attachment_id: AttachmentId,
+) -> String {
+    sqlx::query_scalar::<_, String>(
+        "SELECT object_key FROM attachments WHERE campus_id = $1 AND attachment_id = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(attachment_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("object key")
+}
+
+pub async fn bound_attachment_count(state: &AppState, campus_id: CampusId) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM attachments WHERE campus_id = $1 AND message_id IS NOT NULL",
+    )
+    .bind(campus_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("bound count")
 }

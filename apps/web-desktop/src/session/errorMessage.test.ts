@@ -57,6 +57,9 @@ test.each<[string, ApiError, string]>([
     "Choose a reminder time that is not too far in the past or future",
   ],
   ["conflicting reminder time", { code: "conflict", field: "remind_at" }, "That reminder time cannot be used"],
+  ["invalid steward rooms", { code: "invalid_input", field: "rooms" }, "Choose a valid set of rooms for that steward"],
+  ["conflicting steward rooms", { code: "conflict", field: "rooms" }, "Those rooms cannot be used"],
+  ["forbidden steward rooms", { code: "forbidden", field: "rooms" }, "You are not allowed to do that"],
   ["forbidden upload", { code: "forbidden", field: "byte_size" }, "You are not allowed to do that"],
   ["unavailable storage", { code: "unavailable", field: "attachments" }, "Pulse server unavailable"],
   [
@@ -79,6 +82,7 @@ test.each<[string, ApiError]>([
   ["invalid reaction emoji", { code: "invalid_input", field: "reaction_emoji" }],
   ["conflicting reaction emoji", { code: "conflict", field: "reaction_emoji" }],
   ["invalid message body", { code: "invalid_input", field: "message_body" }],
+  ["invalid steward rooms", { code: "invalid_input", field: "rooms" }],
 ])("%s copy contains no limit numbers", (_name, error) => {
   expect(errorMessage(error)).not.toMatch(/\d/);
 });
@@ -96,6 +100,7 @@ const inputFields: InputField[] = [
   "byte_size",
   "attachments",
   "remind_at",
+  "rooms",
 ];
 
 const codes: ApiErrorCode[] = [

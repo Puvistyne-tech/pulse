@@ -4,6 +4,7 @@ import '../third_party/pulse_protocol/auth.dart';
 import '../third_party/pulse_protocol/campus.dart';
 import '../third_party/pulse_protocol/frames.dart';
 import '../third_party/pulse_protocol/ids.dart';
+import '../third_party/pulse_protocol/lounge.dart';
 import '../third_party/pulse_protocol/media.dart';
 import '../third_party/pulse_protocol/mention.dart';
 import '../third_party/pulse_protocol/messaging.dart';

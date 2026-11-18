@@ -5,7 +5,9 @@ import type {
   ClientSnapshot,
   CreateCampusRequest,
   DraftId,
+  AccountId,
   InboxStep,
+  LoungeId,
   MessageId,
   ReactionAction,
   ReminderPreset,
@@ -78,6 +80,14 @@ export interface PulseIntents {
     remindAtMs: number | null,
   ): Promise<void>;
   dismissReminder(): Promise<void>;
+  joinLounge(loungeId: LoungeId): Promise<void>;
+  leaveLounge(): Promise<void>;
+  toggleStewards(): Promise<void>;
+  createSteward(displayName: string, roomIds: RoomId[]): Promise<void>;
+  rotateStewardToken(stewardId: AccountId): Promise<void>;
+  revokeSteward(stewardId: AccountId): Promise<void>;
+  assignStewardRooms(stewardId: AccountId, roomIds: RoomId[]): Promise<void>;
+  dismissStewardToken(): Promise<void>;
 }
 
 export function usePulseClient(): {
@@ -169,6 +179,18 @@ export function usePulseClient(): {
           pulseClient.updateShelf(roomId, messageId, action, preset, remindAtMs),
         ),
       dismissReminder: () => publish(pulseClient.dismissReminder()),
+      joinLounge: (loungeId) => publish(pulseClient.joinLounge(loungeId)),
+      leaveLounge: () => publish(pulseClient.leaveLounge()),
+      toggleStewards: () => publish(pulseClient.toggleStewards()),
+      createSteward: (displayName, roomIds) =>
+        publish(pulseClient.createSteward(displayName, roomIds)),
+      rotateStewardToken: (stewardId) =>
+        publish(pulseClient.rotateStewardToken(stewardId)),
+      revokeSteward: (stewardId) =>
+        publish(pulseClient.revokeSteward(stewardId)),
+      assignStewardRooms: (stewardId, roomIds) =>
+        publish(pulseClient.assignStewardRooms(stewardId, roomIds)),
+      dismissStewardToken: () => publish(pulseClient.dismissStewardToken()),
     }),
     [publish],
   );

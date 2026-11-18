@@ -15,6 +15,7 @@ const _invalidFieldMessages = {
   InputField.attachments: 'Check the attachments on that message',
   InputField.remindAt:
       'Choose a reminder time that is not too far in the past or future',
+  InputField.rooms: 'Choose a valid set of rooms for that steward',
 };
 
 const _conflictFieldMessages = {
@@ -30,6 +31,7 @@ const _conflictFieldMessages = {
   InputField.byteSize: 'That file cannot be used',
   InputField.attachments: 'Those attachments cannot be used',
   InputField.remindAt: 'That reminder time cannot be used',
+  InputField.rooms: 'Those rooms cannot be used',
 };
 
 const _codeMessages = {

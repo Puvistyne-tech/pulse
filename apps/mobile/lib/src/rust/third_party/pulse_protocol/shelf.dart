@@ -5,6 +5,12 @@ import 'ids.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';
 
+Future<BigInt?> pickerAnchorMs({required BigInt clockMs}) =>
+    RustLib.instance.api.pulseProtocolShelfPickerAnchorMs(clockMs: clockMs);
+
+Future<BigInt?> pickerLatestMs({required BigInt clockMs}) =>
+    RustLib.instance.api.pulseProtocolShelfPickerLatestMs(clockMs: clockMs);
+
 enum ReminderPreset {
   inTwentyMinutes,
   inOneHour,

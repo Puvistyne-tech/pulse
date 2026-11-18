@@ -1,9 +1,9 @@
 use percent_encoding::percent_decode_str;
 use pulse_core::native::NativeClient;
 use pulse_protocol::{
-    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep, MessageId,
-    ReactionAction, ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest,
-    SubscriptionState, VaultTab,
+    AccountId, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep,
+    LoungeId, LoungeMediaState, MessageId, ReactionAction, ReminderPreset, RoomId, ShelfAction,
+    SignInRequest, SignUpRequest, SubscriptionState, VaultTab,
 };
 use tauri::ipc::InvokeBody;
 use tauri::{Manager, State};
@@ -269,6 +269,65 @@ async fn dismiss_reminder(client: State<'_, NativeClient>) -> CommandResult {
 }
 
 #[tauri::command]
+async fn join_lounge(client: State<'_, NativeClient>, lounge_id: LoungeId) -> CommandResult {
+    Ok(client.join_lounge(lounge_id).await)
+}
+
+#[tauri::command]
+async fn leave_lounge(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.leave_lounge().await)
+}
+
+#[tauri::command]
+async fn report_lounge_media(
+    client: State<'_, NativeClient>,
+    state: LoungeMediaState,
+) -> CommandResult {
+    Ok(client.report_lounge_media(state).await)
+}
+
+#[tauri::command]
+async fn toggle_stewards(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.toggle_stewards().await)
+}
+
+#[tauri::command]
+async fn create_steward(
+    client: State<'_, NativeClient>,
+    display_name: String,
+    room_ids: Vec<RoomId>,
+) -> CommandResult {
+    Ok(client.create_steward(display_name, room_ids).await)
+}
+
+#[tauri::command]
+async fn rotate_steward_token(
+    client: State<'_, NativeClient>,
+    steward_id: AccountId,
+) -> CommandResult {
+    Ok(client.rotate_steward_token(steward_id).await)
+}
+
+#[tauri::command]
+async fn revoke_steward(client: State<'_, NativeClient>, steward_id: AccountId) -> CommandResult {
+    Ok(client.revoke_steward(steward_id).await)
+}
+
+#[tauri::command]
+async fn assign_steward_rooms(
+    client: State<'_, NativeClient>,
+    steward_id: AccountId,
+    room_ids: Vec<RoomId>,
+) -> CommandResult {
+    Ok(client.assign_steward_rooms(steward_id, room_ids).await)
+}
+
+#[tauri::command]
+async fn dismiss_steward_token(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.dismiss_steward_token().await)
+}
+
+#[tauri::command]
 async fn watch_snapshots(
     client: State<'_, NativeClient>,
     on_snapshot: tauri::ipc::Channel<ClientSnapshot>,
@@ -321,6 +380,15 @@ pub fn run() {
             toggle_shelf,
             update_shelf,
             dismiss_reminder,
+            join_lounge,
+            leave_lounge,
+            report_lounge_media,
+            toggle_stewards,
+            create_steward,
+            rotate_steward_token,
+            revoke_steward,
+            assign_steward_rooms,
+            dismiss_steward_token,
             watch_snapshots
         ])
         .run(tauri::generate_context!());

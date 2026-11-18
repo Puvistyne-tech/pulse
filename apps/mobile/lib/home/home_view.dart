@@ -5,6 +5,7 @@ import '../campus/create_campus_view.dart';
 import '../campus/room_list_view.dart';
 import '../client/pulse_intents.dart';
 import '../inbox/inbox_view.dart';
+import '../lounge/lounge_strip.dart';
 import '../room/room_view.dart';
 import '../room/thread_view.dart';
 import '../search/search_view.dart';
@@ -90,10 +91,13 @@ class HomeView extends StatelessWidget {
             ShelfView(shelf: snapshot.shelf, intents: intents),
           if (snapshot.vault.open)
             VaultView(vault: snapshot.vault, intents: intents),
+          LoungeStrip(lounges: snapshot.lounges),
           RoomView(
             timeline: snapshot.timeline,
             intents: intents,
             presets: snapshot.shelf.presets,
+            pickerAnchorMs: snapshot.shelf.pickerAnchorMs,
+            pickerLatestMs: snapshot.shelf.pickerLatestMs,
           ),
           if (snapshot.thread.rootMessageId != null)
             ThreadView(

@@ -18,10 +18,16 @@ export type ShelfUpdate = (
 interface ShelfMenuProps {
   presets: ReminderPreset[];
   shelved: boolean;
+  customTime?: boolean;
   onUpdate: ShelfUpdate;
 }
 
-export function ShelfMenu({ presets, shelved, onUpdate }: ShelfMenuProps) {
+export function ShelfMenu({
+  presets,
+  shelved,
+  customTime = true,
+  onUpdate,
+}: ShelfMenuProps) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState("");
   const scheduleAction: ShelfAction = shelved ? "reschedule" : "save";
@@ -67,22 +73,28 @@ export function ShelfMenu({ presets, shelved, onUpdate }: ShelfMenuProps) {
               {presetLabels[preset]}
             </button>
           ))}
-          <input
-            aria-label="Remind at"
-            type="datetime-local"
-            value={custom}
-            onChange={(event) => setCustom(event.target.value)}
-          />
-          <button
-            className="block underline"
-            type="button"
-            disabled={custom === ""}
-            onClick={() =>
-              choose(() => onUpdate(scheduleAction, null, Date.parse(custom)))
-            }
-          >
-            Remind at chosen time
-          </button>
+          {customTime && (
+            <>
+              <input
+                aria-label="Remind at"
+                type="datetime-local"
+                value={custom}
+                onChange={(event) => setCustom(event.target.value)}
+              />
+              <button
+                className="block underline"
+                type="button"
+                disabled={custom === ""}
+                onClick={() =>
+                  choose(() =>
+                    onUpdate(scheduleAction, null, Date.parse(custom)),
+                  )
+                }
+              >
+                Remind at chosen time
+              </button>
+            </>
+          )}
           {shelved && (
             <button
               className="block underline"

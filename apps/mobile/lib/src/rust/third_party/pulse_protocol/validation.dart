@@ -39,6 +39,11 @@ Future<List<AttachmentId>> normalizeAttachmentIds({
   ids: ids,
 );
 
+Future<List<RoomId>> normalizeRoomIds({required List<RoomId> roomIds}) =>
+    RustLib.instance.api.pulseProtocolValidationNormalizeRoomIds(
+      roomIds: roomIds,
+    );
+
 Future<(String, List<AttachmentId>)> normalizeMessageContent({
   required String body,
   required List<AttachmentId> attachmentIds,

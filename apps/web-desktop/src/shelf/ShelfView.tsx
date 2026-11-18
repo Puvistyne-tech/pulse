@@ -16,10 +16,17 @@ interface ShelfSectionProps {
   title: string;
   entries: ShelfEntry[];
   presets: ReminderPreset[];
+  customTime: boolean;
   intents: PulseIntents;
 }
 
-function ShelfSection({ title, entries, presets, intents }: ShelfSectionProps) {
+function ShelfSection({
+  title,
+  entries,
+  presets,
+  customTime,
+  intents,
+}: ShelfSectionProps) {
   return (
     <section aria-label={title} className="space-y-1">
       <h3 className="text-sm font-semibold">{title}</h3>
@@ -69,6 +76,7 @@ function ShelfSection({ title, entries, presets, intents }: ShelfSectionProps) {
               )}
               <ShelfMenu
                 presets={presets}
+                customTime={customTime}
                 shelved
                 onUpdate={(action, preset, remindAtMs) =>
                   void intents.updateShelf(
@@ -111,18 +119,21 @@ export function ShelfView({ shelf, intents }: ShelfViewProps) {
         title="Due"
         entries={shelf.due}
         presets={shelf.presets}
+        customTime={shelf.picker_anchor_ms !== null}
         intents={intents}
       />
       <ShelfSection
         title="Upcoming"
         entries={shelf.upcoming}
         presets={shelf.presets}
+        customTime={shelf.picker_anchor_ms !== null}
         intents={intents}
       />
       <ShelfSection
         title="Done"
         entries={shelf.done}
         presets={shelf.presets}
+        customTime={shelf.picker_anchor_ms !== null}
         intents={intents}
       />
     </section>

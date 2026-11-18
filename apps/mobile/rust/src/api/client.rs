@@ -1,16 +1,28 @@
 use std::future::Future;
 use std::io;
-use std::sync::LazyLock;
+use std::path::PathBuf;
+use std::sync::{LazyLock, OnceLock};
 
 use crate::frb_generated::StreamSink;
 use pulse_core::native::NativeClient;
 use pulse_core::unavailable_snapshot;
 use pulse_protocol::{
-    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, InboxStep, MessageId,
-    ReactionAction, RoomId, SignInRequest, SignUpRequest, SubscriptionState,
+    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep, MessageId,
+    ReactionAction, ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest,
+    SubscriptionState, VaultTab,
 };
 
-static CLIENT: LazyLock<io::Result<NativeClient>> = LazyLock::new(NativeClient::from_env);
+static STORAGE_DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
+
+static CLIENT: LazyLock<io::Result<NativeClient>> =
+    LazyLock::new(|| match STORAGE_DIRECTORY.get() {
+        Some(directory) => NativeClient::from_env_in(directory.clone()),
+        None => NativeClient::from_env(),
+    });
+
+pub fn init_storage(data_dir: String) {
+    let _ = STORAGE_DIRECTORY.set(PathBuf::from(data_dir));
+}
 
 async fn with_client<F, Fut>(run: F) -> ClientSnapshot
 where
@@ -122,6 +134,73 @@ pub async fn start_inbox_reply() -> ClientSnapshot {
 
 pub async fn cancel_inbox_reply() -> ClientSnapshot {
     with_client(|client| client.cancel_inbox_reply()).await
+}
+
+pub async fn toggle_search() -> ClientSnapshot {
+    with_client(|client| client.toggle_search()).await
+}
+
+pub async fn search(query: String) -> ClientSnapshot {
+    with_client(|client| client.search(query)).await
+}
+
+pub async fn move_search_selection(step: InboxStep) -> ClientSnapshot {
+    with_client(|client| client.move_search_selection(step)).await
+}
+
+pub async fn open_search_selection() -> ClientSnapshot {
+    with_client(|client| client.open_search_selection()).await
+}
+
+pub async fn open_search_hit(message_id: MessageId) -> ClientSnapshot {
+    with_client(|client| client.open_search_hit(message_id)).await
+}
+
+pub async fn attach_file(room_id: RoomId, file_name: String, bytes: Vec<u8>) -> ClientSnapshot {
+    with_client(|client| client.attach_file(room_id, file_name, bytes)).await
+}
+
+pub async fn discard_draft(draft_id: DraftId) -> ClientSnapshot {
+    with_client(|client| client.discard_draft(draft_id)).await
+}
+
+pub async fn retry_draft(draft_id: DraftId) -> ClientSnapshot {
+    with_client(|client| client.retry_draft(draft_id)).await
+}
+
+pub async fn set_pin(room_id: RoomId, message_id: MessageId, pinned: bool) -> ClientSnapshot {
+    with_client(|client| client.set_pin(room_id, message_id, pinned)).await
+}
+
+pub async fn open_vault(room_id: RoomId, tab: VaultTab) -> ClientSnapshot {
+    with_client(|client| client.open_vault(room_id, tab)).await
+}
+
+pub async fn load_more_vault() -> ClientSnapshot {
+    with_client(|client| client.load_more_vault()).await
+}
+
+pub async fn close_vault() -> ClientSnapshot {
+    with_client(|client| client.close_vault()).await
+}
+
+pub async fn toggle_shelf() -> ClientSnapshot {
+    with_client(|client| client.toggle_shelf()).await
+}
+
+pub async fn update_shelf(
+    room_id: RoomId,
+    message_id: MessageId,
+    action: ShelfAction,
+    preset: Option<ReminderPreset>,
+    remind_at_ms: Option<u64>,
+) -> ClientSnapshot {
+    with_client(|client| client.update_shelf(room_id, message_id, action, preset, remind_at_ms))
+        .await
+}
+
+pub async fn dismiss_reminder() -> ClientSnapshot {
+    with_client(|client| client.dismiss_reminder()).await
 }
 
 pub fn watch_snapshots(sink: StreamSink<ClientSnapshot>) {

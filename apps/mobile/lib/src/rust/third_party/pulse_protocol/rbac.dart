@@ -18,6 +18,8 @@ enum Permission {
   manageCampus,
   postMessage,
   react,
+  pinMessage,
+  uploadAttachment,
 }
 
 enum Role {

@@ -55,4 +55,9 @@ enum InputField {
   messageBody,
   topicTitle,
   reactionEmoji,
+  fileName,
+  contentType,
+  byteSize,
+  attachments,
+  remindAt,
 }

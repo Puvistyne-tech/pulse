@@ -3284,6 +3284,7 @@ dependencies = [
 name = "pulse-desktop"
 version = "0.1.0"
 dependencies = [
+ "percent-encoding",
  "pulse-core",
  "pulse-protocol",
  "tauri",

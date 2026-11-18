@@ -4,7 +4,9 @@ import '../src/rust/api/client.dart' as bridge;
 import '../src/rust/third_party/pulse_protocol/auth.dart';
 import '../src/rust/third_party/pulse_protocol/campus.dart';
 import '../src/rust/third_party/pulse_protocol/ids.dart';
+import '../src/rust/third_party/pulse_protocol/media.dart';
 import '../src/rust/third_party/pulse_protocol/reaction.dart';
+import '../src/rust/third_party/pulse_protocol/shelf.dart';
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
 import '../src/rust/third_party/pulse_protocol/thread.dart';
 import 'snapshot_order.dart';
@@ -109,6 +111,61 @@ class ClientNotifier extends AsyncNotifier<ClientSnapshot> {
   Future<void> startInboxReply() => _publish(bridge.startInboxReply());
 
   Future<void> cancelInboxReply() => _publish(bridge.cancelInboxReply());
+
+  Future<void> toggleSearch() => _publish(bridge.toggleSearch());
+
+  Future<void> search(String query) => _publish(bridge.search(query: query));
+
+  Future<void> moveSearchSelection(InboxStep step) =>
+      _publish(bridge.moveSearchSelection(step: step));
+
+  Future<void> openSearchSelection() => _publish(bridge.openSearchSelection());
+
+  Future<void> openSearchHit(MessageId messageId) =>
+      _publish(bridge.openSearchHit(messageId: messageId));
+
+  Future<void> attachFile(RoomId roomId, String fileName, List<int> bytes) =>
+      _publish(
+        bridge.attachFile(roomId: roomId, fileName: fileName, bytes: bytes),
+      );
+
+  Future<void> discardDraft(DraftId draftId) =>
+      _publish(bridge.discardDraft(draftId: draftId));
+
+  Future<void> retryDraft(DraftId draftId) =>
+      _publish(bridge.retryDraft(draftId: draftId));
+
+  Future<void> setPin(RoomId roomId, MessageId messageId, bool pinned) =>
+      _publish(
+        bridge.setPin(roomId: roomId, messageId: messageId, pinned: pinned),
+      );
+
+  Future<void> openVault(RoomId roomId, VaultTab tab) =>
+      _publish(bridge.openVault(roomId: roomId, tab: tab));
+
+  Future<void> loadMoreVault() => _publish(bridge.loadMoreVault());
+
+  Future<void> closeVault() => _publish(bridge.closeVault());
+
+  Future<void> toggleShelf() => _publish(bridge.toggleShelf());
+
+  Future<void> updateShelf(
+    RoomId roomId,
+    MessageId messageId,
+    ShelfAction action,
+    ReminderPreset? preset,
+    BigInt? remindAtMs,
+  ) => _publish(
+    bridge.updateShelf(
+      roomId: roomId,
+      messageId: messageId,
+      action: action,
+      preset: preset,
+      remindAtMs: remindAtMs,
+    ),
+  );
+
+  Future<void> dismissReminder() => _publish(bridge.dismissReminder());
 
   void _apply(ClientSnapshot next) {
     state = AsyncData(newerSnapshot(state.value, next));

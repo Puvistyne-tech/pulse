@@ -9,6 +9,12 @@ const _invalidFieldMessages = {
   InputField.topicTitle:
       'Enter a shorter topic title without control characters',
   InputField.reactionEmoji: 'Choose a single emoji reaction',
+  InputField.fileName: 'Choose a file with a valid name',
+  InputField.contentType: 'That file type cannot be used',
+  InputField.byteSize: 'That file is empty or too large',
+  InputField.attachments: 'Check the attachments on that message',
+  InputField.remindAt:
+      'Choose a reminder time that is not too far in the past or future',
 };
 
 const _conflictFieldMessages = {
@@ -19,6 +25,11 @@ const _conflictFieldMessages = {
   InputField.messageBody: 'That message cannot be used',
   InputField.topicTitle: 'That topic title cannot be used',
   InputField.reactionEmoji: 'You have reacted with enough different emoji',
+  InputField.fileName: 'That file name cannot be used',
+  InputField.contentType: 'That file type cannot be used',
+  InputField.byteSize: 'That file cannot be used',
+  InputField.attachments: 'Those attachments cannot be used',
+  InputField.remindAt: 'That reminder time cannot be used',
 };
 
 const _codeMessages = {

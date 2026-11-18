@@ -5,6 +5,11 @@ import { RoomList } from "./campus/RoomList";
 import type { PulseIntents } from "./client/usePulseClient";
 import { InboxView } from "./inbox/InboxView";
 import { useInboxKeys } from "./inbox/useInboxKeys";
+import { SearchPalette } from "./search/SearchPalette";
+import { useSearchKeys } from "./search/useSearchKeys";
+import { ReminderNotice } from "./shelf/ReminderNotice";
+import { ShelfView } from "./shelf/ShelfView";
+import { VaultPanel } from "./vault/VaultPanel";
 import { RoomView } from "./room/RoomView";
 import { ThreadPanel } from "./room/ThreadPanel";
 import { AuthForm } from "./session/AuthForm";
@@ -17,8 +22,9 @@ interface AppViewProps {
 }
 
 export function AppView({ snapshot, intents }: AppViewProps) {
-  const { session, network, timeline, thread, inbox } = snapshot;
+  const { session, network, timeline, thread, inbox, search, vault, shelf } = snapshot;
   useInboxKeys(inbox, intents);
+  useSearchKeys(search, intents);
 
   if (session.auth !== "signed_in") {
     return (
@@ -40,6 +46,31 @@ export function AppView({ snapshot, intents }: AppViewProps) {
           Sign out
         </button>
       </header>
+      <nav className="flex gap-3 text-sm">
+        <button
+          className="underline"
+          type="button"
+          onClick={() => void intents.toggleSearch()}
+        >
+          Search
+        </button>
+        <button
+          className="underline"
+          type="button"
+          onClick={() => void intents.toggleShelf()}
+        >
+          Shelf <span aria-label="Due reminders">{shelf.due_count}</span>
+        </button>
+      </nav>
+      {shelf.latest_reminder !== null && (
+        <ReminderNotice
+          entry={shelf.latest_reminder}
+          dismiss={intents.dismissReminder}
+        />
+      )}
+      {search.open && <SearchPalette search={search} intents={intents} />}
+      {shelf.open && <ShelfView shelf={shelf} intents={intents} />}
+      {vault.open && <VaultPanel vault={vault} intents={intents} />}
       <ErrorNotice error={session.error} />
       <CampusPicker
         campuses={session.campuses}
@@ -55,7 +86,11 @@ export function AppView({ snapshot, intents }: AppViewProps) {
         selectRoom={intents.selectRoom}
       />
       {inbox.open && <InboxView inbox={inbox} intents={intents} />}
-      <RoomView timeline={timeline} intents={intents} />
+      <RoomView
+        timeline={timeline}
+        intents={intents}
+        presets={shelf.presets}
+      />
       {thread.root_message_id !== null && (
         <ThreadPanel
           thread={thread}

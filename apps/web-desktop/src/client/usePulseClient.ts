@@ -4,13 +4,17 @@ import type {
   ClientNonce,
   ClientSnapshot,
   CreateCampusRequest,
+  DraftId,
   InboxStep,
   MessageId,
   ReactionAction,
+  ReminderPreset,
   RoomId,
+  ShelfAction,
   SignInRequest,
   SignUpRequest,
   SubscriptionState,
+  VaultTab,
 } from "@pulse/protocol";
 import { pulseClient } from "./pulseClient";
 import { newerSnapshot } from "./snapshotOrder";
@@ -53,6 +57,27 @@ export interface PulseIntents {
   archiveInboxSelection(): Promise<void>;
   startInboxReply(): Promise<void>;
   cancelInboxReply(): Promise<void>;
+  toggleSearch(): Promise<void>;
+  search(query: string): Promise<void>;
+  moveSearchSelection(step: InboxStep): Promise<void>;
+  openSearchSelection(): Promise<void>;
+  openSearchHit(messageId: MessageId): Promise<void>;
+  attachFile(roomId: RoomId, file: File): Promise<void>;
+  discardDraft(draftId: DraftId): Promise<void>;
+  retryDraft(draftId: DraftId): Promise<void>;
+  setPin(roomId: RoomId, messageId: MessageId, pinned: boolean): Promise<void>;
+  openVault(roomId: RoomId, tab: VaultTab): Promise<void>;
+  loadMoreVault(): Promise<void>;
+  closeVault(): Promise<void>;
+  toggleShelf(): Promise<void>;
+  updateShelf(
+    roomId: RoomId,
+    messageId: MessageId,
+    action: ShelfAction,
+    preset: ReminderPreset | null,
+    remindAtMs: number | null,
+  ): Promise<void>;
+  dismissReminder(): Promise<void>;
 }
 
 export function usePulseClient(): {
@@ -122,6 +147,28 @@ export function usePulseClient(): {
       archiveInboxSelection: () => publish(pulseClient.archiveInboxSelection()),
       startInboxReply: () => publish(pulseClient.startInboxReply()),
       cancelInboxReply: () => publish(pulseClient.cancelInboxReply()),
+      toggleSearch: () => publish(pulseClient.toggleSearch()),
+      search: (query) => publish(pulseClient.search(query)),
+      moveSearchSelection: (step) =>
+        publish(pulseClient.moveSearchSelection(step)),
+      openSearchSelection: () => publish(pulseClient.openSearchSelection()),
+      openSearchHit: (messageId) =>
+        publish(pulseClient.openSearchHit(messageId)),
+      attachFile: (roomId, file) =>
+        publish(pulseClient.attachFile(roomId, file)),
+      discardDraft: (draftId) => publish(pulseClient.discardDraft(draftId)),
+      retryDraft: (draftId) => publish(pulseClient.retryDraft(draftId)),
+      setPin: (roomId, messageId, pinned) =>
+        publish(pulseClient.setPin(roomId, messageId, pinned)),
+      openVault: (roomId, tab) => publish(pulseClient.openVault(roomId, tab)),
+      loadMoreVault: () => publish(pulseClient.loadMoreVault()),
+      closeVault: () => publish(pulseClient.closeVault()),
+      toggleShelf: () => publish(pulseClient.toggleShelf()),
+      updateShelf: (roomId, messageId, action, preset, remindAtMs) =>
+        publish(
+          pulseClient.updateShelf(roomId, messageId, action, preset, remindAtMs),
+        ),
+      dismissReminder: () => publish(pulseClient.dismissReminder()),
     }),
     [publish],
   );

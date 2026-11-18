@@ -8,6 +8,11 @@ const invalidFieldMessages: Record<InputField, string> = {
   message_body: "Message is empty or too long",
   topic_title: "Enter a shorter topic title without control characters",
   reaction_emoji: "Choose a single emoji reaction",
+  file_name: "Choose a file with a valid name",
+  content_type: "That file type cannot be used",
+  byte_size: "That file is empty or too large",
+  attachments: "Check the attachments on that message",
+  remind_at: "Choose a reminder time that is not too far in the past or future",
 };
 
 const conflictFieldMessages: Record<InputField, string> = {
@@ -18,6 +23,11 @@ const conflictFieldMessages: Record<InputField, string> = {
   message_body: "That message cannot be used",
   topic_title: "That topic title cannot be used",
   reaction_emoji: "You have reacted with enough different emoji",
+  file_name: "That file name cannot be used",
+  content_type: "That file type cannot be used",
+  byte_size: "That file cannot be used",
+  attachments: "Those attachments cannot be used",
+  remind_at: "That reminder time cannot be used",
 };
 
 const codeMessages: Record<ApiErrorCode, string> = {

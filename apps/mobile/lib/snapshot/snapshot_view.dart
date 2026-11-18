@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../src/rust/third_party/pulse_protocol/frames.dart';
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
 
 String phaseLabel(ConnectionPhase phase) => switch (phase) {
@@ -10,29 +11,40 @@ String phaseLabel(ConnectionPhase phase) => switch (phase) {
   ConnectionPhase.backoff => 'Backoff',
 };
 
-class SnapshotView extends StatelessWidget {
-  const SnapshotView({required this.snapshot, super.key});
+String handshakeRejectionLabel(HandshakeRejection rejection) =>
+    switch (rejection) {
+      HandshakeRejection.unauthenticated =>
+        'Handshake rejected: unauthenticated',
+      HandshakeRejection.campusUnavailable =>
+        'Handshake rejected: campus unavailable',
+    };
 
-  final ClientSnapshot snapshot;
+class SnapshotView extends StatelessWidget {
+  const SnapshotView({required this.network, super.key});
+
+  final ConnectionSnapshot network;
 
   @override
   Widget build(BuildContext context) {
-    final retryInMs = snapshot.retryInMs;
-    final rejection = snapshot.rejection;
+    final retryInMs = network.retryInMs;
+    final rejection = network.rejection;
+    final handshakeRejection = network.handshakeRejection;
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(phaseLabel(snapshot.connection)),
-          Text('Protocol version ${snapshot.protocolVersion.field0}'),
-          Text('Attempt ${snapshot.attempt}'),
+          Text(phaseLabel(network.connection)),
+          Text('Protocol version ${network.protocolVersion.field0}'),
+          Text('Attempt ${network.attempt}'),
           if (retryInMs != null) Text('Retrying in $retryInMs ms'),
           if (rejection != null)
             Text(
               'Version rejected: supported ${rejection.supported.field0}, '
               'received ${rejection.received.field0}',
             ),
+          if (handshakeRejection != null)
+            Text(handshakeRejectionLabel(handshakeRejection)),
         ],
       ),
     );

@@ -1,11 +1,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
-import { snapshotFixtures } from "../test/fixtures";
+import { networkFixtures } from "../test/fixtures";
 import { SnapshotView } from "./SnapshotView";
 
 afterEach(cleanup);
 
-test.each(snapshotFixtures)("renders %s snapshot", (_name, snapshot, expected) => {
-  render(<SnapshotView snapshot={snapshot} />);
+test.each(networkFixtures)("renders %s network", (_name, network, expected) => {
+  render(<SnapshotView network={network} />);
   expect(screen.getByText(expected)).toBeTruthy();
 });

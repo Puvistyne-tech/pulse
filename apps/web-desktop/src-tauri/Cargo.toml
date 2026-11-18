@@ -9,10 +9,13 @@ publish.workspace = true
 name = "pulse_desktop"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[lints]
+workspace = true
+
 [build-dependencies]
 tauri-build = { workspace = true }
 
 [dependencies]
 tauri = { workspace = true }
-pulse-core = { workspace = true }
+pulse-core = { workspace = true, features = ["native"] }
 pulse-protocol = { workspace = true }

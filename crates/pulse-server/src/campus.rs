@@ -3,10 +3,10 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use pulse_protocol::{
     AccountId, ApiError, ApiErrorCode, CampusCreated, CampusId, CampusList, CampusSummary,
-    CreateCampusRequest, CreateRoomRequest, DEFAULT_ROOM_SLUGS, InputField, Permission, Role,
-    RoleParseError, Room, RoomId, RoomList, Validate, normalize_display_name, role_permits,
+    CreateCampusRequest, CreateRoomRequest, DEFAULT_ROOM_SLUGS, InputField, LoungeId, Permission,
+    Role, RoleParseError, Room, RoomId, RoomList, Validate, normalize_display_name, role_permits,
 };
-use sqlx::{PgPool, Postgres};
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::auth::Authenticated;
@@ -39,7 +39,9 @@ macro_rules! select_role {
         concat!(
             "SELECT m.role FROM campus_members m \
              JOIN campuses c ON c.campus_id = m.campus_id \
-             WHERE m.campus_id = $1 AND m.account_id = $2",
+             WHERE m.campus_id = $1 AND m.account_id = $2 \
+             AND NOT EXISTS (SELECT 1 FROM stewards s WHERE s.campus_id = m.campus_id \
+             AND s.steward_id = m.account_id AND s.revoked_at IS NOT NULL)",
             $suffix
         )
     };
@@ -87,21 +89,33 @@ pub async fn require_permission(
     }
 }
 
-async fn insert_room<'e, E>(
-    executor: E,
+async fn insert_lounge(
+    connection: &mut PgConnection,
+    campus_id: CampusId,
+    room_id: Option<RoomId>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO lounges (campus_id, lounge_id, room_id) VALUES ($1, $2, $3)")
+        .bind(campus_id.as_uuid())
+        .bind(LoungeId::generate().as_uuid())
+        .bind(room_id.map(|room_id| room_id.as_uuid()))
+        .execute(connection)
+        .await?;
+    Ok(())
+}
+
+async fn insert_room(
+    connection: &mut PgConnection,
     campus_id: CampusId,
     slug: &str,
-) -> Result<Room, sqlx::Error>
-where
-    E: sqlx::Executor<'e, Database = Postgres>,
-{
+) -> Result<Room, sqlx::Error> {
     let room_id = RoomId::generate();
     sqlx::query("INSERT INTO rooms (campus_id, room_id, slug) VALUES ($1, $2, $3)")
         .bind(campus_id.as_uuid())
         .bind(room_id.as_uuid())
         .bind(slug)
-        .execute(executor)
+        .execute(&mut *connection)
         .await?;
+    insert_lounge(connection, campus_id, Some(room_id)).await?;
     Ok(Room {
         room_id,
         campus_id,
@@ -158,9 +172,10 @@ pub async fn create_campus(
         .bind(Role::Owner.as_str())
         .execute(&mut *transaction)
         .await?;
+    insert_lounge(&mut transaction, campus_id, None).await?;
     let mut rooms = Vec::with_capacity(DEFAULT_ROOM_SLUGS.len());
     for slug in DEFAULT_ROOM_SLUGS {
-        rooms.push(insert_room(&mut *transaction, campus_id, slug).await?);
+        rooms.push(insert_room(&mut transaction, campus_id, slug).await?);
     }
     transaction.commit().await?;
     let campus = CampusSummary {
@@ -217,8 +232,10 @@ pub async fn create_room(
     )
     .await?;
     request.validate()?;
-    let room = insert_room(&state.db, campus_id, &request.slug)
+    let mut transaction = state.db.begin().await?;
+    let room = insert_room(&mut transaction, campus_id, &request.slug)
         .await
         .map_err(conflict_on_slug)?;
+    transaction.commit().await?;
     Ok((StatusCode::CREATED, Json(room)))
 }

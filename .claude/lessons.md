@@ -37,3 +37,8 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Read a watermark and the counts derived from it in one REPEATABLE READ snapshot; separate reads race with concurrent writers.
 - An intent-call assertion used by two test files lives in the app's fixtures module; view tests cover key wiring only, the mapping table lives with the mapper.
 - Never assume Postgres on 5432 is Pulse's; other projects may hold it. Run tests against a dedicated database via `DATABASE_URL` when credentials fail.
+- Presigned PUT URLs must sign the declared content-length; a HEAD check alone lets uploaders overwrite or exceed the cap after the claim.
+- Every message-ingest path (including inbox and thread summaries) feeds the search index; list them in one place and test each.
+- Test-only SQL is campus-scoped too; put it in a common helper filtered by campus_id and the row key.
+- Shared test case tables used by several crates live in one dependency-free module included via `#[path]`, with its own builders, lookup and query helpers.
+- Pin docker images to a pullable tag; `minio/minio` is no longer pullable, use `bitnamilegacy/minio:2025.5.24`.

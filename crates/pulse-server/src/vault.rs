@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 
 use pulse_protocol::{
-    Attachment, AttachmentId, AttachmentKind, CampusId, MessageId, RoomMessage, SyncVault,
-    VAULT_PAGE_LIMIT, VaultItem, VaultSynced, VaultTab,
+    AttachmentKind, CampusId, MessageId, RoomMessage, SyncVault, VAULT_PAGE_LIMIT, VaultItem,
+    VaultSynced, VaultTab,
 };
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
+use crate::media::{AttachmentRow, attachment_from_row, room_exists, select_attachments};
 use crate::message::fetch_messages;
-
-type AttachmentRow = (Uuid, Uuid, String, String, String, i64);
 
 fn tab_kinds(tab: VaultTab) -> Vec<&'static str> {
     match tab {
@@ -38,23 +37,6 @@ fn page_limit() -> i64 {
     i64::try_from(VAULT_PAGE_LIMIT.saturating_add(1)).unwrap_or(i64::MAX)
 }
 
-fn attachment_of(row: AttachmentRow) -> Result<(Uuid, Attachment), sqlx::Error> {
-    let (message_id, attachment_id, file_name, content_type, kind, byte_size) = row;
-    let kind = kind
-        .parse()
-        .map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
-    Ok((
-        message_id,
-        Attachment {
-            attachment_id: AttachmentId(attachment_id),
-            file_name,
-            content_type,
-            kind,
-            byte_size: u64::try_from(byte_size).unwrap_or(0),
-        },
-    ))
-}
-
 async fn attachment_items(
     connection: &mut PgConnection,
     campus_id: CampusId,
@@ -75,12 +57,10 @@ async fn attachment_items(
     .fetch_all(&mut *connection)
     .await?;
     let (ids, has_more) = paged_ids(candidates);
-    let rows = sqlx::query_as::<_, AttachmentRow>(
-        "SELECT message_id, attachment_id, file_name, content_type, kind, byte_size \
-         FROM attachments \
-         WHERE campus_id = $1 AND room_id = $2 AND message_id = ANY($3) AND kind = ANY($4) \
-         ORDER BY message_id DESC, position",
-    )
+    let rows = sqlx::query_as::<_, AttachmentRow>(select_attachments!(
+        "WHERE campus_id = $1 AND room_id = $2 AND message_id = ANY($3) AND kind = ANY($4) \
+         ORDER BY message_id DESC, position"
+    ))
     .bind(campus_id.as_uuid())
     .bind(request.room_id.as_uuid())
     .bind(&ids)
@@ -91,8 +71,8 @@ async fn attachment_items(
     let messages = load_messages(connection, campus_id, &typed).await?;
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
-        let (message_id, attachment) = attachment_of(row)?;
-        if let Some(message) = messages.get(&MessageId(message_id)) {
+        let (message_id, _, attachment) = attachment_from_row(row)?;
+        if let Some(message) = messages.get(&message_id) {
             items.push(VaultItem {
                 message: message.clone(),
                 attachment: Some(attachment),
@@ -197,13 +177,7 @@ pub async fn sync_vault(
     let mut transaction = db
         .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ")
         .await?;
-    let room =
-        sqlx::query_scalar::<_, i32>("SELECT 1 FROM rooms WHERE campus_id = $1 AND room_id = $2")
-            .bind(campus_id.as_uuid())
-            .bind(request.room_id.as_uuid())
-            .fetch_optional(&mut *transaction)
-            .await?;
-    if room.is_none() {
+    if !room_exists(&mut *transaction, campus_id, request.room_id).await? {
         return Ok(None);
     }
     let (items, next_before) = match request.tab {

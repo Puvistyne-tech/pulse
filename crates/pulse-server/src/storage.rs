@@ -1,6 +1,7 @@
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
+use crate::time::now_ms;
 use pulse_protocol::{AttachmentId, AttachmentKind, CampusId, RoomId};
 use reqwest::header::CONTENT_LENGTH;
 use rusty_s3::{Bucket, Credentials, S3Action, UrlStyle};
@@ -12,6 +13,7 @@ const MAINTENANCE_TTL: Duration = Duration::from_secs(60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const CONTENT_DISPOSITION_PARAMETER: &str = "response-content-disposition";
 const CONTENT_TYPE_HEADER: &str = "content-type";
+const CONTENT_LENGTH_HEADER: &str = "content-length";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
@@ -78,14 +80,6 @@ struct Inner {
 #[derive(Clone)]
 pub struct Storage {
     inner: Option<Arc<Inner>>,
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| {
-            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
-        })
 }
 
 fn expires_at_ms(ttl: Duration) -> u64 {
@@ -157,19 +151,25 @@ impl Storage {
         }
     }
 
-    pub fn presign_put(&self, location: &ObjectLocation, content_type: &str) -> (String, u64) {
-        let Ok(inner) = self.inner() else {
-            return (String::new(), 0);
-        };
+    pub fn presign_put(
+        &self,
+        location: &ObjectLocation,
+        content_type: &str,
+        byte_size: u64,
+    ) -> Result<(String, u64), StorageError> {
+        let inner = self.inner()?;
         let key = location.key();
         let mut action = inner.public.put_object(Some(&inner.credentials), &key);
         action
             .headers_mut()
             .insert(CONTENT_TYPE_HEADER, content_type.to_owned());
-        (
+        action
+            .headers_mut()
+            .insert(CONTENT_LENGTH_HEADER, byte_size.to_string());
+        Ok((
             action.sign(UPLOAD_TTL).to_string(),
             expires_at_ms(UPLOAD_TTL),
-        )
+        ))
     }
 
     pub fn presign_get(
@@ -177,19 +177,17 @@ impl Storage {
         location: &ObjectLocation,
         file_name: &str,
         kind: AttachmentKind,
-    ) -> (String, u64) {
-        let Ok(inner) = self.inner() else {
-            return (String::new(), 0);
-        };
+    ) -> Result<(String, u64), StorageError> {
+        let inner = self.inner()?;
         let key = location.key();
         let mut action = inner.public.get_object(Some(&inner.credentials), &key);
         action
             .query_mut()
             .insert(CONTENT_DISPOSITION_PARAMETER, disposition(file_name, kind));
-        (
+        Ok((
             action.sign(DOWNLOAD_TTL).to_string(),
             expires_at_ms(DOWNLOAD_TTL),
-        )
+        ))
     }
 
     pub async fn head_size(&self, location: &ObjectLocation) -> Result<Option<u64>, StorageError> {

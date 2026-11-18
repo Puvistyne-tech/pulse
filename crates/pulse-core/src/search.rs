@@ -215,11 +215,10 @@ fn terms_match(document: &SearchDocument, terms: &[String]) -> bool {
         return false;
     };
     terms.iter().enumerate().all(|(index, term)| {
-        if index == last {
-            document.terms.iter().any(|known| known.starts_with(term))
-        } else {
-            document.terms.iter().any(|known| known == term)
-        }
+        document
+            .terms
+            .iter()
+            .any(|known| term_matches(known, term, index == last).is_some())
     })
 }
 

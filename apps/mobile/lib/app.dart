@@ -22,6 +22,17 @@ class PulseApp extends ConsumerWidget {
       selectRoom: notifier.selectRoom,
       sendMessage: notifier.sendMessage,
       discardMessage: notifier.discardMessage,
+      sendReply: notifier.sendReply,
+      react: notifier.react,
+      setTopicTitle: notifier.setTopicTitle,
+      setThreadSubscription: notifier.setThreadSubscription,
+      openThread: notifier.openThread,
+      closeThread: notifier.closeThread,
+      toggleInbox: notifier.toggleInbox,
+      moveInboxSelection: notifier.moveInboxSelection,
+      archiveInboxSelection: notifier.archiveInboxSelection,
+      startInboxReply: notifier.startInboxReply,
+      cancelInboxReply: notifier.cancelInboxReply,
     );
     return MaterialApp(
       title: 'Pulse',

@@ -4,7 +4,9 @@ import '../src/rust/api/client.dart' as bridge;
 import '../src/rust/third_party/pulse_protocol/auth.dart';
 import '../src/rust/third_party/pulse_protocol/campus.dart';
 import '../src/rust/third_party/pulse_protocol/ids.dart';
+import '../src/rust/third_party/pulse_protocol/reaction.dart';
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
+import '../src/rust/third_party/pulse_protocol/thread.dart';
 import 'snapshot_order.dart';
 
 final clientProvider = AsyncNotifierProvider<ClientNotifier, ClientSnapshot>(
@@ -43,6 +45,71 @@ class ClientNotifier extends AsyncNotifier<ClientSnapshot> {
 
   Future<void> discardMessage(ClientNonce clientNonce) =>
       _publish(bridge.discardMessage(clientNonce: clientNonce));
+
+  Future<void> sendReply(RoomId roomId, MessageId rootMessageId, String body) =>
+      _publish(
+        bridge.sendReply(
+          roomId: roomId,
+          rootMessageId: rootMessageId,
+          body: body,
+        ),
+      );
+
+  Future<void> react(
+    RoomId roomId,
+    MessageId messageId,
+    String emoji,
+    ReactionAction action,
+  ) => _publish(
+    bridge.react(
+      roomId: roomId,
+      messageId: messageId,
+      emoji: emoji,
+      action: action,
+    ),
+  );
+
+  Future<void> setTopicTitle(
+    RoomId roomId,
+    MessageId rootMessageId,
+    String topicTitle,
+  ) => _publish(
+    bridge.setTopicTitle(
+      roomId: roomId,
+      rootMessageId: rootMessageId,
+      topicTitle: topicTitle,
+    ),
+  );
+
+  Future<void> setThreadSubscription(
+    RoomId roomId,
+    MessageId rootMessageId,
+    SubscriptionState state,
+  ) => _publish(
+    bridge.setThreadSubscription(
+      roomId: roomId,
+      rootMessageId: rootMessageId,
+      state: state,
+    ),
+  );
+
+  Future<void> openThread(RoomId roomId, MessageId rootMessageId) => _publish(
+    bridge.openThread(roomId: roomId, rootMessageId: rootMessageId),
+  );
+
+  Future<void> closeThread() => _publish(bridge.closeThread());
+
+  Future<void> toggleInbox() => _publish(bridge.toggleInbox());
+
+  Future<void> moveInboxSelection(InboxStep step) =>
+      _publish(bridge.moveInboxSelection(step: step));
+
+  Future<void> archiveInboxSelection() =>
+      _publish(bridge.archiveInboxSelection());
+
+  Future<void> startInboxReply() => _publish(bridge.startInboxReply());
+
+  Future<void> cancelInboxReply() => _publish(bridge.cancelInboxReply());
 
   void _apply(ClientSnapshot next) {
     state = AsyncData(newerSnapshot(state.value, next));

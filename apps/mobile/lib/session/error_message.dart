@@ -6,6 +6,8 @@ const _invalidFieldMessages = {
   InputField.password: 'Enter a valid password',
   InputField.slug: 'Use lowercase letters, digits and hyphens for the slug',
   InputField.messageBody: 'Message is empty or too long',
+  InputField.topicTitle: 'Enter a shorter topic title without control characters',
+  InputField.reactionEmoji: 'Choose a single emoji reaction',
 };
 
 const _conflictFieldMessages = {
@@ -14,6 +16,8 @@ const _conflictFieldMessages = {
   InputField.password: 'That password cannot be used',
   InputField.slug: 'That slug is already taken',
   InputField.messageBody: 'That message cannot be used',
+  InputField.topicTitle: 'That topic title cannot be used',
+  InputField.reactionEmoji: 'You have reacted with enough different emoji',
 };
 
 const _codeMessages = {

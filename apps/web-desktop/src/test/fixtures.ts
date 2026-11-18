@@ -2,7 +2,8 @@ import type { ClientSnapshot } from "@pulse/protocol";
 
 const base: ClientSnapshot = {
   protocol_version: 1,
-  connection: { phase: "disconnected" },
+  connection: "disconnected",
+  retry_in_ms: null,
   campus_id: null,
   session_id: null,
   attempt: 0,
@@ -11,12 +12,12 @@ const base: ClientSnapshot = {
 
 export const snapshotFixtures: ReadonlyArray<[string, ClientSnapshot, string]> = [
   ["disconnected", base, "Disconnected"],
-  ["connecting", { ...base, connection: { phase: "connecting" } }, "Connecting"],
-  ["handshaking", { ...base, connection: { phase: "handshaking" } }, "Handshaking"],
-  ["connected", { ...base, connection: { phase: "connected" } }, "Connected"],
+  ["connecting", { ...base, connection: "connecting" }, "Connecting"],
+  ["handshaking", { ...base, connection: "handshaking" }, "Handshaking"],
+  ["connected", { ...base, connection: "connected" }, "Connected"],
   [
     "backoff",
-    { ...base, connection: { phase: "backoff", retry_in_ms: 1500 }, attempt: 2 },
+    { ...base, connection: "backoff", retry_in_ms: 1500, attempt: 2 },
     "Retrying in 1500 ms",
   ],
   [

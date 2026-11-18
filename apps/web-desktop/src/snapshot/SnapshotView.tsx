@@ -1,7 +1,7 @@
 import type { ClientSnapshot, ConnectionPhase } from "@pulse/protocol";
 
 function phaseLabel(connection: ConnectionPhase): string {
-  switch (connection.phase) {
+  switch (connection) {
     case "disconnected":
       return "Disconnected";
     case "connecting":
@@ -11,7 +11,7 @@ function phaseLabel(connection: ConnectionPhase): string {
     case "connected":
       return "Connected";
     case "backoff":
-      return `Retrying in ${connection.retry_in_ms} ms`;
+      return "Backoff";
   }
 }
 
@@ -24,6 +24,11 @@ export function SnapshotView({ snapshot }: { snapshot: ClientSnapshot }) {
         Protocol version {snapshot.protocol_version}
       </p>
       <p className="text-sm text-slate-600">Attempt {snapshot.attempt}</p>
+      {snapshot.retry_in_ms !== null && (
+        <p className="text-sm text-slate-600">
+          Retrying in {snapshot.retry_in_ms} ms
+        </p>
+      )}
       {snapshot.rejection && (
         <p className="text-sm text-red-700">
           Version rejected: supported {snapshot.rejection.supported}, received{" "}

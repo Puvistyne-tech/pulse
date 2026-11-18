@@ -19,11 +19,12 @@ use crate::fanout::FanoutEnvelope;
 use crate::message::{PostFailure, PostOutcome, send_message, sync_room, sync_thread};
 use crate::pin::{PinFailure, PinOutcome, set_pin};
 use crate::reaction::{ReactionFailure, ReactionOutcome, apply_reaction};
-use crate::shelf::{ShelfFailure, ShelfOutcome, current_item, now_ms, shelf_items, update_shelf};
+use crate::shelf::{ShelfFailure, ShelfOutcome, current_item, shelf_items, update_shelf};
 use crate::state::AppState;
 use crate::thread::{
     ThreadFailure, mark_read, set_subscription, set_topic_title, thread_summaries,
 };
+use crate::time::now_ms;
 use crate::vault::sync_vault;
 
 struct Subscriptions {

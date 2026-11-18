@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, HashMap};
 
 use pulse_protocol::{
-    AccountId, Attachment, AttachmentId, AttachmentKind, CampusId, ClientNonce, InputField,
-    MentionRef, MessageId, MessageRejection, Permission, PinMark, ReactionTally, RoomCursor,
-    RoomId, RoomMessage, RoomSynced, SYNC_PAGE_LIMIT, SendMessage, SyncThread, ThreadSynced,
-    extract_links, extract_mentions, normalize_message_content, role_permits,
+    AccountId, Attachment, AttachmentId, CampusId, ClientNonce, InputField, MentionRef, MessageId,
+    MessageRejection, Permission, PinMark, ReactionTally, RoomCursor, RoomId, RoomMessage,
+    RoomSynced, SYNC_PAGE_LIMIT, SendMessage, SyncThread, ThreadSynced, extract_links,
+    extract_mentions, normalize_message_content, role_permits,
 };
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::campus::campus_role;
-use crate::media::verify_uploads;
+use crate::media::{AttachmentRow, attachment_from_row, select_attachments, verify_uploads};
 use crate::state::AppState;
 use crate::thread::{advance_read, auto_follow};
 
@@ -101,12 +101,9 @@ pub async fn hydrate_messages(
     .bind(&ids)
     .fetch_all(&mut *executor)
     .await?;
-    let attachment_rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, String, i64)>(
-        "SELECT message_id, attachment_id, file_name, content_type, kind, byte_size \
-         FROM attachments \
-         WHERE campus_id = $1 AND message_id = ANY($2) \
-         ORDER BY message_id, position",
-    )
+    let attachment_rows = sqlx::query_as::<_, AttachmentRow>(select_attachments!(
+        "WHERE campus_id = $1 AND message_id = ANY($2) ORDER BY message_id, position"
+    ))
     .bind(campus_id.as_uuid())
     .bind(&ids)
     .fetch_all(&mut *executor)
@@ -146,18 +143,10 @@ pub async fn hydrate_messages(
             .or_default()
             .push(AccountId(account_id));
     }
-    let mut attachments: HashMap<Uuid, Vec<Attachment>> = HashMap::new();
-    for (message_id, attachment_id, file_name, content_type, kind, byte_size) in attachment_rows {
-        let kind: AttachmentKind = kind
-            .parse()
-            .map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
-        attachments.entry(message_id).or_default().push(Attachment {
-            attachment_id: AttachmentId(attachment_id),
-            file_name,
-            content_type,
-            kind,
-            byte_size: u64::try_from(byte_size).unwrap_or(0),
-        });
+    let mut attachments: HashMap<MessageId, Vec<Attachment>> = HashMap::new();
+    for row in attachment_rows {
+        let (message_id, _, attachment) = attachment_from_row(row)?;
+        attachments.entry(message_id).or_default().push(attachment);
     }
     let pins: HashMap<Uuid, PinMark> = pin_rows
         .into_iter()
@@ -209,7 +198,9 @@ pub async fn hydrate_messages(
                         ReactionTally { emoji, account_ids }
                     })
                     .collect(),
-                attachments: attachments.remove(&row.message_id).unwrap_or_default(),
+                attachments: attachments
+                    .remove(&MessageId(row.message_id))
+                    .unwrap_or_default(),
                 pin: pins.get(&row.message_id).copied(),
                 activity_seq: u64::try_from(row.activity_seq).unwrap_or(0),
             }
@@ -650,7 +641,7 @@ pub async fn post_message(
     Ok(PostOutcome::Created(created, followers.changed))
 }
 
-pub async fn find_replay(
+async fn find_replay(
     db: &PgPool,
     campus_id: CampusId,
     author_id: AccountId,

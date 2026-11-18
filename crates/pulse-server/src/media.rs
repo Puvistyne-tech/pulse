@@ -4,12 +4,11 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use pulse_protocol::{
-    AccountId, ApiError, ApiErrorCode, AttachmentId, AttachmentKind, CampusId, CreateUploadRequest,
-    DOWNLOAD_TICKETS_MAX, DownloadTicket, DownloadTickets, DownloadTicketsRequest, InputField,
-    MessageRejection, Permission, RoomId, UploadTicket, Validate, normalize_content_type,
-    normalize_file_name, validate_byte_size,
+    AccountId, ApiError, ApiErrorCode, Attachment, AttachmentId, AttachmentKind, CampusId,
+    CreateUploadRequest, DOWNLOAD_TICKETS_MAX, DownloadTicket, DownloadTickets,
+    DownloadTicketsRequest, InputField, MessageId, MessageRejection, Permission, RoomId,
+    UploadTicket, Validate, normalize_content_type, normalize_file_name, validate_byte_size,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth::Authenticated;
@@ -27,15 +26,51 @@ fn unavailable() -> ApiFailure {
     ApiFailure(ApiError::new(ApiErrorCode::Unavailable))
 }
 
-fn kind_of(text: &str) -> Result<AttachmentKind, sqlx::Error> {
-    text.parse()
-        .map_err(|error: pulse_protocol::AttachmentKindParseError| {
-            sqlx::Error::Decode(Box::new(error))
-        })
+#[derive(Debug, sqlx::FromRow)]
+pub(crate) struct AttachmentRow {
+    pub(crate) message_id: Uuid,
+    pub(crate) room_id: Uuid,
+    pub(crate) attachment_id: Uuid,
+    pub(crate) file_name: String,
+    pub(crate) content_type: String,
+    pub(crate) kind: String,
+    pub(crate) byte_size: i64,
 }
 
-async fn room_exists(
-    db: &PgPool,
+macro_rules! select_attachments {
+    ($tail:literal) => {
+        concat!(
+            "SELECT message_id, room_id, attachment_id, file_name, content_type, kind, byte_size \
+             FROM attachments ",
+            $tail
+        )
+    };
+}
+
+pub(crate) use select_attachments;
+
+pub(crate) fn attachment_from_row(
+    row: AttachmentRow,
+) -> Result<(MessageId, RoomId, Attachment), sqlx::Error> {
+    let kind: AttachmentKind = row
+        .kind
+        .parse()
+        .map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
+    Ok((
+        MessageId(row.message_id),
+        RoomId(row.room_id),
+        Attachment {
+            attachment_id: AttachmentId(row.attachment_id),
+            file_name: row.file_name,
+            content_type: row.content_type,
+            kind,
+            byte_size: u64::try_from(row.byte_size).unwrap_or(0),
+        },
+    ))
+}
+
+pub(crate) async fn room_exists(
+    executor: impl sqlx::PgExecutor<'_>,
     campus_id: CampusId,
     room_id: RoomId,
 ) -> Result<bool, sqlx::Error> {
@@ -43,7 +78,7 @@ async fn room_exists(
         sqlx::query_scalar::<_, i32>("SELECT 1 FROM rooms WHERE campus_id = $1 AND room_id = $2")
             .bind(campus_id.as_uuid())
             .bind(room_id.as_uuid())
-            .fetch_optional(db)
+            .fetch_optional(executor)
             .await?;
     Ok(found.is_some())
 }
@@ -76,10 +111,10 @@ pub async fn create_upload(
         room_id,
         attachment_id,
     };
-    let (put_url, expires_at_ms) = state.storage.presign_put(&location, &content_type);
-    if put_url.is_empty() {
-        return Err(unavailable());
-    }
+    let (put_url, expires_at_ms) = state
+        .storage
+        .presign_put(&location, &content_type, byte_size)
+        .map_err(|_| unavailable())?;
     sqlx::query(
         "INSERT INTO attachments \
          (campus_id, room_id, attachment_id, uploader_id, object_key, file_name, content_type, \
@@ -130,37 +165,32 @@ pub async fn download_tickets(
         .iter()
         .map(|id| id.as_uuid())
         .collect();
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String)>(
-        "SELECT attachment_id, room_id, file_name, kind FROM attachments \
-         WHERE campus_id = $1 AND attachment_id = ANY($2) AND message_id IS NOT NULL",
-    )
+    let rows = sqlx::query_as::<_, AttachmentRow>(select_attachments!(
+        "WHERE campus_id = $1 AND attachment_id = ANY($2) AND message_id IS NOT NULL"
+    ))
     .bind(campus_id.as_uuid())
     .bind(&ids)
     .fetch_all(&state.db)
     .await?;
-    let mut found: HashMap<Uuid, (Uuid, String, String)> = rows
-        .into_iter()
-        .map(|(attachment_id, room_id, file_name, kind)| {
-            (attachment_id, (room_id, file_name, kind))
-        })
-        .collect();
+    let mut found: HashMap<AttachmentId, (RoomId, Attachment)> = HashMap::new();
+    for row in rows {
+        let (_, room_id, attachment) = attachment_from_row(row)?;
+        found.insert(attachment.attachment_id, (room_id, attachment));
+    }
     let mut tickets = Vec::new();
     for attachment_id in request.attachment_ids {
-        let Some((room_id, file_name, kind)) = found.remove(&attachment_id.as_uuid()) else {
+        let Some((room_id, attachment)) = found.remove(&attachment_id) else {
             continue;
         };
         let location = ObjectLocation {
             campus_id,
-            room_id: RoomId(room_id),
+            room_id,
             attachment_id,
         };
-        let (url, expires_at_ms) =
-            state
-                .storage
-                .presign_get(&location, &file_name, kind_of(&kind)?);
-        if url.is_empty() {
-            return Err(unavailable());
-        }
+        let (url, expires_at_ms) = state
+            .storage
+            .presign_get(&location, &attachment.file_name, attachment.kind)
+            .map_err(|_| unavailable())?;
         tickets.push(DownloadTicket {
             attachment_id,
             url,

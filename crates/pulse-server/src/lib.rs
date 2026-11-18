@@ -13,6 +13,7 @@ pub mod shelf;
 pub mod state;
 pub mod storage;
 pub mod thread;
+pub mod time;
 pub mod vault;
 pub mod ws;
 

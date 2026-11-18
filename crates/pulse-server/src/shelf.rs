@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use pulse_protocol::{
     AccountId, CampusId, MessageId, Permission, SHELF_ITEMS_MAX, ServerFrame, ShelfAction,
@@ -10,7 +10,7 @@ use sqlx::{Connection, PgConnection, PgPool};
 use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
-use crate::campus::campus_role;
+use crate::campus::campus_role_locked;
 use crate::fanout::FanoutEnvelope;
 use crate::message::fetch_messages;
 use crate::state::AppState;
@@ -50,14 +50,6 @@ const SHELF_COLUMNS: &str = "shelf_item_id, message_id, \
 
 fn millis(value: Option<i64>) -> Option<u64> {
     value.map(|value| u64::try_from(value).unwrap_or(0))
-}
-
-pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| {
-            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
-        })
 }
 
 pub async fn shelf_items(
@@ -267,20 +259,12 @@ pub async fn update_shelf(
             .map_err(|_| rejected(ShelfRejection::InvalidRemindAt))?;
     }
     let mut transaction = db.begin().await?;
-    let permitted = campus_role(&mut *transaction, campus_id, account_id)
+    let permitted = campus_role_locked(&mut *transaction, campus_id, account_id)
         .await?
         .is_some_and(|role| role_permits(role, Permission::ViewRooms));
     if !permitted {
         return Err(rejected(ShelfRejection::Forbidden));
     }
-    sqlx::query_scalar::<_, i32>(
-        "SELECT 1 FROM campus_members WHERE campus_id = $1 AND account_id = $2 \
-         FOR NO KEY UPDATE",
-    )
-    .bind(campus_id.as_uuid())
-    .bind(account_id.as_uuid())
-    .fetch_one(&mut *transaction)
-    .await?;
     let outcome = match request.action {
         ShelfAction::Save | ShelfAction::Reschedule => {
             let message_exists = sqlx::query_scalar::<_, i32>(
@@ -408,9 +392,14 @@ pub async fn deliver_due_reminders(
     let mut delivered = 0;
     for campus_id in campuses {
         let campus_id = CampusId(campus_id);
-        for (account_id, item) in
-            claim_due_reminders(&state.db, campus_id, limit_per_campus).await?
-        {
+        let claimed = match claim_due_reminders(&state.db, campus_id, limit_per_campus).await {
+            Ok(claimed) => claimed,
+            Err(error) => {
+                tracing::warn!(%error, %campus_id, "reminder claim failed");
+                continue;
+            }
+        };
+        for (account_id, item) in claimed {
             delivered += 1;
             let envelope = FanoutEnvelope {
                 campus_id,

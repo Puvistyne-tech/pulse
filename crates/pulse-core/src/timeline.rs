@@ -941,6 +941,8 @@ impl TimelineMachine {
                 remind_at_ms,
             } => {
                 if !self.connected {
+                    self.shelf
+                        .set_error(Some(ApiError::new(ApiErrorCode::Unavailable)));
                     return Vec::new();
                 }
                 let remind_at_ms = remind_at_ms

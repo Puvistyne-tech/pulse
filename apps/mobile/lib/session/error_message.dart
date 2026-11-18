@@ -5,7 +5,7 @@ const _invalidFieldMessages = {
   InputField.displayName: 'Enter a valid display name',
   InputField.password: 'Enter a valid password',
   InputField.slug: 'Use lowercase letters, digits and hyphens for the slug',
-  InputField.messageBody: 'Write a message of up to 4000 characters',
+  InputField.messageBody: 'Message is empty or too long',
 };
 
 const _conflictFieldMessages = {
@@ -13,7 +13,7 @@ const _conflictFieldMessages = {
   InputField.displayName: 'That display name is already taken',
   InputField.password: 'That password cannot be used',
   InputField.slug: 'That slug is already taken',
-  InputField.messageBody: 'That message was already sent',
+  InputField.messageBody: 'That message cannot be used',
 };
 
 const _codeMessages = {

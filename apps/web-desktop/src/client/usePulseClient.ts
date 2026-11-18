@@ -47,8 +47,18 @@ export function usePulseClient(): {
   );
 
   useEffect(() => {
+    let active = true;
     void publish(pulseClient.snapshot());
-    pulseClient.watchSnapshots(apply).catch(() => setFailed(true));
+    pulseClient
+      .watchSnapshots((next) => {
+        if (active) {
+          apply(next);
+        }
+      })
+      .catch(() => setFailed(true));
+    return () => {
+      active = false;
+    };
   }, [publish, apply]);
 
   const intents = useMemo<PulseIntents>(

@@ -4,22 +4,27 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use pulse_protocol::{
     AccountId, CampusId, ClientFrame, HandshakeRejected, HandshakeRejection, Hello,
     INBOX_SYNC_LIMIT, InboxSynced, MarkThreadRead, MessageAccepted, MessageCreated, MessageId,
-    MessageRejected, MessageUpdated, Permission, Pong, ProtocolVersion, React, ReactionRejected,
-    RoomId, RoomUnavailable, SYNC_MAX_ROOMS, SendMessage, ServerFrame, SessionId,
-    SetThreadSubscription, SetTopicTitle, SyncRooms, SyncThread, ThreadChanged, ThreadRejected,
-    ThreadRejection, ThreadSummary, VersionMismatch, Welcome, close_code, role_permits,
+    MessageRejected, MessageUpdated, Permission, PinRejected, Pong, ProtocolVersion, React,
+    ReactionRejected, RoomId, RoomUnavailable, SHELF_SYNC_LIMIT, SYNC_MAX_ROOMS, SendMessage,
+    ServerFrame, SessionId, SetPin, SetThreadSubscription, SetTopicTitle, ShelfChanged, ShelfItem,
+    ShelfRejected, ShelfSynced, SyncRooms, SyncShelf, SyncThread, SyncVault, ThreadChanged,
+    ThreadRejected, ThreadRejection, ThreadSummary, UpdateShelf, VaultRejected, VaultRejection,
+    VersionMismatch, Welcome, close_code, role_permits,
 };
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::auth::resolve_token;
 use crate::campus::campus_role;
 use crate::fanout::FanoutEnvelope;
-use crate::message::{PostFailure, PostOutcome, post_message, sync_room, sync_thread};
+use crate::message::{PostFailure, PostOutcome, send_message, sync_room, sync_thread};
+use crate::pin::{PinFailure, PinOutcome, set_pin};
 use crate::reaction::{ReactionFailure, ReactionOutcome, apply_reaction};
+use crate::shelf::{ShelfFailure, ShelfOutcome, current_item, now_ms, shelf_items, update_shelf};
 use crate::state::AppState;
 use crate::thread::{
     ThreadFailure, mark_read, set_subscription, set_topic_title, thread_summaries,
 };
+use crate::vault::sync_vault;
 
 struct Subscriptions {
     campus_id: CampusId,
@@ -242,7 +247,7 @@ async fn handle_send(
     request: SendMessage,
 ) -> Flow {
     let client_nonce = request.client_nonce;
-    let outcome = post_message(&state.db, active.campus_id, active.account_id, request).await;
+    let outcome = send_message(state, active.campus_id, active.account_id, request).await;
     let (reply, created) = match outcome {
         Ok(PostOutcome::Created(message, affected)) => (
             ServerFrame::MessageAccepted(MessageAccepted {
@@ -314,6 +319,161 @@ async fn handle_react(
         }
         Err(ReactionFailure::Database(error)) => database_failure(socket, "reaction", error).await,
     }
+}
+
+async fn handle_pin(
+    socket: &mut WebSocket,
+    state: &AppState,
+    active: &Subscriptions,
+    request: SetPin,
+) -> Flow {
+    let (room_id, message_id) = (request.room_id, request.message_id);
+    match set_pin(&state.db, active.campus_id, active.account_id, request).await {
+        Ok(PinOutcome::Changed(message)) => {
+            let frame = ServerFrame::MessageUpdated(MessageUpdated { message });
+            let flow = reply_with(socket, &frame).await;
+            publish_frame(state, active.campus_id, None, frame).await;
+            flow
+        }
+        Ok(PinOutcome::Unchanged(message)) => {
+            reply_with(
+                socket,
+                &ServerFrame::MessageUpdated(MessageUpdated { message }),
+            )
+            .await
+        }
+        Err(PinFailure::Rejected(reason)) => {
+            let rejected = ServerFrame::PinRejected(PinRejected {
+                room_id,
+                message_id,
+                reason,
+            });
+            reply_with(socket, &rejected).await
+        }
+        Err(PinFailure::Database(error)) => database_failure(socket, "pin", error).await,
+    }
+}
+
+async fn handle_sync_vault(
+    socket: &mut WebSocket,
+    state: &AppState,
+    active: &Subscriptions,
+    request: SyncVault,
+) -> Flow {
+    let rejected = |reason| {
+        ServerFrame::VaultRejected(VaultRejected {
+            room_id: request.room_id,
+            tab: request.tab,
+            reason,
+        })
+    };
+    let reply = match permitted(state, active, Permission::ViewRooms).await {
+        Ok(true) => match sync_vault(&state.db, active.campus_id, &request).await {
+            Ok(Some(synced)) => ServerFrame::VaultSynced(synced),
+            Ok(None) => rejected(VaultRejection::UnknownRoom),
+            Err(error) => return database_failure(socket, "vault sync", error).await,
+        },
+        Ok(false) => rejected(VaultRejection::Forbidden),
+        Err(error) => return database_failure(socket, "role lookup", error).await,
+    };
+    reply_with(socket, &reply).await
+}
+
+async fn publish_shelf_change(
+    state: &AppState,
+    active: &Subscriptions,
+    item: ShelfItem,
+    removed: bool,
+) -> ServerFrame {
+    let frame = ServerFrame::ShelfChanged(ShelfChanged { item, removed });
+    publish_frame(
+        state,
+        active.campus_id,
+        Some(active.account_id),
+        frame.clone(),
+    )
+    .await;
+    frame
+}
+
+async fn handle_update_shelf(
+    socket: &mut WebSocket,
+    state: &AppState,
+    active: &Subscriptions,
+    request: UpdateShelf,
+) -> Flow {
+    let (room_id, message_id, action) = (request.room_id, request.message_id, request.action);
+    let outcome = update_shelf(
+        &state.db,
+        active.campus_id,
+        active.account_id,
+        request,
+        now_ms(),
+    )
+    .await;
+    match outcome {
+        Ok(ShelfOutcome::Changed(item)) => {
+            let frame = publish_shelf_change(state, active, item, false).await;
+            reply_with(socket, &frame).await
+        }
+        Ok(ShelfOutcome::Removed(item)) => {
+            let frame = publish_shelf_change(state, active, item, true).await;
+            reply_with(socket, &frame).await
+        }
+        Ok(ShelfOutcome::Unchanged) => {
+            match current_item(&state.db, active.campus_id, active.account_id, message_id).await {
+                Ok(Some(item)) => {
+                    let frame = ServerFrame::ShelfChanged(ShelfChanged {
+                        item,
+                        removed: false,
+                    });
+                    reply_with(socket, &frame).await
+                }
+                Ok(None) => Flow::Continue,
+                Err(error) => database_failure(socket, "shelf item", error).await,
+            }
+        }
+        Err(ShelfFailure::Rejected(reason)) => {
+            let rejected = ServerFrame::ShelfRejected(ShelfRejected {
+                room_id,
+                message_id,
+                action,
+                reason,
+            });
+            reply_with(socket, &rejected).await
+        }
+        Err(ShelfFailure::Database(error)) => database_failure(socket, "shelf update", error).await,
+    }
+}
+
+async fn handle_sync_shelf(
+    socket: &mut WebSocket,
+    state: &AppState,
+    active: &Subscriptions,
+) -> Flow {
+    let items = match permitted(state, active, Permission::ViewRooms).await {
+        Ok(true) => {
+            let mut connection = match state.db.acquire().await {
+                Ok(connection) => connection,
+                Err(error) => return database_failure(socket, "shelf connection", error).await,
+            };
+            match shelf_items(
+                &mut connection,
+                active.campus_id,
+                active.account_id,
+                None,
+                SHELF_SYNC_LIMIT,
+            )
+            .await
+            {
+                Ok(items) => items,
+                Err(error) => return database_failure(socket, "shelf sync", error).await,
+            }
+        }
+        Ok(false) => Vec::new(),
+        Err(error) => return database_failure(socket, "role lookup", error).await,
+    };
+    reply_with(socket, &ServerFrame::ShelfSynced(ShelfSynced { items })).await
 }
 
 async fn handle_title(
@@ -513,6 +673,12 @@ async fn handle_frame(
             handle_sync_thread(socket, state, active, request).await
         }
         ClientFrame::SyncInbox(_) => handle_sync_inbox(socket, state, active).await,
+        ClientFrame::SetPin(request) => handle_pin(socket, state, active, request).await,
+        ClientFrame::SyncVault(request) => handle_sync_vault(socket, state, active, request).await,
+        ClientFrame::UpdateShelf(request) => {
+            handle_update_shelf(socket, state, active, request).await
+        }
+        ClientFrame::SyncShelf(SyncShelf {}) => handle_sync_shelf(socket, state, active).await,
         ClientFrame::Hello(_) => stop_with(socket, close_code::POLICY_VIOLATION).await,
     }
 }
@@ -526,7 +692,9 @@ fn deliverable(active: &Subscriptions, envelope: &FanoutEnvelope) -> bool {
         | ServerFrame::MessageUpdated(MessageUpdated { message }) => {
             message.campus_id == active.campus_id && active.rooms.contains(&message.room_id)
         }
-        ServerFrame::ThreadChanged(_) => envelope.account_id == Some(active.account_id),
+        ServerFrame::ThreadChanged(_) | ServerFrame::ShelfChanged(_) => {
+            envelope.account_id == Some(active.account_id)
+        }
         _ => false,
     }
 }

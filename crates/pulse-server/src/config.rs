@@ -1,10 +1,13 @@
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use crate::error::StartupError;
+use crate::storage::StorageConfig;
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
 pub const DEFAULT_DATABASE_URL: &str = "postgres://pulse:pulse@127.0.0.1:55432/pulse";
 const DEFAULT_VALKEY_URL: &str = "redis://127.0.0.1:6379";
+const DEFAULT_REMINDER_SCAN_MS: u64 = 1000;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -23,4 +26,26 @@ pub fn from_env() -> Result<Config, StartupError> {
         database_url: env_or("DATABASE_URL", DEFAULT_DATABASE_URL),
         valkey_url: env_or("VALKEY_URL", DEFAULT_VALKEY_URL),
     })
+}
+
+pub fn storage_from_env() -> StorageConfig {
+    let defaults = StorageConfig::default();
+    let endpoint = env_or("PULSE_S3_ENDPOINT", &defaults.endpoint);
+    StorageConfig {
+        public_endpoint: env_or("PULSE_S3_PUBLIC_ENDPOINT", &endpoint),
+        endpoint,
+        bucket: env_or("PULSE_S3_BUCKET", &defaults.bucket),
+        region: env_or("PULSE_S3_REGION", &defaults.region),
+        access_key: env_or("PULSE_S3_ACCESS_KEY", &defaults.access_key),
+        secret_key: env_or("PULSE_S3_SECRET_KEY", &defaults.secret_key),
+    }
+}
+
+pub fn reminder_scan_interval_from_env() -> Duration {
+    let millis = std::env::var("PULSE_REMINDER_SCAN_MS")
+        .ok()
+        .and_then(|text| text.parse::<u64>().ok())
+        .filter(|millis| *millis > 0)
+        .unwrap_or(DEFAULT_REMINDER_SCAN_MS);
+    Duration::from_millis(millis)
 }

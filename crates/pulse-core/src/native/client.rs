@@ -1,20 +1,36 @@
 use std::io;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use pulse_protocol::{
-    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, InboxStep, MessageId,
-    ReactionAction, RoomId, SignInRequest, SignUpRequest, SubscriptionState,
+    CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep, MessageId,
+    ReactionAction, ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest,
+    SubscriptionState, VaultTab,
 };
 use tokio::runtime::{Builder, Runtime};
 
 use crate::client::unavailable_snapshot;
+use crate::media::MediaIntent;
+use crate::search::MemorySearchIndex;
+use crate::search_view::SearchIntent;
 use crate::session::SessionEvent;
+use crate::shelf::ShelfIntent;
 use crate::timeline::ThreadIntent;
 
 use super::http::server_url_from_env;
+use super::search_index::{NativeSearchIndex, SqliteSearchIndex};
 use super::socket::Shared;
 
+const DATA_DIR_VARIABLE: &str = "PULSE_DATA_DIR";
+const SEARCH_INDEX_FILE: &str = "pulse-search.sqlite3";
+
 const RUNTIME_WORKER_THREADS: usize = 2;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientStorage {
+    Memory,
+    Directory(PathBuf),
+}
 
 enum Intent {
     Snapshot,
@@ -26,6 +42,16 @@ enum Intent {
     },
     Discard(ClientNonce),
     Thread(ThreadIntent),
+    Search(SearchIntent),
+    Media(MediaIntent),
+    Attach {
+        draft_id: DraftId,
+        room_id: RoomId,
+        file_name: String,
+        bytes: Vec<u8>,
+    },
+    Shelf(ShelfIntent),
+    OpenSearchHit(Option<MessageId>),
 }
 
 pub struct NativeClient {
@@ -34,20 +60,37 @@ pub struct NativeClient {
 }
 
 impl NativeClient {
-    pub fn new(server_url: impl Into<String>) -> io::Result<Self> {
+    pub fn new(server_url: impl Into<String>, storage: ClientStorage) -> io::Result<Self> {
         let runtime = Builder::new_multi_thread()
             .worker_threads(RUNTIME_WORKER_THREADS)
             .enable_all()
             .build()?;
         let server_url = server_url.into().trim_end_matches('/').to_owned();
+        let index = match storage {
+            ClientStorage::Memory => NativeSearchIndex::Memory(MemorySearchIndex::default()),
+            ClientStorage::Directory(directory) => {
+                std::fs::create_dir_all(&directory)?;
+                let index = SqliteSearchIndex::open(&directory.join(SEARCH_INDEX_FILE))
+                    .map_err(io::Error::other)?;
+                NativeSearchIndex::Sqlite(index)
+            }
+        };
         Ok(Self {
             runtime: Some(runtime),
-            shared: Arc::new(Shared::new(server_url)),
+            shared: Arc::new(Shared::new(server_url, index)),
         })
     }
 
     pub fn from_env() -> io::Result<Self> {
-        Self::new(server_url_from_env())
+        let storage = std::env::var_os(DATA_DIR_VARIABLE)
+            .map_or(ClientStorage::Memory, |directory| {
+                ClientStorage::Directory(PathBuf::from(directory))
+            });
+        Self::new(server_url_from_env(), storage)
+    }
+
+    pub fn from_env_in(data_dir: PathBuf) -> io::Result<Self> {
+        Self::new(server_url_from_env(), ClientStorage::Directory(data_dir))
     }
 
     async fn run(&self, intent: Intent) -> ClientSnapshot {
@@ -56,9 +99,11 @@ impl NativeClient {
         };
         let shared = Arc::clone(&self.shared);
         let handle = runtime.spawn(async move {
+            let reset_drafts = matches!(intent, Intent::Session(_));
             let snapshot = {
                 let mut guard = shared.core.lock().await;
                 let (client, api) = &mut *guard;
+                client.advance_clock(shared.now_ms());
                 let snapshot = match intent {
                     Intent::Snapshot => client.snapshot(),
                     Intent::Session(event) => client.apply(api, event).await,
@@ -69,12 +114,44 @@ impl NativeClient {
                     } => client.send_message(room_id, client_nonce, body),
                     Intent::Discard(client_nonce) => client.discard_message(client_nonce),
                     Intent::Thread(intent) => client.thread_intent(intent),
+                    Intent::Search(intent) => client.search_intent(intent),
+                    Intent::Media(intent) => client.media_intent(intent),
+                    Intent::Attach {
+                        draft_id,
+                        room_id,
+                        file_name,
+                        bytes,
+                    } => {
+                        let byte_size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+                        shared.stash_bytes(draft_id, bytes);
+                        client.media_intent(MediaIntent::DraftAttached {
+                            draft_id,
+                            room_id,
+                            file_name,
+                            byte_size,
+                        })
+                    }
+                    Intent::Shelf(intent) => client.shelf_intent(intent),
+                    Intent::OpenSearchHit(target) => {
+                        match target.or_else(|| client.selected_search_hit()) {
+                            Some(message_id) => {
+                                client
+                                    .open_search_hit(api, message_id, shared.now_ms())
+                                    .await
+                            }
+                            None => client.snapshot(),
+                        }
+                    }
                 };
+                if reset_drafts {
+                    shared.retain_stash(&client.live_draft_ids());
+                }
                 shared.publish(client);
                 shared.arm_deadline(client.next_deadline_ms()).await;
                 shared.sync_link(client.link_target()).await;
                 snapshot
             };
+            shared.process_effects().await;
             shared.wake.notify_one();
             snapshot
         });
@@ -228,6 +305,108 @@ impl NativeClient {
 
     pub async fn cancel_inbox_reply(&self) -> ClientSnapshot {
         self.run(Intent::Thread(ThreadIntent::InboxReplyCancelled))
+            .await
+    }
+
+    pub async fn toggle_search(&self) -> ClientSnapshot {
+        self.run(Intent::Search(SearchIntent::Toggled)).await
+    }
+
+    pub async fn search(&self, query: String) -> ClientSnapshot {
+        self.run(Intent::Search(SearchIntent::QueryChanged(query)))
+            .await
+    }
+
+    pub async fn move_search_selection(&self, step: InboxStep) -> ClientSnapshot {
+        self.run(Intent::Search(SearchIntent::SelectionMoved(step)))
+            .await
+    }
+
+    pub async fn open_search_selection(&self) -> ClientSnapshot {
+        self.run(Intent::OpenSearchHit(None)).await
+    }
+
+    pub async fn open_search_hit(&self, message_id: MessageId) -> ClientSnapshot {
+        self.run(Intent::OpenSearchHit(Some(message_id))).await
+    }
+
+    pub async fn attach_file(
+        &self,
+        room_id: RoomId,
+        file_name: String,
+        bytes: Vec<u8>,
+    ) -> ClientSnapshot {
+        self.run(Intent::Attach {
+            draft_id: DraftId::generate(),
+            room_id,
+            file_name,
+            bytes,
+        })
+        .await
+    }
+
+    pub async fn discard_draft(&self, draft_id: DraftId) -> ClientSnapshot {
+        self.run(Intent::Media(MediaIntent::DraftDiscarded(draft_id)))
+            .await
+    }
+
+    pub async fn retry_draft(&self, draft_id: DraftId) -> ClientSnapshot {
+        self.run(Intent::Media(MediaIntent::DraftRetried(draft_id)))
+            .await
+    }
+
+    pub async fn set_pin(
+        &self,
+        room_id: RoomId,
+        message_id: MessageId,
+        pinned: bool,
+    ) -> ClientSnapshot {
+        self.run(Intent::Media(MediaIntent::PinRequested {
+            room_id,
+            message_id,
+            pinned,
+        }))
+        .await
+    }
+
+    pub async fn open_vault(&self, room_id: RoomId, tab: VaultTab) -> ClientSnapshot {
+        self.run(Intent::Media(MediaIntent::VaultOpened { room_id, tab }))
+            .await
+    }
+
+    pub async fn load_more_vault(&self) -> ClientSnapshot {
+        self.run(Intent::Media(MediaIntent::VaultMoreRequested))
+            .await
+    }
+
+    pub async fn close_vault(&self) -> ClientSnapshot {
+        self.run(Intent::Media(MediaIntent::VaultClosed)).await
+    }
+
+    pub async fn toggle_shelf(&self) -> ClientSnapshot {
+        self.run(Intent::Shelf(ShelfIntent::Toggled)).await
+    }
+
+    pub async fn update_shelf(
+        &self,
+        room_id: RoomId,
+        message_id: MessageId,
+        action: ShelfAction,
+        preset: Option<ReminderPreset>,
+        remind_at_ms: Option<u64>,
+    ) -> ClientSnapshot {
+        self.run(Intent::Shelf(ShelfIntent::UpdateRequested {
+            room_id,
+            message_id,
+            action,
+            preset,
+            remind_at_ms,
+        }))
+        .await
+    }
+
+    pub async fn dismiss_reminder(&self) -> ClientSnapshot {
+        self.run(Intent::Shelf(ShelfIntent::ReminderDismissed))
             .await
     }
 

@@ -1,9 +1,13 @@
-use std::sync::Arc;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
-use pulse_protocol::{ClientFrame, ClientSnapshot, Hello, ServerFrame, api_path};
+use pulse_protocol::{
+    ApiError, ApiErrorCode, ClientFrame, ClientSnapshot, DownloadTicketsRequest, DraftId, Hello,
+    ServerFrame, api_path,
+};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, Notify, watch};
 use tokio::task::JoinHandle;
@@ -12,9 +16,13 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
 use crate::client::{Client, LinkTarget};
 use crate::connection::{ConnectionCommand, ConnectionEvent};
+use crate::effects::{Effect, EffectOutcome};
+use crate::media::{MediaTransport, drive_upload};
+use crate::search::{SearchIndex, run_search};
 use crate::timeline::ThreadIntent;
 
 use super::http::HttpApiTransport;
+use super::search_index::NativeSearchIndex;
 
 type Link = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -44,13 +52,14 @@ pub(super) struct Shared {
     server_url: String,
     generation: AtomicU64,
     link: Mutex<Option<RunningLink>>,
-    started: Instant,
     deadline_generation: AtomicU64,
     deadline: Mutex<Option<JoinHandle<()>>>,
+    index: Mutex<NativeSearchIndex>,
+    stash: StdMutex<HashMap<DraftId, Vec<u8>>>,
 }
 
 impl Shared {
-    pub(super) fn new(server_url: String) -> Self {
+    pub(super) fn new(server_url: String, index: NativeSearchIndex) -> Self {
         let client = Client::default();
         let (snapshots, _) = watch::channel(client.snapshot());
         Self {
@@ -60,14 +69,123 @@ impl Shared {
             server_url,
             generation: AtomicU64::new(0),
             link: Mutex::new(None),
-            started: Instant::now(),
             deadline_generation: AtomicU64::new(0),
             deadline: Mutex::new(None),
+            index: Mutex::new(index),
+            stash: StdMutex::new(HashMap::new()),
         }
     }
 
     pub(super) fn now_ms(&self) -> u64 {
-        u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX)
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| {
+                u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+            })
+    }
+
+    pub(super) fn stash_bytes(&self, draft_id: DraftId, bytes: Vec<u8>) {
+        if let Ok(mut stash) = self.stash.lock() {
+            stash.insert(draft_id, bytes);
+        }
+    }
+
+    pub(super) fn retain_stash(&self, live: &[DraftId]) {
+        if let Ok(mut stash) = self.stash.lock() {
+            stash.retain(|draft_id, _| live.contains(draft_id));
+        }
+    }
+
+    fn stashed(&self, draft_id: DraftId) -> Option<Vec<u8>> {
+        self.stash
+            .lock()
+            .ok()
+            .and_then(|stash| stash.get(&draft_id).cloned())
+    }
+
+    fn release_stash(&self, draft_id: DraftId) {
+        if let Ok(mut stash) = self.stash.lock() {
+            stash.remove(&draft_id);
+        }
+    }
+
+    async fn finish_effect(&self, outcome: EffectOutcome) {
+        {
+            let mut guard = self.core.lock().await;
+            guard.0.effect_finished(outcome);
+            self.publish(&guard.0);
+        }
+        self.wake.notify_one();
+    }
+
+    pub(super) async fn process_effects(self: &Arc<Self>) {
+        let (effects, token, media) = {
+            let mut guard = self.core.lock().await;
+            let effects = guard.0.take_effects();
+            let token = guard.0.link_target().map(|target| target.auth_token);
+            (effects, token, guard.1.clone())
+        };
+        for effect in effects {
+            match effect {
+                Effect::IndexDocuments(documents) => {
+                    let _ = self.index.lock().await.upsert(documents).await;
+                }
+                Effect::ReleaseDraft(draft_id) => self.release_stash(draft_id),
+                Effect::RunSearch { generation, query } => {
+                    let shared = Arc::clone(self);
+                    tokio::spawn(async move {
+                        let result = {
+                            let index = shared.index.lock().await;
+                            run_search(&*index, &query).await
+                        };
+                        shared
+                            .finish_effect(EffectOutcome::SearchCompleted { generation, result })
+                            .await;
+                    });
+                }
+                Effect::Upload(job) => {
+                    let shared = Arc::clone(self);
+                    let (token, mut media) = (token.clone(), media.clone());
+                    tokio::spawn(async move {
+                        let draft_id = job.draft_id;
+                        let result = match (shared.stashed(draft_id), token) {
+                            (Some(bytes), Some(token)) => {
+                                drive_upload(&mut media, token, job, bytes).await
+                            }
+                            _ => Err(ApiError::new(ApiErrorCode::Unavailable)),
+                        };
+                        shared
+                            .finish_effect(EffectOutcome::UploadFinished { draft_id, result })
+                            .await;
+                    });
+                }
+                Effect::FetchDownloadTickets {
+                    generation,
+                    campus_id,
+                    attachment_ids,
+                } => {
+                    let shared = Arc::clone(self);
+                    let (token, mut media) = (token.clone(), media.clone());
+                    tokio::spawn(async move {
+                        let result = match token {
+                            Some(token) => {
+                                media
+                                    .download_tickets(
+                                        token,
+                                        campus_id,
+                                        DownloadTicketsRequest { attachment_ids },
+                                    )
+                                    .await
+                            }
+                            None => Err(ApiError::new(ApiErrorCode::Unauthenticated)),
+                        };
+                        shared
+                            .finish_effect(EffectOutcome::TicketsReceived { generation, result })
+                            .await;
+                    });
+                }
+            }
+        }
     }
 
     pub(super) async fn arm_deadline(self: &Arc<Self>, deadline_ms: Option<u64>) {
@@ -131,6 +249,7 @@ impl Shared {
         if !self.is_current(generation) {
             return Err(Stale);
         }
+        guard.0.advance_clock(self.now_ms());
         let command = guard.0.receive_frame(frame);
         let outbound = guard.0.drain_outbound();
         self.publish(&guard.0);
@@ -163,6 +282,7 @@ async fn run_deadline(shared: Arc<Shared>, first_deadline_ms: u64, generation: u
             shared.publish(&guard.0);
             guard.0.next_deadline_ms()
         };
+        shared.process_effects().await;
         shared.wake.notify_one();
         match next {
             Some(next) => deadline_ms = next,
@@ -187,7 +307,7 @@ async fn send_all(link: &mut Link, frames: &[ClientFrame]) -> bool {
     true
 }
 
-async fn pump(shared: &Shared, generation: u64, link: &mut Link, hello: Hello) {
+async fn pump(shared: &Arc<Shared>, generation: u64, link: &mut Link, hello: Hello) {
     if !send_frame(link, &ClientFrame::Hello(hello)).await {
         return;
     }
@@ -201,6 +321,7 @@ async fn pump(shared: &Shared, generation: u64, link: &mut Link, hello: Hello) {
                     let Ok((command, outbound)) = shared.deliver(generation, frame).await else {
                         return;
                     };
+                    shared.process_effects().await;
                     if matches!(command, Some(ConnectionCommand::CloseTransport)) {
                         return;
                     }

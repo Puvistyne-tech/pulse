@@ -1,13 +1,18 @@
 mod common;
 
 use common::{
-    CAMPUS_A, Observed, Outgoing, campus, connect, hello, observe, ping, send, spawn_server,
+    Observed, Outgoing, campus_for, connect, fresh_state, hello, observe, ping, send, signed_up,
+    spawn_server, spawn_server_with,
 };
-use pulse_protocol::{Pong, ProtocolVersion, ServerFrame, VersionMismatch, close_code};
+use pulse_protocol::fixtures::{AUTH_TOKEN_A, AUTH_TOKEN_B, CAMPUS_A, CAMPUS_B, auth_token};
+use pulse_protocol::{
+    AuthToken, CampusId, HandshakeRejected, HandshakeRejection, Pong, ProtocolVersion, Role,
+    ServerFrame, VersionMismatch, close_code,
+};
 use rstest::rstest;
 
 enum Expect {
-    Welcome,
+    Welcome(Role),
     Exact(Observed),
 }
 
@@ -19,21 +24,29 @@ fn close(code: u16) -> Expect {
     Expect::Exact(Observed::Close(code))
 }
 
-fn is_welcome(observed: &Observed) -> bool {
-    let Observed::Frame(ServerFrame::Welcome(welcome)) = observed else {
-        return false;
-    };
-    welcome.protocol_version == ProtocolVersion::CURRENT && welcome.campus_id == campus(CAMPUS_A)
+fn rejected(reason: HandshakeRejection) -> Expect {
+    Expect::Exact(Observed::Frame(ServerFrame::HandshakeRejected(
+        HandshakeRejected { reason },
+    )))
+}
+
+fn check(actual: &Observed, wanted: &Expect, campus_id: CampusId) {
+    match wanted {
+        Expect::Welcome(role) => {
+            let Observed::Frame(ServerFrame::Welcome(welcome)) = actual else {
+                panic!("expected welcome, got {actual:?}");
+            };
+            assert_eq!(welcome.protocol_version, ProtocolVersion::CURRENT);
+            assert_eq!(welcome.campus_id, campus_id);
+            assert_eq!(welcome.role, *role);
+        }
+        Expect::Exact(exact) => assert_eq!(actual, exact),
+    }
 }
 
 #[rstest]
-#[case::valid_hello(vec![hello(CAMPUS_A, 1)], vec![Expect::Welcome])]
-#[case::pings_echo_nonces(
-    vec![hello(CAMPUS_A, 1), ping(7), ping(9)],
-    vec![Expect::Welcome, pong(7), pong(9)],
-)]
 #[case::version_mismatch(
-    vec![hello(CAMPUS_A, 99)],
+    vec![hello(CAMPUS_A, 99, &auth_token(AUTH_TOKEN_A))],
     vec![
         Expect::Exact(Observed::Frame(ServerFrame::VersionMismatch(VersionMismatch {
             supported: ProtocolVersion::CURRENT,
@@ -47,22 +60,87 @@ fn is_welcome(observed: &Observed) -> bool {
     vec![Outgoing::Raw("not json".to_owned())],
     vec![close(close_code::INVALID_PAYLOAD)],
 )]
-#[case::second_hello(
-    vec![hello(CAMPUS_A, 1), hello(CAMPUS_A, 1)],
-    vec![Expect::Welcome, close(close_code::POLICY_VIOLATION)],
+#[case::hello_missing_auth_token(
+    vec![Outgoing::Raw(format!(
+        r#"{{"type":"hello","protocol_version":2,"campus_id":"{CAMPUS_A}"}}"#
+    ))],
+    vec![close(close_code::INVALID_PAYLOAD)],
 )]
 #[tokio::test]
-async fn websocket_scenarios(#[case] sends: Vec<Outgoing>, #[case] expected: Vec<Expect>) {
+async fn lazy_websocket_scenarios(#[case] sends: Vec<Outgoing>, #[case] expected: Vec<Expect>) {
     let addr = spawn_server().await;
     let mut socket = connect(addr).await;
     for outgoing in &sends {
         send(&mut socket, outgoing).await;
     }
     for wanted in &expected {
-        let actual = observe(&mut socket).await;
-        match wanted {
-            Expect::Welcome => assert!(is_welcome(&actual), "unexpected {actual:?}"),
-            Expect::Exact(exact) => assert_eq!(&actual, exact),
+        check(&observe(&mut socket).await, wanted, CAMPUS_A);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Credentials {
+    Member,
+    UnknownToken,
+    UnknownCampus,
+    NonMember,
+}
+
+enum Step {
+    Hello(Credentials),
+    Ping(u32),
+}
+
+#[rstest]
+#[case::valid_hello(vec![Step::Hello(Credentials::Member)], vec![Expect::Welcome(Role::Owner)])]
+#[case::pings_echo_nonces(
+    vec![Step::Hello(Credentials::Member), Step::Ping(7), Step::Ping(9)],
+    vec![Expect::Welcome(Role::Owner), pong(7), pong(9)],
+)]
+#[case::unknown_token(
+    vec![Step::Hello(Credentials::UnknownToken)],
+    vec![rejected(HandshakeRejection::Unauthenticated), close(close_code::POLICY_VIOLATION)],
+)]
+#[case::unknown_campus(
+    vec![Step::Hello(Credentials::UnknownCampus)],
+    vec![rejected(HandshakeRejection::CampusUnavailable), close(close_code::POLICY_VIOLATION)],
+)]
+#[case::non_member_campus(
+    vec![Step::Hello(Credentials::NonMember)],
+    vec![rejected(HandshakeRejection::CampusUnavailable), close(close_code::POLICY_VIOLATION)],
+)]
+#[case::second_hello(
+    vec![Step::Hello(Credentials::Member), Step::Hello(Credentials::Member)],
+    vec![Expect::Welcome(Role::Owner), close(close_code::POLICY_VIOLATION)],
+)]
+#[tokio::test]
+async fn database_websocket_scenarios(#[case] steps: Vec<Step>, #[case] expected: Vec<Expect>) {
+    let state = fresh_state().await;
+    let owner = signed_up(&state, "owner@example.org").await;
+    let outsider = signed_up(&state, "outsider@example.org").await;
+    let created = campus_for(&state, &owner.token, "north-quad").await;
+    let campus_id = created.campus.campus_id;
+    let addr = spawn_server_with(state).await;
+    let credentials = |kind: Credentials| -> (CampusId, AuthToken) {
+        match kind {
+            Credentials::Member => (campus_id, owner.token.clone()),
+            Credentials::UnknownToken => (campus_id, auth_token(AUTH_TOKEN_B)),
+            Credentials::UnknownCampus => (CAMPUS_B, owner.token.clone()),
+            Credentials::NonMember => (campus_id, outsider.token.clone()),
         }
+    };
+    let mut socket = connect(addr).await;
+    for step in &steps {
+        let outgoing = match step {
+            Step::Hello(kind) => {
+                let (campus, token) = credentials(*kind);
+                hello(campus, ProtocolVersion::CURRENT.0, &token)
+            }
+            Step::Ping(nonce) => ping(*nonce),
+        };
+        send(&mut socket, &outgoing).await;
+    }
+    for wanted in &expected {
+        check(&observe(&mut socket).await, wanted, campus_id);
     }
 }

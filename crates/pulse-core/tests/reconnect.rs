@@ -1,12 +1,12 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, connect, fresh_machine, hello_frame,
-    machine_after, refused, session, welcome, welcome_frame,
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, connect, fresh_machine, hello_frame,
+    machine_after, refused, token_a, welcome, welcome_frame,
 };
 use futures::executor::block_on;
 use pulse_core::{ConnectionEvent, ConnectionMachine, TransportError, handshake};
-use pulse_protocol::{ConnectionPhase, ServerFrame};
+use pulse_protocol::{CampusId, ConnectionPhase, ServerFrame};
 use rstest::rstest;
 
 type Opens = Vec<Result<(), TransportError>>;
@@ -128,7 +128,7 @@ fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
         machine = match step {
             Step::Run { opens, incoming } => {
                 let mut transport = ScriptedTransport::scripted(opens, incoming);
-                block_on(handshake(machine, &mut transport, campus(CAMPUS_A)))
+                block_on(handshake(machine, &mut transport, CAMPUS_A, token_a()))
             }
             Step::Drop(event) => machine.step(event).0,
         };
@@ -148,7 +148,7 @@ fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
             "session at step {index}"
         );
         if expected.has_session {
-            assert_eq!(snapshot.session_id, Some(session(SESSION_A)));
+            assert_eq!(snapshot.session_id, Some(SESSION_A));
         }
     }
 }
@@ -210,8 +210,8 @@ fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
 )]
 fn resume_targets_argument_campus(
     #[case] start: Start,
-    #[case] argument: &str,
-    #[case] welcome_campus: &str,
+    #[case] argument: CampusId,
+    #[case] welcome_campus: CampusId,
     #[case] expected_phase: ConnectionPhase,
     #[case] has_session: bool,
     #[case] expected_attempt: u32,
@@ -219,13 +219,18 @@ fn resume_targets_argument_campus(
 ) {
     let mut transport =
         ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(welcome_campus)]);
-    let resumed = block_on(handshake(started(start), &mut transport, campus(argument)));
+    let resumed = block_on(handshake(
+        started(start),
+        &mut transport,
+        argument,
+        token_a(),
+    ));
     let snapshot = resumed.snapshot();
     assert_eq!(snapshot.connection, expected_phase);
     assert_eq!(snapshot.retry_in_ms, None);
-    assert_eq!(snapshot.campus_id, Some(campus(argument)));
+    assert_eq!(snapshot.campus_id, Some(argument));
     assert_eq!(snapshot.session_id.is_some(), has_session);
     assert_eq!(snapshot.attempt, expected_attempt);
-    assert_eq!(transport.sent, vec![hello_frame(argument)]);
+    assert_eq!(transport.sent, vec![hello_frame(argument, token_a())]);
     assert_eq!(transport.closes, expected_closes);
 }

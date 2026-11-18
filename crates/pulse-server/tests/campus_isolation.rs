@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use axum::http::{Method, StatusCode};
 use common::{
-    Observed, api_raw, campus_for, campuses_of, fresh_state, handshake_outcome, rooms_of,
-    signed_up, spawn_server_with,
+    Observed, api_raw, campus_for, campuses_of, directory_counts, fresh_state, handshake_outcome,
+    rooms_of, signed_up, spawn_server_with, tally_race,
 };
 use pulse_protocol::{
     AuthToken, CampusCreated, CampusId, DEFAULT_ROOM_SLUGS, HandshakeRejected, HandshakeRejection,
@@ -150,29 +150,10 @@ async fn concurrent_same_slug_creates_yield_exactly_one_campus(#[case] racers: u
                 .await
             });
         }
-        let mut created = 0;
-        let mut conflicts = 0;
-        while let Some(done) = attempts.join_next().await {
-            let (status, body) = done.expect("attempt task");
-            match status {
-                StatusCode::CREATED => created += 1,
-                StatusCode::CONFLICT => {
-                    conflicts += 1;
-                    assert_eq!(body, json!({"code": "conflict", "field": "slug"}));
-                }
-                other => panic!("unexpected status {other}: {body}"),
-            }
-        }
+        let (created, conflicts) =
+            tally_race(attempts, json!({"code": "conflict", "field": "slug"})).await;
         assert_eq!((created, conflicts), (1, racers - 1));
-        let counts = sqlx::query_as::<_, (i64, i64, i64)>(
-            "SELECT (SELECT count(*) FROM campuses), \
-                    (SELECT count(*) FROM campus_members), \
-                    (SELECT count(*) FROM rooms)",
-        )
-        .fetch_one(&state.db)
-        .await
-        .expect("counts");
-        assert_eq!(counts, (1, 1, 2));
+        assert_eq!(directory_counts(&state).await, (1, 1, 2));
     })
     .await
     .expect("scenario deadline");

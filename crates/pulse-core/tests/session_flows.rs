@@ -3,15 +3,14 @@ mod fixtures;
 use std::collections::VecDeque;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, RecordedCall, ScriptedApi, auth_session, campus_list, campus_summary,
+    CAMPUS_A, CAMPUS_B, RecordedCall, ScriptedApi, auth_session, campus_summary,
     create_campus_request, room, room_list, sign_in_request, signed_in_machine, token_a,
+    two_campuses,
 };
 use futures::executor::block_on;
 use pulse_core::{SessionEvent, SessionMachine, drive_session};
 use pulse_protocol::fixtures::CAMPUS_C;
-use pulse_protocol::{
-    ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, CampusList, Role, RoomList,
-};
+use pulse_protocol::{ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, Role, RoomList};
 use rstest::rstest;
 
 struct Expect {
@@ -26,13 +25,6 @@ struct Expect {
 
 fn failure(code: ApiErrorCode) -> ApiError {
     ApiError::new(code)
-}
-
-fn two_campuses() -> CampusList {
-    campus_list(vec![
-        campus_summary(CAMPUS_A, "alpha", Role::Owner),
-        campus_summary(CAMPUS_B, "bravo", Role::Member),
-    ])
 }
 
 fn gamma_created() -> CampusCreated {
@@ -189,7 +181,6 @@ fn signed_out_expect() -> Expect {
         ..signed_out_expect()
     },
 )]
-
 fn drive_session_runs_command_chains(
     #[case] start: SessionMachine,
     #[case] mut api: ScriptedApi,

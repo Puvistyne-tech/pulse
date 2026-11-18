@@ -20,6 +20,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::task::JoinSet;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -266,6 +267,37 @@ pub async fn rooms_of(state: &AppState, token: &AuthToken, campus_id: CampusId) 
     let (status, body) = api_get(state, &api_path::campus_rooms(campus_id), Some(token)).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     serde_json::from_value(body).expect("room list")
+}
+
+pub async fn tally_race(
+    mut attempts: JoinSet<(StatusCode, Value)>,
+    conflict_body: Value,
+) -> (usize, usize) {
+    let mut created = 0;
+    let mut conflicts = 0;
+    while let Some(done) = attempts.join_next().await {
+        let (status, body) = done.expect("attempt task");
+        match status {
+            StatusCode::CREATED => created += 1,
+            StatusCode::CONFLICT => {
+                conflicts += 1;
+                assert_eq!(body, conflict_body);
+            }
+            other => panic!("unexpected status {other}: {body}"),
+        }
+    }
+    (created, conflicts)
+}
+
+pub async fn directory_counts(state: &AppState) -> (i64, i64, i64) {
+    sqlx::query_as::<_, (i64, i64, i64)>(
+        "SELECT (SELECT count(*) FROM campuses), \
+                (SELECT count(*) FROM campus_members), \
+                (SELECT count(*) FROM rooms)",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("directory counts")
 }
 
 pub async fn expire_token(state: &AppState, token: &AuthToken) {

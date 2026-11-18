@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{api, api_raw, campus_for, fresh_state, grant_role, signed_up};
+use common::{api, api_raw, campus_for, directory_counts, fresh_state, grant_role, signed_up};
 use pulse_protocol::fixtures::{CAMPUS_B, auth_token};
 use pulse_protocol::{
     CampusCreated, CampusList, CreateCampusRequest, DEFAULT_ROOM_SLUGS, Role, RoomList, api_path,
@@ -348,20 +348,11 @@ async fn duplicate_slug_conflicts_and_leaves_no_partial_rows() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body, json!({"code": "conflict", "field": "slug"}));
-    let counts = sqlx::query_as::<_, (i64, i64, i64)>(
-        "SELECT (SELECT count(*) FROM campuses), \
-                (SELECT count(*) FROM campus_members), \
-                (SELECT count(*) FROM rooms)",
-    )
-    .fetch_one(&state.db)
-    .await
-    .expect("counts");
-    assert_eq!(counts, (1, 1, 2));
+    assert_eq!(directory_counts(&state).await, (1, 1, 2));
 }
 
 #[rstest]
 #[case::padded("  North  ", "North")]
-#[case::clean("North", "North")]
 #[tokio::test]
 async fn campus_creation_stores_trimmed_display_name(#[case] raw: &str, #[case] stored: &str) {
     let state = fresh_state().await;

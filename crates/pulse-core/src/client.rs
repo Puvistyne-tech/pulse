@@ -1,7 +1,8 @@
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthToken, CampusId, ClientFrame, ClientNonce, ClientSnapshot,
-    ConnectionPhase, DraftId, InboxSnapshot, MessageId, Permission, RoomId, SearchSnapshot,
-    ServerFrame, ShelfSnapshot, ThreadSnapshot, VaultSnapshot, role_permits,
+    ConnectionPhase, DraftId, InboxSnapshot, LoungeSnapshot, MessageId, Permission, RoomId,
+    SearchSnapshot, ServerFrame, ShelfSnapshot, StewardSnapshot, ThreadSnapshot, VaultSnapshot,
+    role_permits,
 };
 
 use crate::api::ApiTransport;
@@ -85,6 +86,8 @@ impl Client {
                 .timeline
                 .as_ref()
                 .map_or_else(ShelfSnapshot::default, TimelineMachine::shelf_snapshot),
+            lounges: LoungeSnapshot::default(),
+            stewards: StewardSnapshot::default(),
         }
     }
 

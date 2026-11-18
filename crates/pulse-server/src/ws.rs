@@ -680,7 +680,18 @@ async fn handle_frame(
             handle_update_shelf(socket, state, active, request).await
         }
         ClientFrame::SyncShelf(SyncShelf {}) => handle_sync_shelf(socket, state, active).await,
-        ClientFrame::Hello(_) => stop_with(socket, close_code::POLICY_VIOLATION).await,
+        ClientFrame::Hello(_)
+        | ClientFrame::StreamChunk(_)
+        | ClientFrame::ListTools(_)
+        | ClientFrame::CallTool(_)
+        | ClientFrame::SyncWork(_)
+        | ClientFrame::AckWork(_)
+        | ClientFrame::ManageSteward(_)
+        | ClientFrame::SyncStewards(_)
+        | ClientFrame::SyncLounges(_)
+        | ClientFrame::JoinLounge(_)
+        | ClientFrame::LeaveLounge(_)
+        | ClientFrame::LoungeHeartbeat(_) => stop_with(socket, close_code::POLICY_VIOLATION).await,
     }
 }
 

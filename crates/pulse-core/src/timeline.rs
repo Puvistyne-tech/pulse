@@ -738,7 +738,21 @@ impl TimelineMachine {
             ServerFrame::Welcome(_)
             | ServerFrame::Pong(_)
             | ServerFrame::VersionMismatch(_)
-            | ServerFrame::HandshakeRejected(_) => Vec::new(),
+            | ServerFrame::HandshakeRejected(_)
+            | ServerFrame::AgentStreamChunk(_)
+            | ServerFrame::StreamRejected(_)
+            | ServerFrame::ToolsListed(_)
+            | ServerFrame::ToolResult(_)
+            | ServerFrame::StewardWorkItem(_)
+            | ServerFrame::WorkSynced(_)
+            | ServerFrame::StewardIssued(_)
+            | ServerFrame::StewardChanged(_)
+            | ServerFrame::StewardRejected(_)
+            | ServerFrame::StewardsSynced(_)
+            | ServerFrame::LoungesSynced(_)
+            | ServerFrame::LoungeJoined(_)
+            | ServerFrame::LoungeChanged(_)
+            | ServerFrame::LoungeRejected(_) => Vec::new(),
         }
     }
 
@@ -1270,6 +1284,8 @@ impl TimelineMachine {
             pending_drafts: Vec::new(),
             pinned: message.pin.is_some(),
             shelved: shelved.contains(&message.message_id),
+            author_is_steward: false,
+            stream: None,
         }
     }
 
@@ -1296,6 +1312,8 @@ impl TimelineMachine {
             pending_drafts: self.media.claimed_drafts(client_nonce),
             pinned: false,
             shelved: false,
+            author_is_steward: false,
+            stream: None,
         }
     }
 

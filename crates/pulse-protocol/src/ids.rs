@@ -47,5 +47,14 @@ define_ids!(
     ClientNonce,
     AttachmentId,
     ShelfItemId,
-    DraftId
+    DraftId,
+    StreamId,
+    LoungeId,
+    ToolCallId
 );
+
+impl StreamId {
+    pub const fn client_nonce(self) -> ClientNonce {
+        ClientNonce(self.0)
+    }
+}

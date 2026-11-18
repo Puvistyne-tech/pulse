@@ -122,12 +122,13 @@ pub async fn post_message(
     {
         return Ok(PostOutcome::Replayed(original));
     }
-    let previous = sqlx::query_scalar::<_, Option<Uuid>>(
-        "SELECT max(message_id) FROM room_messages WHERE campus_id = $1 AND room_id = $2",
+    let previous = sqlx::query_scalar::<_, Uuid>(
+        "SELECT message_id FROM room_messages WHERE campus_id = $1 AND room_id = $2 \
+         ORDER BY message_id DESC LIMIT 1",
     )
     .bind(campus_id.as_uuid())
     .bind(request.room_id.as_uuid())
-    .fetch_one(&mut *transaction)
+    .fetch_optional(&mut *transaction)
     .await?
     .map(MessageId);
     let message_id = next_message_id(previous);

@@ -175,6 +175,7 @@ impl Client {
 
     fn reset_connection(&mut self) {
         self.step_connection(ConnectionEvent::DisconnectRequested);
+        self.outbound.clear();
     }
 
     fn reconcile(&mut self, rooms_before: Vec<RoomId>) {

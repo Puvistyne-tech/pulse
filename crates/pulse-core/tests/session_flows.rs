@@ -3,9 +3,8 @@ mod fixtures;
 use std::collections::VecDeque;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, CAMPUS_C, RecordedCall, ScriptedApi, auth_session, campus_summary,
-    create_campus_request, room, room_list, sign_in_request, signed_in_api, signed_in_machine,
-    token_a, two_campuses,
+    CAMPUS_A, CAMPUS_B, CAMPUS_C, RecordedCall, ScriptedApi, campus_summary, create_campus_request,
+    room, room_list, sign_in_request, signed_in_api, signed_in_machine, token_a,
 };
 use futures::executor::block_on;
 use pulse_core::{SessionEvent, SessionMachine, drive_session};

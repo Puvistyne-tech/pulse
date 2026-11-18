@@ -6,7 +6,7 @@ use fixtures::{
     session_after, short_password_sign_up_request, sign_in_request, sign_up_request, token_a,
     two_campuses,
 };
-use pulse_core::{SessionCommand, SessionEvent, decode_api_response};
+use pulse_core::{SessionCommand, SessionEvent, SessionMachine, decode_api_response};
 use pulse_protocol::{
     ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, CampusList, InputField, Role,
     RoomId, RoomList,

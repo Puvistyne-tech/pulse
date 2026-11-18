@@ -5,10 +5,12 @@ use std::time::Duration;
 use axum::http::{Method, StatusCode};
 use common::{
     Observed, api_get, api_raw, campus_for, expire_token, handshake_outcome, sign_in_as, signed_up,
-    spawn_server_with,
+    spawn_server_with, tally_race,
 };
 use pulse_protocol::{HandshakeRejected, HandshakeRejection, Role, ServerFrame, api_path};
 use rstest::rstest;
+use serde_json::json;
+use tokio::task::JoinSet;
 use tokio::time::timeout;
 
 const DEADLINE: Duration = Duration::from_secs(30);
@@ -29,15 +31,27 @@ enum WsOutcome {
 #[rstest]
 #[case::expired_probe(
     Mutation::ExpireProbe,
-    Some(StatusCode::UNAUTHORIZED),
+    StatusCode::UNAUTHORIZED,
+    StatusCode::OK,
     WsOutcome::Unauthenticated
 )]
-#[case::signed_out_probe(Mutation::SignOutProbe, None, WsOutcome::Unauthenticated)]
-#[case::expired_sibling(Mutation::ExpireSibling, Some(StatusCode::OK), WsOutcome::Welcome)]
+#[case::signed_out_probe(
+    Mutation::SignOutProbe,
+    StatusCode::UNAUTHORIZED,
+    StatusCode::OK,
+    WsOutcome::Unauthenticated
+)]
+#[case::expired_sibling(
+    Mutation::ExpireSibling,
+    StatusCode::OK,
+    StatusCode::UNAUTHORIZED,
+    WsOutcome::Welcome
+)]
 #[tokio::test]
 async fn token_lifecycle_is_enforced_on_http_and_websocket(
     #[case] mutation: Mutation,
-    #[case] http: Option<StatusCode>,
+    #[case] probe_http: StatusCode,
+    #[case] sibling_http: StatusCode,
     #[case] ws: WsOutcome,
 ) {
     timeout(DEADLINE, async {
@@ -63,10 +77,10 @@ async fn token_lifecycle_is_enforced_on_http_and_websocket(
             }
             Mutation::ExpireSibling => expire_token(&state, &sibling.token).await,
         }
-        if let Some(expected) = http {
-            let (status, _) = api_get(&state, api_path::CAMPUSES, Some(&probe.token)).await;
-            assert_eq!(status, expected);
-        }
+        let (status, _) = api_get(&state, api_path::CAMPUSES, Some(&probe.token)).await;
+        assert_eq!(status, probe_http);
+        let (status, _) = api_get(&state, api_path::CAMPUSES, Some(&sibling.token)).await;
+        assert_eq!(status, sibling_http);
         let addr = spawn_server_with(state).await;
         let outcome = handshake_outcome(addr, campus_id, &probe.token).await;
         match ws {
@@ -122,7 +136,7 @@ async fn repeated_sign_ins_mint_distinct_tokens_that_all_authenticate() {
 async fn concurrent_same_email_sign_ups_yield_exactly_one_account(#[case] racers: usize) {
     timeout(DEADLINE, async {
         let state = common::fresh_state().await;
-        let mut attempts = tokio::task::JoinSet::new();
+        let mut attempts = JoinSet::new();
         for index in 0..racers {
             let state = state.clone();
             attempts.spawn(async move {
@@ -135,22 +149,8 @@ async fn concurrent_same_email_sign_ups_yield_exactly_one_account(#[case] racers
                 api_raw(&state, Method::POST, api_path::ACCOUNTS, None, Some(body)).await
             });
         }
-        let mut created = 0;
-        let mut conflicts = 0;
-        while let Some(done) = attempts.join_next().await {
-            let (status, body) = done.expect("attempt task");
-            match status {
-                StatusCode::CREATED => created += 1,
-                StatusCode::CONFLICT => {
-                    conflicts += 1;
-                    assert_eq!(
-                        body,
-                        serde_json::json!({"code": "conflict", "field": "email"})
-                    );
-                }
-                other => panic!("unexpected status {other}: {body}"),
-            }
-        }
+        let (created, conflicts) =
+            tally_race(attempts, json!({"code": "conflict", "field": "email"})).await;
         assert_eq!((created, conflicts), (1, racers - 1));
         let accounts = sqlx::query_scalar::<_, i64>("SELECT count(*) FROM accounts")
             .fetch_one(&state.db)

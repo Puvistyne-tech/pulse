@@ -228,6 +228,13 @@ pub fn room_list(campus_id: CampusId, slugs: &[&str]) -> RoomList {
     }
 }
 
+pub fn two_campuses() -> CampusList {
+    campus_list(vec![
+        campus_summary(CAMPUS_A, "alpha", Role::Owner),
+        campus_summary(CAMPUS_B, "bravo", Role::Member),
+    ])
+}
+
 pub fn sign_in_request() -> SignInRequest {
     SignInRequest {
         email: "ada@example.org".to_owned(),

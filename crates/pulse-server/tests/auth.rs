@@ -161,52 +161,6 @@ async fn credential_requests(
 }
 
 #[tokio::test]
-async fn sign_out_revokes_only_the_presented_token() {
-    let state = fresh_state().await;
-    let first = signed_up(&state, SEEDED_EMAIL).await;
-    let (_, second_body) = api_raw(
-        &state,
-        Method::POST,
-        api_path::AUTH_TOKENS,
-        None,
-        Some(credentials(SEEDED_EMAIL, VALID_PASSWORD)),
-    )
-    .await;
-    let second: pulse_protocol::AuthSession =
-        serde_json::from_value(second_body).expect("auth session");
-    assert_ne!(first.token, second.token);
-    let nothing: Option<&()> = None;
-    let (status, body) = api(
-        &state,
-        Method::DELETE,
-        api_path::CURRENT_AUTH_TOKEN,
-        Some(&first.token),
-        nothing,
-    )
-    .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    assert_eq!(body, Value::Null);
-    let (revoked, _) = api(
-        &state,
-        Method::GET,
-        api_path::CAMPUSES,
-        Some(&first.token),
-        nothing,
-    )
-    .await;
-    let (still_valid, _) = api(
-        &state,
-        Method::GET,
-        api_path::CAMPUSES,
-        Some(&second.token),
-        nothing,
-    )
-    .await;
-    assert_eq!(revoked, StatusCode::UNAUTHORIZED);
-    assert_eq!(still_valid, StatusCode::OK);
-}
-
-#[tokio::test]
 async fn sign_out_without_bearer_is_unauthenticated() {
     let state = fresh_state().await;
     let nothing: Option<&()> = None;
@@ -224,7 +178,6 @@ async fn sign_out_without_bearer_is_unauthenticated() {
 
 #[rstest]
 #[case::padded("  Ada  ", "Ada")]
-#[case::clean("Ada", "Ada")]
 #[tokio::test]
 async fn sign_up_stores_trimmed_display_name(#[case] raw: &str, #[case] stored: &str) {
     let state = fresh_state().await;

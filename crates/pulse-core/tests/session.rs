@@ -3,7 +3,7 @@ mod fixtures;
 use fixtures::{
     CAMPUS_A, CAMPUS_B, auth_session, campus_list, campus_summary, create_campus_request,
     invalid_create_campus_request, invalid_sign_in_request, room, room_list, session_after,
-    short_password_sign_up_request, sign_in_request, sign_up_request, token_a,
+    short_password_sign_up_request, sign_in_request, sign_up_request, token_a, two_campuses,
 };
 use pulse_core::{SessionCommand, SessionEvent, decode_api_response};
 use pulse_protocol::fixtures::CAMPUS_C;
@@ -68,13 +68,6 @@ fn signed_in_loading() -> Expect {
         has_token: true,
         ..signed_out()
     }
-}
-
-fn two_campuses() -> CampusList {
-    campus_list(vec![
-        campus_summary(CAMPUS_A, "alpha", Role::Owner),
-        campus_summary(CAMPUS_B, "bravo", Role::Member),
-    ])
 }
 
 fn sign_in_events() -> Vec<SessionEvent> {

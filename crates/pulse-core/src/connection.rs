@@ -171,6 +171,16 @@ pub async fn handshake<T: NetworkTransport>(
     transport: &mut T,
     campus_id: CampusId,
 ) -> ConnectionMachine {
+    let machine = match machine.phase() {
+        ConnectionPhase::Backoff { .. } if machine.campus_id != Some(campus_id) => {
+            let (reset, command) = machine.step(ConnectionEvent::DisconnectRequested);
+            if let Some(command) = command {
+                run_command(command, transport).await;
+            }
+            reset
+        }
+        _ => machine,
+    };
     let starting_event = match machine.phase() {
         ConnectionPhase::Disconnected => ConnectionEvent::ConnectRequested { campus_id },
         ConnectionPhase::Backoff { .. } => ConnectionEvent::BackoffElapsed,

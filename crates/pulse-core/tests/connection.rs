@@ -1,6 +1,9 @@
 mod fixtures;
 
-use fixtures::{CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, session, welcome_for};
+use fixtures::{
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, hello_frame, refused, session,
+    welcome_for, welcome_frame,
+};
 use futures::executor::block_on;
 use pulse_core::{
     BackoffPolicy, ConnectionCommand, ConnectionEvent, ConnectionMachine, TransportError,
@@ -187,46 +190,53 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
 
 #[rstest]
 #[case::welcome(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_A)))]),
+    ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_A)]),
     ConnectionPhase::Connected,
     true,
     0,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::version_mismatch(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
+    ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
     ConnectionPhase::Disconnected,
     false,
     1,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::open_failure(
-    ScriptedTransport::with_open_results(vec![Err(TransportError::Failure("refused".into()))]),
+    ScriptedTransport::scripted(vec![refused()], vec![]),
     ConnectionPhase::Backoff { retry_in_ms: 500 },
     false,
     0,
+    vec![],
 )]
 #[case::receive_failure(
-    ScriptedTransport::with_incoming(vec![Err(TransportError::Closed)]),
+    ScriptedTransport::scripted(vec![], vec![Err(TransportError::Closed)]),
     ConnectionPhase::Backoff { retry_in_ms: 500 },
     false,
     0,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::unexpected_frame(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
+    ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
     ConnectionPhase::Backoff { retry_in_ms: 500 },
     false,
     0,
+    vec![hello_frame(CAMPUS_A)],
 )]
 #[case::wrong_campus(
-    ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_B)))]),
+    ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_B)]),
     ConnectionPhase::Disconnected,
     false,
     1,
+    vec![hello_frame(CAMPUS_A)],
 )]
 fn handshake_scenarios(
     #[case] mut transport: ScriptedTransport,
     #[case] expected_phase: ConnectionPhase,
     #[case] has_session: bool,
     #[case] expected_closes: u32,
+    #[case] expected_sent: Vec<ClientFrame>,
 ) {
     let machine = block_on(handshake(
         ConnectionMachine::new(BackoffPolicy::default()),
@@ -237,25 +247,8 @@ fn handshake_scenarios(
     assert_eq!(snapshot.connection, expected_phase);
     assert_eq!(snapshot.session_id.is_some(), has_session);
     assert_eq!(transport.closes, expected_closes);
+    assert_eq!(transport.sent, expected_sent);
     assert_eq!(snapshot.campus_id, Some(campus(CAMPUS_A)));
-}
-
-#[test]
-fn handshake_sends_hello_for_requested_campus() {
-    let mut transport =
-        ScriptedTransport::with_incoming(vec![Ok(ServerFrame::Welcome(welcome_for(CAMPUS_A)))]);
-    block_on(handshake(
-        ConnectionMachine::new(BackoffPolicy::default()),
-        &mut transport,
-        campus(CAMPUS_A),
-    ));
-    assert_eq!(
-        transport.sent,
-        vec![ClientFrame::Hello(Hello {
-            protocol_version: ProtocolVersion::CURRENT,
-            campus_id: campus(CAMPUS_A),
-        })]
-    );
 }
 
 #[test]

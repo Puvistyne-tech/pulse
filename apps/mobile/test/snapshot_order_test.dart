@@ -51,6 +51,8 @@ final orderCases = <OrderCase>[
       network: signedOut.network,
       session: signedOut.session,
       timeline: signedOut.timeline,
+      thread: signedOut.thread,
+      inbox: signedOut.inbox,
     ),
     snapshotAt(signedInWithRooms, 5),
     false,

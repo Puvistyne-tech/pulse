@@ -4,16 +4,18 @@ use std::collections::HashSet;
 
 use axum::http::{Method, StatusCode};
 use common::{
-    Observed, SCENARIO_DEADLINE, api_raw, campus_for, campus_with_owner, campuses_of,
-    created_messages, directory_counts, expect_frame, frames_until_pong, fresh_state,
-    handshake_outcome, joined_socket, message_count, posted, rooms_of, send, send_message,
-    sibling_state, signed_up, spawn_server_with, subscribed_socket, sync_rooms, tally_race,
+    Observed, SCENARIO_DEADLINE, api_raw, campus_for, campus_with_owner, campuses_of, count_rows,
+    created_messages, directory_counts, expect_frame, frames_until_pong, fresh_state, grant_role,
+    handshake_outcome, joined_socket, mark_read, member_session, message_count, next_of, posted,
+    react, rooms_of, send, send_message, send_reply, set_subscription, set_title, sibling_state,
+    signed_up, spawn_server_with, subscribed_socket, sync_rooms, sync_thread, tally_race,
 };
-use pulse_protocol::fixtures::{CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B};
+use pulse_protocol::fixtures::{CAMPUS_A, CAMPUS_B, EMOJI_A, NONCE_A, NONCE_B};
 use pulse_protocol::{
     AuthToken, CampusCreated, CampusId, ClientNonce, DEFAULT_ROOM_SLUGS, HandshakeRejected,
-    HandshakeRejection, MessageRejected, MessageRejection, Role, RoomUnavailable, ServerFrame,
-    api_path,
+    HandshakeRejection, MessageRejected, MessageRejection, ReactionAction, ReactionRejection, Role,
+    RoomUnavailable, ServerFrame, SubscriptionOrigin, SubscriptionState, ThreadRejection, api_path,
+    mention_token,
 };
 use pulse_server::fanout::campus_channel;
 use rstest::rstest;
@@ -327,4 +329,360 @@ async fn forged_foreign_room_in_sync_is_unavailable_and_never_subscribed(#[case]
 #[case::campus_b(CAMPUS_B, "pulse:campus:0193a5c0-0000-7000-8000-00000000000b:messages")]
 fn campus_channel_embeds_campus_id(#[case] campus_id: CampusId, #[case] expected: &str) {
     assert_eq!(campus_channel(campus_id), expected);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Probe {
+    Reply,
+    React,
+    Subscribe,
+    ViewThread,
+    MarkRead,
+    Title,
+    SyncThread,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Refusal {
+    Message(MessageRejection),
+    Reaction(ReactionRejection),
+    Thread(ThreadRejection),
+}
+
+#[rstest]
+#[case::reply_to_foreign_root(
+    Probe::Reply,
+    false,
+    Refusal::Message(MessageRejection::UnknownThread)
+)]
+#[case::reply_in_foreign_room(Probe::Reply, true, Refusal::Message(MessageRejection::UnknownRoom))]
+#[case::react_to_foreign_message(
+    Probe::React,
+    false,
+    Refusal::Reaction(ReactionRejection::UnknownMessage)
+)]
+#[case::react_in_foreign_room(
+    Probe::React,
+    true,
+    Refusal::Reaction(ReactionRejection::UnknownMessage)
+)]
+#[case::subscribe_to_foreign_root(
+    Probe::Subscribe,
+    false,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[case::subscribe_in_foreign_room(
+    Probe::Subscribe,
+    true,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[case::view_foreign_root(
+    Probe::ViewThread,
+    false,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[case::view_in_foreign_room(
+    Probe::ViewThread,
+    true,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[case::mark_foreign_root_read(
+    Probe::MarkRead,
+    false,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[case::mark_read_in_foreign_room(
+    Probe::MarkRead,
+    true,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[case::title_foreign_root(Probe::Title, false, Refusal::Thread(ThreadRejection::UnknownThread))]
+#[case::title_in_foreign_room(Probe::Title, true, Refusal::Thread(ThreadRejection::UnknownThread))]
+#[case::sync_foreign_thread(
+    Probe::SyncThread,
+    false,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[case::sync_thread_in_foreign_room(
+    Probe::SyncThread,
+    true,
+    Refusal::Thread(ThreadRejection::UnknownThread)
+)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn thread_requests_naming_foreign_campus_data_are_refused_without_effect(
+    #[case] probe: Probe,
+    #[case] foreign_room: bool,
+    #[case] expected: Refusal,
+) {
+    timeout(SCENARIO_DEADLINE, async {
+        let state = fresh_state().await;
+        let north = campus_with_owner(&state, "north@example.org", "north-quad").await;
+        let south = campus_with_owner(&state, "south@example.org", "south-quad").await;
+        let addr = spawn_server_with(state.clone()).await;
+        let (mut north_owner, _) = joined_socket(addr, north.id, &north.owner.token).await;
+        let root = posted(
+            &mut north_owner,
+            north.rooms[0],
+            ClientNonce::generate(),
+            "private root",
+        )
+        .await;
+        let (mut intruder, _) = joined_socket(addr, south.id, &south.owner.token).await;
+        let (own_room, foreign_room_id, target) = (south.rooms[0], north.rooms[0], root.message_id);
+        let room = if foreign_room {
+            foreign_room_id
+        } else {
+            own_room
+        };
+        let outgoing = match probe {
+            Probe::Reply => send_reply(room, target, NONCE_A, "intrusion"),
+            Probe::React => react(room, target, EMOJI_A, ReactionAction::Add),
+            Probe::Subscribe => set_subscription(
+                room,
+                target,
+                SubscriptionState::Muted,
+                SubscriptionOrigin::Explicit,
+            ),
+            Probe::ViewThread => set_subscription(
+                room,
+                target,
+                SubscriptionState::Following,
+                SubscriptionOrigin::Viewed,
+            ),
+            Probe::MarkRead => mark_read(room, target, target),
+            Probe::Title => set_title(room, target, "stolen"),
+            Probe::SyncThread => sync_thread(room, target, None),
+        };
+        send(&mut intruder, &outgoing).await;
+        let refusal = next_of(&mut intruder, |frame| match frame {
+            ServerFrame::MessageRejected(rejected) => Some(Refusal::Message(rejected.reason)),
+            ServerFrame::ReactionRejected(rejected) => Some(Refusal::Reaction(rejected.reason)),
+            ServerFrame::ThreadRejected(rejected) => Some(Refusal::Thread(rejected.reason)),
+            ServerFrame::MessageAccepted(_)
+            | ServerFrame::MessageUpdated(_)
+            | ServerFrame::ThreadChanged(_)
+            | ServerFrame::ThreadSynced(_) => panic!("foreign data was served: {frame:?}"),
+            _ => None,
+        })
+        .await;
+        assert_eq!(refusal, expected);
+        assert!(frames_until_pong(&mut intruder, 5).await.is_empty());
+        for table in ["message_reactions", "thread_subscriptions", "threads"] {
+            for campus in [north.id, south.id] {
+                assert_eq!(count_rows(&state, table, campus).await, 0, "{table}");
+            }
+        }
+        assert_eq!(message_count(&state, north.id).await, 1);
+        assert_eq!(message_count(&state, south.id).await, 0);
+        let mut reader =
+            subscribed_socket(addr, north.id, &north.owner.token, &north.rooms[..1]).await;
+        let page = common::synced_page_at(&mut reader, north.rooms[0], None, None).await;
+        assert_eq!(page.messages, vec![root]);
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[rstest]
+#[case::foreign_member(true, 0)]
+#[case::own_member(false, 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn mentions_are_stored_only_for_members_of_the_same_campus(
+    #[case] foreign: bool,
+    #[case] stored: usize,
+) {
+    timeout(SCENARIO_DEADLINE, async {
+        let state = fresh_state().await;
+        let north = campus_with_owner(&state, "north@example.org", "north-quad").await;
+        let south = campus_with_owner(&state, "south@example.org", "south-quad").await;
+        let south_member =
+            member_session(&state, "member@example.org", south.id, Role::Member).await;
+        let addr = spawn_server_with(state.clone()).await;
+        let (mut poster, _) = joined_socket(addr, south.id, &south.owner.token).await;
+        let target = if foreign {
+            north.owner.account.account_id
+        } else {
+            south_member.account.account_id
+        };
+        let body = format!("hello {}", mention_token(target));
+        let message = posted(&mut poster, south.rooms[0], ClientNonce::generate(), &body).await;
+        assert_eq!(message.mentions.len(), stored);
+        assert_eq!(message.body, body);
+        assert_eq!(
+            common::mention_rows(&state, south.id, message.message_id)
+                .await
+                .len(),
+            stored
+        );
+        assert_eq!(count_rows(&state, "message_mentions", north.id).await, 0);
+        assert_eq!(
+            count_rows(&state, "thread_subscriptions", north.id).await,
+            0
+        );
+        assert_eq!(
+            common::subscription_row(&state, south.id, message.message_id, target)
+                .await
+                .is_some(),
+            stored == 1
+        );
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+struct Shared {
+    addr: std::net::SocketAddr,
+    north: common::Campus,
+    south: common::Campus,
+    dual: pulse_protocol::AuthSession,
+    state: pulse_server::AppState,
+}
+
+async fn shared_account() -> Shared {
+    let state = fresh_state().await;
+    let north = campus_with_owner(&state, "north@example.org", "north-quad").await;
+    let south = campus_with_owner(&state, "south@example.org", "south-quad").await;
+    let dual = signed_up(&state, "dual@example.org").await;
+    grant_role(&state, north.id, dual.account.account_id, Role::Member).await;
+    grant_role(&state, south.id, dual.account.account_id, Role::Member).await;
+    let addr = spawn_server_with(state.clone()).await;
+    Shared {
+        addr,
+        north,
+        south,
+        dual,
+        state,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn thread_changes_never_reach_the_same_account_in_another_campus() {
+    timeout(SCENARIO_DEADLINE, async {
+        let shared = shared_account().await;
+        let (addr, north, south) = (shared.addr, &shared.north, &shared.south);
+        let mut dual_north =
+            subscribed_socket(addr, north.id, &shared.dual.token, &north.rooms[..1]).await;
+        let mut dual_south =
+            subscribed_socket(addr, south.id, &shared.dual.token, &south.rooms[..1]).await;
+        let (mut north_owner, _) = joined_socket(addr, north.id, &north.owner.token).await;
+        let (mut south_owner, _) = joined_socket(addr, south.id, &south.owner.token).await;
+        let root = posted(
+            &mut dual_north,
+            north.rooms[0],
+            ClientNonce::generate(),
+            "dual root",
+        )
+        .await;
+        common::replied(
+            &mut north_owner,
+            north.rooms[0],
+            root.message_id,
+            ClientNonce::generate(),
+            "reply",
+        )
+        .await;
+        common::frames_until_pong(&mut north_owner, 3).await;
+        let nonce = ClientNonce::generate();
+        posted(&mut south_owner, south.rooms[0], nonce, "south sentinel").await;
+        let southern = common::frames_through_created(&mut dual_south, nonce).await;
+        assert_eq!(southern.len(), 1);
+        assert!(common::changed_summaries(&southern).is_empty());
+        let nonce = ClientNonce::generate();
+        posted(&mut north_owner, north.rooms[0], nonce, "north sentinel").await;
+        let northern = common::frames_through_created(&mut dual_north, nonce).await;
+        let changes = common::changed_summaries(&northern);
+        assert!(!changes.is_empty());
+        assert!(
+            changes
+                .iter()
+                .all(|summary| summary.root.campus_id == north.id)
+        );
+        assert_eq!(
+            count_rows(&shared.state, "thread_subscriptions", south.id).await,
+            0
+        );
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn inbox_sync_lists_only_threads_of_the_connected_campus() {
+    timeout(SCENARIO_DEADLINE, async {
+        let shared = shared_account().await;
+        let (addr, north, south) = (shared.addr, &shared.north, &shared.south);
+        let mut dual_north =
+            subscribed_socket(addr, north.id, &shared.dual.token, &north.rooms[..1]).await;
+        let mut dual_south =
+            subscribed_socket(addr, south.id, &shared.dual.token, &south.rooms[..1]).await;
+        let (mut north_owner, _) = joined_socket(addr, north.id, &north.owner.token).await;
+        let (mut south_owner, _) = joined_socket(addr, south.id, &south.owner.token).await;
+        let northern_root = posted(
+            &mut dual_north,
+            north.rooms[0],
+            ClientNonce::generate(),
+            "north root",
+        )
+        .await;
+        let southern_root = posted(
+            &mut dual_south,
+            south.rooms[0],
+            ClientNonce::generate(),
+            "south root",
+        )
+        .await;
+        common::replied(
+            &mut north_owner,
+            north.rooms[0],
+            northern_root.message_id,
+            ClientNonce::generate(),
+            "north reply",
+        )
+        .await;
+        common::replied(
+            &mut south_owner,
+            south.rooms[0],
+            southern_root.message_id,
+            ClientNonce::generate(),
+            "south reply",
+        )
+        .await;
+        let northern = common::inbox_of(&mut dual_north).await;
+        let southern = common::inbox_of(&mut dual_south).await;
+        assert_eq!(
+            northern
+                .iter()
+                .map(|summary| summary.root.message_id)
+                .collect::<Vec<_>>(),
+            vec![northern_root.message_id]
+        );
+        assert_eq!(
+            southern
+                .iter()
+                .map(|summary| summary.root.message_id)
+                .collect::<Vec<_>>(),
+            vec![southern_root.message_id]
+        );
+        assert!(
+            northern
+                .iter()
+                .all(|summary| summary.root.campus_id == north.id)
+        );
+        assert!(
+            southern
+                .iter()
+                .all(|summary| summary.root.campus_id == south.id)
+        );
+        let bystander = member_session(
+            &shared.state,
+            "bystander@example.org",
+            south.id,
+            Role::Member,
+        )
+        .await;
+        let (mut outsider, _) = joined_socket(addr, south.id, &bystander.token).await;
+        assert!(common::inbox_of(&mut outsider).await.is_empty());
+    })
+    .await
+    .expect("scenario deadline");
 }

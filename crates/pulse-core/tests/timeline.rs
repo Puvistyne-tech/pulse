@@ -1,10 +1,12 @@
 mod fixtures;
 
 use fixtures::{
-    ACCOUNT_A, ACCOUNT_B, CAMPUS_B, EntryKey, NONCE_A, NONCE_B, ROOM_A, ROOM_B, accepted_frame,
-    chain, chain_message, confirmed_key, created_frame, entry_keys, failed_key, message_id, nonce,
-    own_message, pending_key, received, rejected_frame, room_message, send_frame, send_requested,
-    sync_frame, synced_frame, timeline_after, timeline_connected, timeline_run, unavailable_frame,
+    ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, CAMPUS_B, EMOJI_A, EMOJI_B, EntryKey, NONCE_A, NONCE_B,
+    ROOM_A, ROOM_B, accepted_frame, chain, chain_message, confirmed_key, created_frame, entry_keys,
+    failed_key, message_id, nonce, own_message, peer_reply, pending_key, reacted, received,
+    rejected_frame, room_message, send_frame, send_requested, sync_frame, sync_frame_at,
+    sync_inbox_frame, synced_frame, synced_frame_with, timeline_after, timeline_connected,
+    timeline_run, titled, unavailable_frame, updated_frame, with_replies,
 };
 use pulse_core::TimelineEvent;
 use pulse_protocol::{
@@ -37,6 +39,10 @@ fn initial_sync() -> ClientFrame {
     sync_frame(&[(ROOM_A, None)])
 }
 
+fn resumed(after: Option<MessageId>) -> ClientFrame {
+    sync_frame_at(&[(ROOM_A, after, Some(0))])
+}
+
 fn settled() -> TimelineEvent {
     received(synced_frame(ROOM_A, vec![], false))
 }
@@ -56,7 +62,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::pending_while_connected(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "  hi  ")],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "hi")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "hi")],
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -66,7 +72,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::queued_while_offline_then_sent_on_connect(
     vec![send_requested(ROOM_A, NONCE_A, "hello"), connected_a()],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "hello")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "hello")],
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -86,7 +92,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::accepted_confirms_pending(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "hi"), settled(), received(accepted_frame(own()))],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "hi")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "hi")],
         entries: vec![confirmed_key(&own())],
         syncing: false,
         error: None,
@@ -102,7 +108,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(created_frame(own())),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "hi!")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "hi!")],
         entries: vec![confirmed_key(&own())],
         syncing: false,
         error: None,
@@ -118,7 +124,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(accepted_frame(own())),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "hi?")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "hi?")],
         entries: vec![confirmed_key(&own())],
         syncing: false,
         error: None,
@@ -137,9 +143,9 @@ fn foreign(message: RoomMessage) -> RoomMessage {
     ],
     Expect {
         frames: vec![
-            initial_sync(),
+            initial_sync(), sync_inbox_frame(),
             send_frame(ROOM_A, NONCE_A, "again"),
-            initial_sync(),
+            initial_sync(), sync_inbox_frame(),
             send_frame(ROOM_A, NONCE_A, "again"),
         ],
         entries: vec![confirmed_key(&own())],
@@ -157,7 +163,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(created_frame(peer(2))),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_frame(&[(ROOM_A, None)])],
+        frames: vec![initial_sync(), sync_inbox_frame(), resumed(None)],
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: true,
         error: None,
@@ -173,7 +179,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(created_frame(peer(4))),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_frame(&[(ROOM_A, Some(message_id(1)))])],
+        frames: vec![initial_sync(), sync_inbox_frame(), resumed(Some(message_id(1)))],
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(3)), confirmed_key(&peer(4))],
         syncing: true,
         error: None,
@@ -189,7 +195,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(synced_frame(ROOM_A, vec![peer(2), peer(3)], false)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_frame(&[(ROOM_A, Some(message_id(1)))])],
+        frames: vec![initial_sync(), sync_inbox_frame(), resumed(Some(message_id(1)))],
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: false,
         error: None,
@@ -202,7 +208,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(synced_frame(ROOM_A, chain(ROOM_A, 2), true)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_frame(&[(ROOM_A, Some(message_id(2)))])],
+        frames: vec![initial_sync(), sync_inbox_frame(), resumed(Some(message_id(2)))],
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2))],
         syncing: true,
         error: None,
@@ -216,7 +222,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(synced_frame(ROOM_A, vec![peer(3)], false)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_frame(&[(ROOM_A, Some(message_id(2)))])],
+        frames: vec![initial_sync(), sync_inbox_frame(), resumed(Some(message_id(2)))],
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: false,
         error: None,
@@ -229,7 +235,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(synced_frame(ROOM_A, vec![peer(5), peer(6)], false)),
     ],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![confirmed_key(&peer(5)), confirmed_key(&peer(6))],
         syncing: false,
         error: None,
@@ -246,7 +252,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(synced_frame(ROOM_A, vec![peer(1)], false)),
     ],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: false,
         error: None,
@@ -256,7 +262,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::duplicate_created_is_one_entry(
     vec![connected_a(), settled(), received(created_frame(peer(1))), received(created_frame(peer(1)))],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![confirmed_key(&peer(1))],
         syncing: false,
         error: None,
@@ -266,7 +272,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::foreign_campus_created_dropped(
     vec![connected_a(), settled(), received(created_frame(foreign(peer(1))))],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![],
         syncing: false,
         error: None,
@@ -276,7 +282,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::foreign_campus_sync_page_dropped(
     vec![connected_a(), received(synced_frame(ROOM_A, vec![foreign(peer(1))], false))],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![],
         syncing: false,
         error: None,
@@ -290,7 +296,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(accepted_frame(foreign(own()))),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "kept")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "kept")],
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -305,7 +311,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(created_frame(room_message(ROOM_A, message_id(1), None, ACCOUNT_B, NONCE_A, "theirs"))),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "mine")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "mine")],
         entries: vec![
             confirmed_key(&room_message(ROOM_A, message_id(1), None, ACCOUNT_B, NONCE_A, "theirs")),
             pending_key(NONCE_A),
@@ -324,7 +330,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         connected_a(),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "nope"), initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "nope"), initial_sync(), sync_inbox_frame()],
         entries: vec![failed_key(NONCE_A, MessageRejection::Forbidden)],
         syncing: true,
         error: None,
@@ -338,7 +344,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         rejected_nonce_a(MessageRejection::UnknownRoom),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "lost")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "lost")],
         entries: vec![failed_key(NONCE_A, MessageRejection::UnknownRoom)],
         syncing: true,
         error: None,
@@ -348,7 +354,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::rejection_for_unknown_nonce_ignored(
     vec![connected_a(), received(rejected_frame(NONCE_B, MessageRejection::Forbidden))],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![],
         syncing: true,
         error: None,
@@ -363,7 +369,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         TimelineEvent::DiscardRequested { client_nonce: NONCE_A },
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "bye")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "bye")],
         entries: vec![],
         syncing: true,
         error: None,
@@ -377,7 +383,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         TimelineEvent::DiscardRequested { client_nonce: NONCE_A },
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "stay")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "stay")],
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -387,7 +393,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::blank_body_sets_error_and_emits_nothing(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "   ")],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![],
         syncing: true,
         error: Some(ApiError::invalid(InputField::MessageBody)),
@@ -397,7 +403,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::control_body_sets_error(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "a\u{7}")],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![],
         syncing: true,
         error: Some(ApiError::invalid(InputField::MessageBody)),
@@ -411,7 +417,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         send_requested(ROOM_A, NONCE_B, "fine"),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_B, "fine")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_B, "fine")],
         entries: vec![pending_key(NONCE_B)],
         syncing: true,
         error: None,
@@ -421,7 +427,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::unavailable_room_clears_syncing(
     vec![connected_a(), received(unavailable_frame(ROOM_A))],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![],
         syncing: false,
         error: None,
@@ -435,7 +441,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(unavailable_frame(ROOM_A)),
     ],
     Expect {
-        frames: vec![initial_sync(), send_frame(ROOM_A, NONCE_A, "orphan")],
+        frames: vec![initial_sync(), sync_inbox_frame(), send_frame(ROOM_A, NONCE_A, "orphan")],
         entries: vec![failed_key(NONCE_A, MessageRejection::UnknownRoom)],
         syncing: false,
         error: None,
@@ -445,7 +451,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
 #[case::disconnect_clears_syncing(
     vec![connected_a(), TimelineEvent::Disconnected],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![],
         syncing: false,
         error: None,
@@ -460,7 +466,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         connected_a(),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_frame(&[(ROOM_A, Some(message_id(2)))])],
+        frames: vec![initial_sync(), sync_inbox_frame(), resumed(Some(message_id(2))), sync_inbox_frame()],
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2))],
         syncing: true,
         error: None,
@@ -475,7 +481,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         received(created_frame(peer(2))),
     ],
     Expect {
-        frames: vec![initial_sync()],
+        frames: vec![initial_sync(), sync_inbox_frame()],
         entries: vec![confirmed_key(&peer(2))],
         syncing: false,
         error: None,
@@ -488,7 +494,7 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         TimelineEvent::RoomsChanged { rooms: vec![ROOM_A, ROOM_B] },
     ],
     Expect {
-        frames: vec![initial_sync(), sync_frame(&[(ROOM_B, None)])],
+        frames: vec![initial_sync(), sync_inbox_frame(), sync_frame(&[(ROOM_B, None)])],
         entries: vec![],
         syncing: true,
         error: None,
@@ -505,10 +511,10 @@ fn foreign(message: RoomMessage) -> RoomMessage {
         cursor: None,
     },
 )]
-#[case::connected_without_rooms_emits_nothing(
+#[case::connected_without_rooms_only_syncs_inbox(
     vec![timeline_connected(&[])],
     Expect {
-        frames: vec![],
+        frames: vec![sync_inbox_frame()],
         entries: vec![],
         syncing: false,
         error: None,
@@ -542,10 +548,12 @@ fn connected_chunks_cursors_by_sync_limit(
         .map(|_| RoomId::generate())
         .collect::<Vec<_>>();
     let (_, frames) = timeline_run(vec![timeline_connected(&rooms)]);
+    assert_eq!(frames.last(), Some(&sync_inbox_frame()));
     let sizes = frames
         .iter()
-        .map(|frame| match frame {
-            ClientFrame::SyncRooms(sync) => sync.cursors.len(),
+        .filter_map(|frame| match frame {
+            ClientFrame::SyncRooms(sync) => Some(sync.cursors.len()),
+            ClientFrame::SyncInbox(_) => None,
             other => panic!("unexpected frame {other:?}"),
         })
         .collect::<Vec<_>>();
@@ -642,11 +650,217 @@ fn outbox_survives_reconnect_in_nonce_order() {
         timeline_connected(&[ROOM_A, ROOM_B]),
     ]);
     assert_eq!(
-        frames[frames.len() - 3..],
+        frames[frames.len() - 4..],
         [
             sync_frame(&[(ROOM_A, None), (ROOM_B, None)]),
+            sync_inbox_frame(),
             send_frame(ROOM_B, NONCE_A, "a"),
             send_frame(ROOM_A, NONCE_B, "b"),
         ]
+    );
+}
+
+fn after_settled(events: Vec<TimelineEvent>) -> pulse_core::TimelineMachine {
+    let mut all = vec![connected_a(), settled()];
+    all.extend(events);
+    timeline_after(all)
+}
+
+fn stream_ids(machine: &pulse_core::TimelineMachine) -> Vec<MessageId> {
+    machine
+        .snapshot(Some(ROOM_A))
+        .entries
+        .iter()
+        .filter_map(|entry| entry.message_id)
+        .collect()
+}
+
+#[rstest]
+#[case::reply_is_hidden_from_main_stream(
+    vec![received(created_frame(peer(1))), received(created_frame(peer_reply(2, 1)))],
+    vec![message_id(1)],
+)]
+#[case::reply_arriving_first_is_still_hidden(
+    vec![received(created_frame(peer_reply(2, 1))), received(created_frame(peer(1)))],
+    vec![message_id(1)],
+)]
+#[case::pending_reply_is_hidden_from_main_stream(
+    vec![
+        received(created_frame(peer(1))),
+        fixtures::reply_intent(1, NONCE_A, "pending reply"),
+    ],
+    vec![message_id(1)],
+)]
+#[case::top_level_messages_stay_in_id_order(
+    vec![
+        received(created_frame(peer(1))),
+        received(created_frame(peer_reply(2, 1))),
+        received(created_frame(peer(3))),
+    ],
+    vec![message_id(1), message_id(3)],
+)]
+fn replies_never_appear_in_the_main_stream(
+    #[case] events: Vec<TimelineEvent>,
+    #[case] expected: Vec<MessageId>,
+) {
+    let machine = after_settled(events);
+    assert_eq!(stream_ids(&machine), expected);
+    assert_eq!(machine.snapshot(Some(ROOM_A)).entries.len(), expected.len());
+}
+
+#[rstest]
+#[case::first_page_sets_window_start(
+    vec![received(synced_frame(ROOM_A, vec![peer(5), peer(6)], false))],
+    vec![message_id(5), message_id(6)],
+)]
+#[case::older_message_after_window_is_hidden(
+    vec![
+        received(synced_frame(ROOM_A, vec![peer(5), peer(6)], false)),
+        received(created_frame(peer(3))),
+    ],
+    vec![message_id(5), message_id(6)],
+)]
+#[case::newer_message_after_window_is_shown(
+    vec![
+        received(synced_frame(ROOM_A, vec![peer(5), peer(6)], false)),
+        received(created_frame(peer(7))),
+    ],
+    vec![message_id(5), message_id(6), message_id(7)],
+)]
+#[case::later_page_does_not_move_window_start(
+    vec![
+        received(synced_frame(ROOM_A, vec![peer(5), peer(6)], false)),
+        received(synced_frame(ROOM_A, vec![peer(4)], false)),
+    ],
+    vec![message_id(5), message_id(6)],
+)]
+fn window_start_is_set_by_the_first_page(
+    #[case] events: Vec<TimelineEvent>,
+    #[case] expected: Vec<MessageId>,
+) {
+    let mut all = vec![connected_a()];
+    all.extend(events);
+    assert_eq!(stream_ids(&timeline_after(all)), expected);
+}
+
+struct Observed {
+    reactions: Vec<(String, u32, bool)>,
+    topic_title: Option<String>,
+    reply_count: Option<u32>,
+    entries: usize,
+}
+
+fn tally(emoji: &str, count: u32, by_self: bool) -> (String, u32, bool) {
+    (emoji.to_owned(), count, by_self)
+}
+
+#[rstest]
+#[case::newer_activity_replaces(
+    vec![
+        received(created_frame(peer(1))),
+        received(updated_frame(reacted(peer(1), &[(EMOJI_A, &[ACCOUNT_B])], 1))),
+    ],
+    Observed { reactions: vec![tally(EMOJI_A, 1, false)], topic_title: None, reply_count: None, entries: 1 },
+)]
+#[case::older_activity_is_ignored(
+    vec![
+        received(created_frame(peer(1))),
+        received(updated_frame(reacted(peer(1), &[(EMOJI_A, &[ACCOUNT_B])], 2))),
+        received(updated_frame(reacted(peer(1), &[(EMOJI_B, &[ACCOUNT_B])], 1))),
+    ],
+    Observed { reactions: vec![tally(EMOJI_A, 1, false)], topic_title: None, reply_count: None, entries: 1 },
+)]
+#[case::equal_activity_is_ignored(
+    vec![
+        received(created_frame(peer(1))),
+        received(updated_frame(reacted(peer(1), &[(EMOJI_A, &[ACCOUNT_B])], 2))),
+        received(updated_frame(reacted(peer(1), &[(EMOJI_B, &[ACCOUNT_B])], 2))),
+    ],
+    Observed { reactions: vec![tally(EMOJI_A, 1, false)], topic_title: None, reply_count: None, entries: 1 },
+)]
+#[case::stale_created_echo_does_not_revert(
+    vec![
+        received(created_frame(peer(1))),
+        received(updated_frame(reacted(peer(1), &[(EMOJI_A, &[ACCOUNT_B, ACCOUNT_C])], 4))),
+        received(created_frame(peer(1))),
+    ],
+    Observed { reactions: vec![tally(EMOJI_A, 2, false)], topic_title: None, reply_count: None, entries: 1 },
+)]
+#[case::reacted_by_self_follows_tally(
+    vec![
+        received(created_frame(peer(1))),
+        received(updated_frame(reacted(peer(1), &[(EMOJI_A, &[ACCOUNT_A, ACCOUNT_B]), (EMOJI_B, &[ACCOUNT_B])], 1))),
+    ],
+    Observed {
+        reactions: vec![tally(EMOJI_A, 2, true), tally(EMOJI_B, 1, false)],
+        topic_title: None,
+        reply_count: None,
+        entries: 1,
+    },
+)]
+#[case::sync_update_replaces_known_message(
+    vec![
+        received(created_frame(peer(1))),
+        received(synced_frame_with(ROOM_A, vec![], vec![reacted(peer(1), &[(EMOJI_A, &[ACCOUNT_B])], 3)], 3, false)),
+    ],
+    Observed { reactions: vec![tally(EMOJI_A, 1, false)], topic_title: None, reply_count: None, entries: 1 },
+)]
+#[case::sync_update_for_unknown_message_is_not_inserted(
+    vec![received(synced_frame_with(ROOM_A, vec![], vec![reacted(peer(7), &[(EMOJI_A, &[ACCOUNT_B])], 3)], 3, false))],
+    Observed { reactions: vec![], topic_title: None, reply_count: None, entries: 0 },
+)]
+#[case::title_update_shows_preview(
+    vec![
+        received(created_frame(peer(1))),
+        received(updated_frame(titled(peer(1), "Plans", 1))),
+    ],
+    Observed { reactions: vec![], topic_title: Some("Plans".to_owned()), reply_count: Some(0), entries: 1 },
+)]
+#[case::latest_reply_breaks_equal_activity(
+    vec![
+        received(created_frame(peer(1))),
+        received(updated_frame(with_replies(peer(1), 2, Some(3)))),
+    ],
+    Observed { reactions: vec![], topic_title: None, reply_count: Some(2), entries: 1 },
+)]
+#[case::logged_replies_beyond_root_stats_are_counted(
+    vec![
+        received(created_frame(with_replies(peer(1), 3, Some(4)))),
+        received(created_frame(peer_reply(4, 1))),
+        received(created_frame(peer_reply(5, 1))),
+    ],
+    Observed { reactions: vec![], topic_title: None, reply_count: Some(4), entries: 1 },
+)]
+fn newer_messages_replace_and_older_are_ignored(
+    #[case] events: Vec<TimelineEvent>,
+    #[case] expected: Observed,
+) {
+    let snapshot = after_settled(events).snapshot(Some(ROOM_A));
+    assert_eq!(snapshot.entries.len(), expected.entries);
+    let entry = snapshot.entries.first();
+    let reactions = entry
+        .map(|entry| {
+            entry
+                .reactions
+                .iter()
+                .map(|summary| {
+                    (
+                        summary.emoji.clone(),
+                        summary.count,
+                        summary.reacted_by_self,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let preview = entry.and_then(|entry| entry.thread.as_ref());
+    assert_eq!(reactions, expected.reactions);
+    assert_eq!(
+        preview.and_then(|thread| thread.topic_title.clone()),
+        expected.topic_title
+    );
+    assert_eq!(
+        preview.map(|thread| thread.reply_count),
+        expected.reply_count
     );
 }

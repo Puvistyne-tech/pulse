@@ -17,6 +17,7 @@ enum Permission {
   manageMembers,
   manageCampus,
   postMessage,
+  react,
 }
 
 enum Role {

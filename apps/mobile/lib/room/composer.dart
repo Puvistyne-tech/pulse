@@ -1,12 +1,22 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../src/rust/third_party/pulse_protocol/ids.dart';
+class Insertion {
+  Insertion(this.text);
+
+  final String text;
+}
 
 class Composer extends StatefulWidget {
-  const Composer({required this.roomId, required this.sendMessage, super.key});
+  const Composer({
+    required this.onSend,
+    this.label = 'Message',
+    this.insertion,
+    super.key,
+  });
 
-  final RoomId roomId;
-  final Future<void> Function(RoomId roomId, String body) sendMessage;
+  final void Function(String body) onSend;
+  final String label;
+  final Insertion? insertion;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -16,13 +26,23 @@ class _ComposerState extends State<Composer> {
   final _draft = TextEditingController();
 
   @override
+  void didUpdateWidget(Composer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final insertion = widget.insertion;
+    if (insertion != null && !identical(insertion, oldWidget.insertion)) {
+      final prefix = _draft.text.isEmpty ? '' : '${_draft.text} ';
+      _draft.text = '$prefix${insertion.text} ';
+    }
+  }
+
+  @override
   void dispose() {
     _draft.dispose();
     super.dispose();
   }
 
   void _submit() {
-    widget.sendMessage(widget.roomId, _draft.text);
+    widget.onSend(_draft.text);
     _draft.clear();
   }
 
@@ -34,7 +54,7 @@ class _ComposerState extends State<Composer> {
           child: TextField(
             key: const Key('messageDraft'),
             controller: _draft,
-            decoration: const InputDecoration(labelText: 'Message'),
+            decoration: InputDecoration(labelText: widget.label),
           ),
         ),
         ListenableBuilder(

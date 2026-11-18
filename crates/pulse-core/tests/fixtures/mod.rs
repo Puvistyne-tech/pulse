@@ -2,7 +2,9 @@
 
 use std::collections::VecDeque;
 
-use pulse_core::{NetworkTransport, TransportError};
+use pulse_core::{
+    BackoffPolicy, ConnectionEvent, ConnectionMachine, NetworkTransport, TransportError,
+};
 use pulse_protocol::{
     CampusId, ClientFrame, Hello, ProtocolVersion, ServerFrame, SessionId, Welcome,
 };
@@ -25,6 +27,26 @@ pub fn welcome_for(campus_text: &str) -> Welcome {
         campus_id: campus(campus_text),
         session_id: session(SESSION_A),
     }
+}
+
+pub fn connect() -> ConnectionEvent {
+    ConnectionEvent::ConnectRequested {
+        campus_id: campus(CAMPUS_A),
+    }
+}
+
+pub fn welcome(campus_text: &str) -> ConnectionEvent {
+    ConnectionEvent::WelcomeReceived(welcome_for(campus_text))
+}
+
+pub fn fresh_machine() -> ConnectionMachine {
+    ConnectionMachine::new(BackoffPolicy::default())
+}
+
+pub fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
+    events
+        .into_iter()
+        .fold(fresh_machine(), |machine, event| machine.step(event).0)
 }
 
 pub fn hello_frame(campus_text: &str) -> ClientFrame {

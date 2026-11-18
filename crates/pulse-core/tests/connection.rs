@@ -1,8 +1,8 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, hello_frame, refused, session,
-    welcome_for, welcome_frame,
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, connect, hello_frame, machine_after,
+    refused, session, welcome, welcome_frame,
 };
 use futures::executor::block_on;
 use pulse_core::{
@@ -13,16 +13,6 @@ use pulse_protocol::{
     ClientFrame, ConnectionPhase, Hello, Pong, ProtocolVersion, ServerFrame, VersionMismatch,
 };
 use rstest::rstest;
-
-fn connect() -> ConnectionEvent {
-    ConnectionEvent::ConnectRequested {
-        campus_id: campus(CAMPUS_A),
-    }
-}
-
-fn welcome(campus_text: &str) -> ConnectionEvent {
-    ConnectionEvent::WelcomeReceived(welcome_for(campus_text))
-}
 
 fn mismatch() -> VersionMismatch {
     VersionMismatch {
@@ -38,20 +28,13 @@ fn hello() -> ConnectionCommand {
     })
 }
 
-fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
-    events.into_iter().fold(
-        ConnectionMachine::new(BackoffPolicy::default()),
-        |machine, event| machine.step(event).0,
-    )
-}
-
 #[rstest]
-#[case::connect_requested(vec![], connect(), ConnectionPhase::Connecting, Some(ConnectionCommand::OpenTransport), 0, false)]
-#[case::transport_opened(vec![connect()], ConnectionEvent::TransportOpened, ConnectionPhase::Handshaking, Some(hello()), 0, false)]
+#[case::connect_requested(vec![], connect(), ConnectionPhase::Connecting, None, Some(ConnectionCommand::OpenTransport), 0, false)]
+#[case::transport_opened(vec![connect()], ConnectionEvent::TransportOpened, ConnectionPhase::Handshaking, None, Some(hello()), 0, false)]
 #[case::failed_while_connecting(
     vec![connect()],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff,
+    ConnectionPhase::Backoff, Some(500),
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -59,7 +42,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::failed_while_handshaking(
     vec![connect(), ConnectionEvent::TransportOpened],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff,
+    ConnectionPhase::Backoff, Some(500),
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -67,16 +50,16 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::second_failure_doubles_delay(
     vec![connect(), ConnectionEvent::TransportFailed, ConnectionEvent::BackoffElapsed],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff,
+    ConnectionPhase::Backoff, Some(1000),
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 1000 }),
     2,
     false,
 )]
-#[case::welcome_matching_campus(vec![connect(), ConnectionEvent::TransportOpened], welcome(CAMPUS_A), ConnectionPhase::Connected, None, 0, true)]
+#[case::welcome_matching_campus(vec![connect(), ConnectionEvent::TransportOpened], welcome(CAMPUS_A), ConnectionPhase::Connected, None, None, 0, true)]
 #[case::welcome_other_campus(
     vec![connect(), ConnectionEvent::TransportOpened],
     welcome(CAMPUS_B),
-    ConnectionPhase::Disconnected,
+    ConnectionPhase::Disconnected, None,
     Some(ConnectionCommand::CloseTransport),
     0,
     false,
@@ -84,7 +67,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::version_rejected(
     vec![connect(), ConnectionEvent::TransportOpened],
     ConnectionEvent::VersionRejected(mismatch()),
-    ConnectionPhase::Disconnected,
+    ConnectionPhase::Disconnected, None,
     Some(ConnectionCommand::CloseTransport),
     0,
     false,
@@ -92,7 +75,7 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::connected_transport_failed(
     vec![connect(), ConnectionEvent::TransportOpened, welcome(CAMPUS_A)],
     ConnectionEvent::TransportFailed,
-    ConnectionPhase::Backoff,
+    ConnectionPhase::Backoff, Some(500),
     Some(ConnectionCommand::ScheduleRetry { delay_ms: 500 }),
     1,
     false,
@@ -100,16 +83,16 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::backoff_elapsed(
     vec![connect(), ConnectionEvent::TransportFailed],
     ConnectionEvent::BackoffElapsed,
-    ConnectionPhase::Connecting,
+    ConnectionPhase::Connecting, None,
     Some(ConnectionCommand::OpenTransport),
     1,
     false,
 )]
-#[case::disconnect_while_connecting(vec![connect()], ConnectionEvent::DisconnectRequested, ConnectionPhase::Disconnected, Some(ConnectionCommand::CloseTransport), 0, false)]
+#[case::disconnect_while_connecting(vec![connect()], ConnectionEvent::DisconnectRequested, ConnectionPhase::Disconnected, None, Some(ConnectionCommand::CloseTransport), 0, false)]
 #[case::disconnect_while_connected(
     vec![connect(), ConnectionEvent::TransportOpened, welcome(CAMPUS_A)],
     ConnectionEvent::DisconnectRequested,
-    ConnectionPhase::Disconnected,
+    ConnectionPhase::Disconnected, None,
     Some(ConnectionCommand::CloseTransport),
     0,
     false,
@@ -117,28 +100,38 @@ fn machine_after(events: Vec<ConnectionEvent>) -> ConnectionMachine {
 #[case::disconnect_while_backoff(
     vec![connect(), ConnectionEvent::TransportFailed],
     ConnectionEvent::DisconnectRequested,
-    ConnectionPhase::Disconnected,
+    ConnectionPhase::Disconnected, None,
     Some(ConnectionCommand::CloseTransport),
     0,
     false,
 )]
-#[case::ignored_disconnect_when_disconnected(vec![], ConnectionEvent::DisconnectRequested, ConnectionPhase::Disconnected, None, 0, false)]
-#[case::ignored_opened_when_disconnected(vec![], ConnectionEvent::TransportOpened, ConnectionPhase::Disconnected, None, 0, false)]
-#[case::ignored_connect_when_connecting(vec![connect()], connect(), ConnectionPhase::Connecting, None, 0, false)]
-#[case::ignored_welcome_when_connecting(vec![connect()], welcome(CAMPUS_A), ConnectionPhase::Connecting, None, 0, false)]
+#[case::ignored_opened_when_backoff(
+    vec![connect(), ConnectionEvent::TransportFailed],
+    ConnectionEvent::TransportOpened,
+    ConnectionPhase::Backoff,
+    Some(500),
+    None,
+    1,
+    false,
+)]
+#[case::ignored_disconnect_when_disconnected(vec![], ConnectionEvent::DisconnectRequested, ConnectionPhase::Disconnected, None, None, 0, false)]
+#[case::ignored_opened_when_disconnected(vec![], ConnectionEvent::TransportOpened, ConnectionPhase::Disconnected, None, None, 0, false)]
+#[case::ignored_connect_when_connecting(vec![connect()], connect(), ConnectionPhase::Connecting, None, None, 0, false)]
+#[case::ignored_welcome_when_connecting(vec![connect()], welcome(CAMPUS_A), ConnectionPhase::Connecting, None, None, 0, false)]
 #[case::ignored_elapsed_when_connected(
     vec![connect(), ConnectionEvent::TransportOpened, welcome(CAMPUS_A)],
     ConnectionEvent::BackoffElapsed,
-    ConnectionPhase::Connected,
+    ConnectionPhase::Connected, None,
     None,
     0,
     true,
 )]
-#[case::ignored_failure_when_disconnected(vec![], ConnectionEvent::TransportFailed, ConnectionPhase::Disconnected, None, 0, false)]
+#[case::ignored_failure_when_disconnected(vec![], ConnectionEvent::TransportFailed, ConnectionPhase::Disconnected, None, None, 0, false)]
 fn step_follows_transition_table(
     #[case] setup: Vec<ConnectionEvent>,
     #[case] event: ConnectionEvent,
     #[case] expected_phase: ConnectionPhase,
+    #[case] expected_retry: Option<u32>,
     #[case] expected_command: Option<ConnectionCommand>,
     #[case] expected_attempt: u32,
     #[case] has_session: bool,
@@ -148,11 +141,7 @@ fn step_follows_transition_table(
     assert_eq!(*machine.phase(), expected_phase);
     assert_eq!(snapshot.connection, expected_phase);
     assert_eq!(command, expected_command);
-    let scheduled = match &command {
-        Some(ConnectionCommand::ScheduleRetry { delay_ms }) => Some(*delay_ms),
-        _ => None,
-    };
-    assert_eq!(snapshot.retry_in_ms, scheduled);
+    assert_eq!(snapshot.retry_in_ms, expected_retry);
     assert_eq!(snapshot.attempt, expected_attempt);
     assert_eq!(snapshot.session_id.is_some(), has_session);
     if has_session {

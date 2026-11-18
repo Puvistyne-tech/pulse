@@ -181,6 +181,32 @@ describe("shelf menu", () => {
     );
   });
 
+  test.each<[string, boolean, boolean]>([
+    ["offered by default", true, true],
+    ["withheld when disabled", false, false],
+  ])("the custom time is %s", (_name, customTime, shown) => {
+    render(
+      <ShelfMenu presets={[]} shelved={false} customTime={customTime} onUpdate={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Shelf" }));
+    expect(screen.queryByLabelText("Remind at") !== null).toBe(shown);
+    expect(screen.queryByRole("button", { name: "Remind at chosen time" }) !== null).toBe(shown);
+  });
+
+  test.each<[string, number | null, boolean]>([
+    ["a picker anchor", 3_300_000, true],
+    ["no picker anchor", null, false],
+  ])("the shelf view with %s", (_name, anchor, shown) => {
+    renderShelf(
+      shelfOf(
+        { upcoming: [shelfEntryOf("upcoming", MESSAGE_C)] },
+        { picker_anchor_ms: anchor, picker_latest_ms: anchor },
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Shelf" }));
+    expect(screen.queryByLabelText("Remind at") !== null).toBe(shown);
+  });
+
   test("the toggle button reflects whether the menu is open", () => {
     render(<ShelfMenu presets={[]} shelved={false} onUpdate={vi.fn()} />);
     const toggle = screen.getByRole("button", { name: "Shelf" });

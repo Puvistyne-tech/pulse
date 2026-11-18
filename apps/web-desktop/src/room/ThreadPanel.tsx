@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import type { SubscriptionState, ThreadSnapshot } from "@pulse/protocol";
+import type {
+  StewardEntry,
+  SubscriptionState,
+  ThreadSnapshot,
+} from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
+import { StewardMentionPicker } from "../steward/StewardMentionPicker";
 import { Composer, useInsertion } from "./Composer";
 import { MessageEntry } from "./MessageEntry";
 
@@ -14,9 +19,15 @@ interface ThreadPanelProps {
   thread: ThreadSnapshot;
   palette: string[];
   intents: PulseIntents;
+  stewards?: StewardEntry[];
 }
 
-export function ThreadPanel({ thread, palette, intents }: ThreadPanelProps) {
+export function ThreadPanel({
+  thread,
+  palette,
+  intents,
+  stewards = [],
+}: ThreadPanelProps) {
   const [insertion, mention] = useInsertion();
   const [titleDraft, setTitleDraft] = useState(thread.topic_title ?? "");
   const roomId = thread.room_id;
@@ -94,6 +105,11 @@ export function ThreadPanel({ thread, palette, intents }: ThreadPanelProps) {
           />
         ))}
       </ul>
+      <StewardMentionPicker
+        stewards={stewards}
+        roomId={roomId}
+        onPick={mention}
+      />
       <Composer
         label="Reply"
         insertion={insertion}

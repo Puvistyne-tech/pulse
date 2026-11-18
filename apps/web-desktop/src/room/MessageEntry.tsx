@@ -5,6 +5,7 @@ import type {
   MessageId,
   ReminderPreset,
   RoomId,
+  StreamState,
   TimelineEntry,
 } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
@@ -22,6 +23,11 @@ const rejectionLabels: Record<MessageRejection, string> = {
   invalid_attachment: "Attachment not accepted",
 };
 
+const streamLabels: Record<StreamState, string> = {
+  streaming: "Streaming",
+  finalizing: "Finalizing",
+};
+
 export interface EntryActions {
   react: PulseIntents["react"];
   discardMessage(clientNonce: ClientNonce): Promise<void>;
@@ -31,6 +37,7 @@ export interface EntryActions {
   updateShelf?: PulseIntents["updateShelf"];
   canPin?: boolean;
   presets?: ReminderPreset[];
+  customTime?: boolean;
 }
 
 interface MessageEntryProps {
@@ -92,14 +99,23 @@ export function MessageEntry({
       ref={itemRef}
       data-delivery={entry.delivery}
       data-focused={focused}
+      data-stream={entry.stream ?? undefined}
       className="space-y-1"
     >
       <div>
         <span className="font-semibold">
           {entry.from_self ? "You" : entry.author_display_name}
         </span>{" "}
+        {entry.author_is_steward && (
+          <span className="rounded bg-slate-200 px-1 text-xs">Steward</span>
+        )}{" "}
         <MessageBody segments={entry.segments} />{" "}
         <EntryStatus entry={entry} discardMessage={actions.discardMessage} />
+        {entry.stream !== null && (
+          <span className="text-xs text-slate-500">
+            {streamLabels[entry.stream]}
+          </span>
+        )}
       </div>
       <AttachmentList attachments={entry.attachments} />
       {entry.pending_drafts.length > 0 && (
@@ -161,6 +177,7 @@ export function MessageEntry({
         {messageId !== null && actions.updateShelf && (
           <ShelfMenu
             presets={actions.presets ?? []}
+            customTime={actions.customTime}
             shelved={entry.shelved}
             onUpdate={(action, preset, remindAtMs) =>
               void actions.updateShelf?.(

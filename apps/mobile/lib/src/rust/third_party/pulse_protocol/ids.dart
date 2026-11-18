@@ -47,6 +47,50 @@ class CampusId {
           field0 == other.field0;
 }
 
+class ClientNonce {
+  final UuidValue field0;
+
+  const ClientNonce({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsClientNonceAsUuid(that: this);
+
+  static Future<ClientNonce> generate() =>
+      RustLib.instance.api.pulseProtocolIdsClientNonceGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ClientNonce &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
+class MessageId {
+  final UuidValue field0;
+
+  const MessageId({required this.field0});
+
+  Future<UuidValue> asUuid() =>
+      RustLib.instance.api.pulseProtocolIdsMessageIdAsUuid(that: this);
+
+  static Future<MessageId> generate() =>
+      RustLib.instance.api.pulseProtocolIdsMessageIdGenerate();
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MessageId &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
 class RoomId {
   final UuidValue field0;
 

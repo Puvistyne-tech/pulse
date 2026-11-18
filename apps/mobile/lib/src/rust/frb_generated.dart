@@ -16,6 +16,7 @@ import 'third_party/pulse_protocol/auth.dart';
 import 'third_party/pulse_protocol/campus.dart';
 import 'third_party/pulse_protocol/frames.dart';
 import 'third_party/pulse_protocol/ids.dart';
+import 'third_party/pulse_protocol/messaging.dart';
 import 'third_party/pulse_protocol/rbac.dart';
 import 'third_party/pulse_protocol/snapshot.dart';
 import 'third_party/pulse_protocol/validation.dart';
@@ -66,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 2029780457;
+  int get rustContentHash => -181028134;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -106,6 +107,12 @@ abstract class RustLibApi extends BaseApi {
     required CampusId campusId,
   });
 
+  Future<UuidValue> pulseProtocolIdsClientNonceAsUuid({
+    required ClientNonce that,
+  });
+
+  Future<ClientNonce> pulseProtocolIdsClientNonceGenerate();
+
   Future<ClientSnapshot> crateApiClientClientSnapshot();
 
   Future<ClientSnapshot> crateApiClientCreateCampus({
@@ -120,7 +127,23 @@ abstract class RustLibApi extends BaseApi {
     required CreateRoomRequest that,
   });
 
+  Future<ClientSnapshot> crateApiClientDiscardMessage({
+    required ClientNonce clientNonce,
+  });
+
+  Future<UuidValue> pulseProtocolIdsMessageIdAsUuid({required MessageId that});
+
+  Future<MessageId> pulseProtocolIdsMessageIdGenerate();
+
+  Future<String> pulseProtocolValidationNormalizeDisplayName({
+    required String raw,
+  });
+
   Future<String> pulseProtocolValidationNormalizeEmail({required String raw});
+
+  Future<String> pulseProtocolValidationNormalizeMessageBody({
+    required String raw,
+  });
 
   Future<ClientSnapshot> crateApiClientRefreshCampuses();
 
@@ -137,6 +160,17 @@ abstract class RustLibApi extends BaseApi {
 
   Future<ClientSnapshot> crateApiClientSelectCampus({
     required CampusId campusId,
+  });
+
+  Future<ClientSnapshot> crateApiClientSelectRoom({required RoomId roomId});
+
+  Future<ClientSnapshot> crateApiClientSendMessage({
+    required RoomId roomId,
+    required String body,
+  });
+
+  Future<void> pulseProtocolMessagingSendMessageValidate({
+    required SendMessage that,
   });
 
   Future<UuidValue> pulseProtocolIdsSessionIdAsUuid({required SessionId that});
@@ -164,6 +198,8 @@ abstract class RustLibApi extends BaseApi {
   Future<void> pulseProtocolValidationValidatePassword({required String raw});
 
   Future<void> pulseProtocolValidationValidateSlug({required String raw});
+
+  Stream<ClientSnapshot> crateApiClientWatchSnapshots();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -469,6 +505,66 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "campus_rooms", argNames: ["campusId"]);
 
   @override
+  Future<UuidValue> pulseProtocolIdsClientNonceAsUuid({
+    required ClientNonce that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_client_nonce(that, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_Uuid,
+          decodeErrorData: null,
+        ),
+        constMeta: kPulseProtocolIdsClientNonceAsUuidConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kPulseProtocolIdsClientNonceAsUuidConstMeta =>
+      const TaskConstMeta(
+        debugName: "client_nonce_as_uuid",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<ClientNonce> pulseProtocolIdsClientNonceGenerate() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_client_nonce,
+          decodeErrorData: null,
+        ),
+        constMeta: kPulseProtocolIdsClientNonceGenerateConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kPulseProtocolIdsClientNonceGenerateConstMeta =>
+      const TaskConstMeta(debugName: "client_nonce_generate", argNames: []);
+
+  @override
   Future<ClientSnapshot> crateApiClientClientSnapshot() {
     return handler.executeNormal(
       NormalTask(
@@ -477,7 +573,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 14,
             port: port_,
           );
         },
@@ -507,7 +603,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 15,
             port: port_,
           );
         },
@@ -537,7 +633,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 16,
             port: port_,
           );
         },
@@ -570,7 +666,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 17,
             port: port_,
           );
         },
@@ -592,6 +688,127 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<ClientSnapshot> crateApiClientDiscardMessage({
+    required ClientNonce clientNonce,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_client_nonce(clientNonce, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_client_snapshot,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientDiscardMessageConstMeta,
+        argValues: [clientNonce],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientDiscardMessageConstMeta =>
+      const TaskConstMeta(
+        debugName: "discard_message",
+        argNames: ["clientNonce"],
+      );
+
+  @override
+  Future<UuidValue> pulseProtocolIdsMessageIdAsUuid({required MessageId that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_message_id(that, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_Uuid,
+          decodeErrorData: null,
+        ),
+        constMeta: kPulseProtocolIdsMessageIdAsUuidConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kPulseProtocolIdsMessageIdAsUuidConstMeta =>
+      const TaskConstMeta(debugName: "message_id_as_uuid", argNames: ["that"]);
+
+  @override
+  Future<MessageId> pulseProtocolIdsMessageIdGenerate() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_message_id,
+          decodeErrorData: null,
+        ),
+        constMeta: kPulseProtocolIdsMessageIdGenerateConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kPulseProtocolIdsMessageIdGenerateConstMeta =>
+      const TaskConstMeta(debugName: "message_id_generate", argNames: []);
+
+  @override
+  Future<String> pulseProtocolValidationNormalizeDisplayName({
+    required String raw,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(raw, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_input_field,
+        ),
+        constMeta: kPulseProtocolValidationNormalizeDisplayNameConstMeta,
+        argValues: [raw],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kPulseProtocolValidationNormalizeDisplayNameConstMeta =>
+      const TaskConstMeta(
+        debugName: "normalize_display_name",
+        argNames: ["raw"],
+      );
+
+  @override
   Future<String> pulseProtocolValidationNormalizeEmail({required String raw}) {
     return handler.executeNormal(
       NormalTask(
@@ -601,7 +818,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 22,
             port: port_,
           );
         },
@@ -620,6 +837,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "normalize_email", argNames: ["raw"]);
 
   @override
+  Future<String> pulseProtocolValidationNormalizeMessageBody({
+    required String raw,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(raw, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 23,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_input_field,
+        ),
+        constMeta: kPulseProtocolValidationNormalizeMessageBodyConstMeta,
+        argValues: [raw],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kPulseProtocolValidationNormalizeMessageBodyConstMeta =>
+      const TaskConstMeta(
+        debugName: "normalize_message_body",
+        argNames: ["raw"],
+      );
+
+  @override
   Future<ClientSnapshot> crateApiClientRefreshCampuses() {
     return handler.executeNormal(
       NormalTask(
@@ -628,7 +878,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 24,
             port: port_,
           );
         },
@@ -656,7 +906,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 25,
             port: port_,
           );
         },
@@ -688,7 +938,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 26,
             port: port_,
           );
         },
@@ -719,7 +969,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 27,
             port: port_,
           );
         },
@@ -746,7 +996,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 28,
             port: port_,
           );
         },
@@ -776,7 +1026,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 29,
             port: port_,
           );
         },
@@ -795,6 +1045,101 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "select_campus", argNames: ["campusId"]);
 
   @override
+  Future<ClientSnapshot> crateApiClientSelectRoom({required RoomId roomId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_room_id(roomId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_client_snapshot,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientSelectRoomConstMeta,
+        argValues: [roomId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientSelectRoomConstMeta =>
+      const TaskConstMeta(debugName: "select_room", argNames: ["roomId"]);
+
+  @override
+  Future<ClientSnapshot> crateApiClientSendMessage({
+    required RoomId roomId,
+    required String body,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_room_id(roomId, serializer);
+          sse_encode_String(body, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_client_snapshot,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientSendMessageConstMeta,
+        argValues: [roomId, body],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientSendMessageConstMeta => const TaskConstMeta(
+    debugName: "send_message",
+    argNames: ["roomId", "body"],
+  );
+
+  @override
+  Future<void> pulseProtocolMessagingSendMessageValidate({
+    required SendMessage that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_send_message(that, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kPulseProtocolMessagingSendMessageValidateConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kPulseProtocolMessagingSendMessageValidateConstMeta =>
+      const TaskConstMeta(
+        debugName: "send_message_validate",
+        argNames: ["that"],
+      );
+
+  @override
   Future<UuidValue> pulseProtocolIdsSessionIdAsUuid({required SessionId that}) {
     return handler.executeNormal(
       NormalTask(
@@ -804,7 +1149,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 33,
             port: port_,
           );
         },
@@ -831,7 +1176,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 34,
             port: port_,
           );
         },
@@ -861,7 +1206,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 35,
             port: port_,
           );
         },
@@ -891,7 +1236,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 36,
             port: port_,
           );
         },
@@ -921,7 +1266,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 37,
             port: port_,
           );
         },
@@ -951,7 +1296,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 38,
             port: port_,
           );
         },
@@ -981,7 +1326,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1014,7 +1359,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1045,7 +1390,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1073,7 +1418,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 42,
             port: port_,
           );
         },
@@ -1090,6 +1435,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kPulseProtocolValidationValidateSlugConstMeta =>
       const TaskConstMeta(debugName: "validate_slug", argNames: ["raw"]);
+
+  @override
+  Stream<ClientSnapshot> crateApiClientWatchSnapshots() {
+    final sink = RustStreamSink<ClientSnapshot>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_StreamSink_client_snapshot_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 43,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiClientWatchSnapshotsConstMeta,
+          argValues: [sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientWatchSnapshotsConstMeta =>
+      const TaskConstMeta(debugName: "watch_snapshots", argNames: ["sink"]);
+
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw) {
+    return AnyhowException(raw as String);
+  }
+
+  @protected
+  RustStreamSink<ClientSnapshot> dco_decode_StreamSink_client_snapshot_Sse(
+    dynamic raw,
+  ) {
+    throw UnimplementedError();
+  }
 
   @protected
   String dco_decode_String(dynamic raw) {
@@ -1173,6 +1562,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ClientNonce dco_decode_box_autoadd_client_nonce(dynamic raw) {
+    return dco_decode_client_nonce(raw);
+  }
+
+  @protected
   CreateCampusRequest dco_decode_box_autoadd_create_campus_request(
     dynamic raw,
   ) {
@@ -1195,8 +1589,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  MessageId dco_decode_box_autoadd_message_id(dynamic raw) {
+    return dco_decode_message_id(raw);
+  }
+
+  @protected
+  MessageRejection dco_decode_box_autoadd_message_rejection(dynamic raw) {
+    return dco_decode_message_rejection(raw);
+  }
+
+  @protected
   RoomId dco_decode_box_autoadd_room_id(dynamic raw) {
     return dco_decode_room_id(raw);
+  }
+
+  @protected
+  SendMessage dco_decode_box_autoadd_send_message(dynamic raw) {
+    return dco_decode_send_message(raw);
   }
 
   @protected
@@ -1246,13 +1655,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ClientNonce dco_decode_client_nonce(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 1)
+      throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
+    return ClientNonce(field0: dco_decode_Uuid(arr[0]));
+  }
+
+  @protected
   ClientSnapshot dco_decode_client_snapshot(dynamic raw) {
     final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return ClientSnapshot(
-      network: dco_decode_connection_snapshot(arr[0]),
-      session: dco_decode_session_snapshot(arr[1]),
+      sequence: dco_decode_u_64(arr[0]),
+      network: dco_decode_connection_snapshot(arr[1]),
+      session: dco_decode_session_snapshot(arr[2]),
+      timeline: dco_decode_timeline_snapshot(arr[3]),
     );
   }
 
@@ -1300,6 +1719,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DeliveryState dco_decode_delivery_state(dynamic raw) {
+    return DeliveryState.values[raw as int];
+  }
+
+  @protected
   HandshakeRejection dco_decode_handshake_rejection(dynamic raw) {
     return HandshakeRejection.values[raw as int];
   }
@@ -1330,6 +1754,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TimelineEntry> dco_decode_list_timeline_entry(dynamic raw) {
+    return (raw as List<dynamic>).map(dco_decode_timeline_entry).toList();
+  }
+
+  @protected
+  MessageId dco_decode_message_id(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 1)
+      throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
+    return MessageId(field0: dco_decode_Uuid(arr[0]));
+  }
+
+  @protected
+  MessageRejection dco_decode_message_rejection(dynamic raw) {
+    return MessageRejection.values[raw as int];
+  }
+
+  @protected
   AccountProfile? dco_decode_opt_box_autoadd_account_profile(dynamic raw) {
     return raw == null ? null : dco_decode_box_autoadd_account_profile(raw);
   }
@@ -1354,6 +1796,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   InputField? dco_decode_opt_box_autoadd_input_field(dynamic raw) {
     return raw == null ? null : dco_decode_box_autoadd_input_field(raw);
+  }
+
+  @protected
+  MessageId? dco_decode_opt_box_autoadd_message_id(dynamic raw) {
+    return raw == null ? null : dco_decode_box_autoadd_message_id(raw);
+  }
+
+  @protected
+  MessageRejection? dco_decode_opt_box_autoadd_message_rejection(dynamic raw) {
+    return raw == null ? null : dco_decode_box_autoadd_message_rejection(raw);
+  }
+
+  @protected
+  RoomId? dco_decode_opt_box_autoadd_room_id(dynamic raw) {
+    return raw == null ? null : dco_decode_box_autoadd_room_id(raw);
   }
 
   @protected
@@ -1410,6 +1867,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SendMessage dco_decode_send_message(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return SendMessage(
+      roomId: dco_decode_room_id(arr[0]),
+      clientNonce: dco_decode_client_nonce(arr[1]),
+      body: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
   SessionId dco_decode_session_id(dynamic raw) {
     final arr = raw as List<dynamic>;
     if (arr.length != 1)
@@ -1420,16 +1889,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   SessionSnapshot dco_decode_session_snapshot(dynamic raw) {
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return SessionSnapshot(
       auth: dco_decode_auth_phase(arr[0]),
       account: dco_decode_opt_box_autoadd_account_profile(arr[1]),
       campuses: dco_decode_list_campus_summary(arr[2]),
       activeCampusId: dco_decode_opt_box_autoadd_campus_id(arr[3]),
       rooms: dco_decode_list_room(arr[4]),
-      busy: dco_decode_bool(arr[5]),
-      error: dco_decode_opt_box_autoadd_api_error(arr[6]),
+      activeRoomId: dco_decode_opt_box_autoadd_room_id(arr[5]),
+      busy: dco_decode_bool(arr[6]),
+      error: dco_decode_opt_box_autoadd_api_error(arr[7]),
     );
   }
 
@@ -1457,6 +1927,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TimelineEntry dco_decode_timeline_entry(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return TimelineEntry(
+      clientNonce: dco_decode_client_nonce(arr[0]),
+      messageId: dco_decode_opt_box_autoadd_message_id(arr[1]),
+      authorId: dco_decode_account_id(arr[2]),
+      authorDisplayName: dco_decode_String(arr[3]),
+      fromSelf: dco_decode_bool(arr[4]),
+      body: dco_decode_String(arr[5]),
+      delivery: dco_decode_delivery_state(arr[6]),
+      rejection: dco_decode_opt_box_autoadd_message_rejection(arr[7]),
+    );
+  }
+
+  @protected
+  TimelineSnapshot dco_decode_timeline_snapshot(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return TimelineSnapshot(
+      roomId: dco_decode_opt_box_autoadd_room_id(arr[0]),
+      entries: dco_decode_list_timeline_entry(arr[1]),
+      syncing: dco_decode_bool(arr[2]),
+      error: dco_decode_opt_box_autoadd_api_error(arr[3]),
+    );
+  }
+
+  @protected
   int dco_decode_u_16(dynamic raw) {
     return raw as int;
   }
@@ -1464,6 +1964,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   int dco_decode_u_32(dynamic raw) {
     return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    return dcoDecodeU64(raw);
   }
 
   @protected
@@ -1485,6 +1990,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       supported: dco_decode_protocol_version(arr[0]),
       received: dco_decode_protocol_version(arr[1]),
     );
+  }
+
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
+    var inner = sse_decode_String(deserializer);
+    return AnyhowException(inner);
+  }
+
+  @protected
+  RustStreamSink<ClientSnapshot> sse_decode_StreamSink_client_snapshot_Sse(
+    SseDeserializer deserializer,
+  ) {
+    throw UnimplementedError('Unreachable ()');
   }
 
   @protected
@@ -1564,6 +2082,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ClientNonce sse_decode_box_autoadd_client_nonce(
+    SseDeserializer deserializer,
+  ) {
+    return (sse_decode_client_nonce(deserializer));
+  }
+
+  @protected
   CreateCampusRequest sse_decode_box_autoadd_create_campus_request(
     SseDeserializer deserializer,
   ) {
@@ -1590,8 +2115,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  MessageId sse_decode_box_autoadd_message_id(SseDeserializer deserializer) {
+    return (sse_decode_message_id(deserializer));
+  }
+
+  @protected
+  MessageRejection sse_decode_box_autoadd_message_rejection(
+    SseDeserializer deserializer,
+  ) {
+    return (sse_decode_message_rejection(deserializer));
+  }
+
+  @protected
   RoomId sse_decode_box_autoadd_room_id(SseDeserializer deserializer) {
     return (sse_decode_room_id(deserializer));
+  }
+
+  @protected
+  SendMessage sse_decode_box_autoadd_send_message(
+    SseDeserializer deserializer,
+  ) {
+    return (sse_decode_send_message(deserializer));
   }
 
   @protected
@@ -1646,10 +2190,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ClientNonce sse_decode_client_nonce(SseDeserializer deserializer) {
+    var var_field0 = sse_decode_Uuid(deserializer);
+    return ClientNonce(field0: var_field0);
+  }
+
+  @protected
   ClientSnapshot sse_decode_client_snapshot(SseDeserializer deserializer) {
+    var var_sequence = sse_decode_u_64(deserializer);
     var var_network = sse_decode_connection_snapshot(deserializer);
     var var_session = sse_decode_session_snapshot(deserializer);
-    return ClientSnapshot(network: var_network, session: var_session);
+    var var_timeline = sse_decode_timeline_snapshot(deserializer);
+    return ClientSnapshot(
+      sequence: var_sequence,
+      network: var_network,
+      session: var_session,
+      timeline: var_timeline,
+    );
   }
 
   @protected
@@ -1704,6 +2261,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DeliveryState sse_decode_delivery_state(SseDeserializer deserializer) {
+    var inner = sse_decode_i_32(deserializer);
+    return DeliveryState.values[inner];
+  }
+
+  @protected
   HandshakeRejection sse_decode_handshake_rejection(
     SseDeserializer deserializer,
   ) {
@@ -1748,6 +2311,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_room(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  List<TimelineEntry> sse_decode_list_timeline_entry(
+    SseDeserializer deserializer,
+  ) {
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TimelineEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_timeline_entry(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  MessageId sse_decode_message_id(SseDeserializer deserializer) {
+    var var_field0 = sse_decode_Uuid(deserializer);
+    return MessageId(field0: var_field0);
+  }
+
+  @protected
+  MessageRejection sse_decode_message_rejection(SseDeserializer deserializer) {
+    var inner = sse_decode_i_32(deserializer);
+    return MessageRejection.values[inner];
   }
 
   @protected
@@ -1796,6 +2383,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_input_field(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  MessageId? sse_decode_opt_box_autoadd_message_id(
+    SseDeserializer deserializer,
+  ) {
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_message_id(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  MessageRejection? sse_decode_opt_box_autoadd_message_rejection(
+    SseDeserializer deserializer,
+  ) {
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_message_rejection(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  RoomId? sse_decode_opt_box_autoadd_room_id(SseDeserializer deserializer) {
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_room_id(deserializer));
     } else {
       return null;
     }
@@ -1865,6 +2483,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SendMessage sse_decode_send_message(SseDeserializer deserializer) {
+    var var_roomId = sse_decode_room_id(deserializer);
+    var var_clientNonce = sse_decode_client_nonce(deserializer);
+    var var_body = sse_decode_String(deserializer);
+    return SendMessage(
+      roomId: var_roomId,
+      clientNonce: var_clientNonce,
+      body: var_body,
+    );
+  }
+
+  @protected
   SessionId sse_decode_session_id(SseDeserializer deserializer) {
     var var_field0 = sse_decode_Uuid(deserializer);
     return SessionId(field0: var_field0);
@@ -1877,6 +2507,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_campuses = sse_decode_list_campus_summary(deserializer);
     var var_activeCampusId = sse_decode_opt_box_autoadd_campus_id(deserializer);
     var var_rooms = sse_decode_list_room(deserializer);
+    var var_activeRoomId = sse_decode_opt_box_autoadd_room_id(deserializer);
     var var_busy = sse_decode_bool(deserializer);
     var var_error = sse_decode_opt_box_autoadd_api_error(deserializer);
     return SessionSnapshot(
@@ -1885,6 +2516,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       campuses: var_campuses,
       activeCampusId: var_activeCampusId,
       rooms: var_rooms,
+      activeRoomId: var_activeRoomId,
       busy: var_busy,
       error: var_error,
     );
@@ -1910,6 +2542,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TimelineEntry sse_decode_timeline_entry(SseDeserializer deserializer) {
+    var var_clientNonce = sse_decode_client_nonce(deserializer);
+    var var_messageId = sse_decode_opt_box_autoadd_message_id(deserializer);
+    var var_authorId = sse_decode_account_id(deserializer);
+    var var_authorDisplayName = sse_decode_String(deserializer);
+    var var_fromSelf = sse_decode_bool(deserializer);
+    var var_body = sse_decode_String(deserializer);
+    var var_delivery = sse_decode_delivery_state(deserializer);
+    var var_rejection = sse_decode_opt_box_autoadd_message_rejection(
+      deserializer,
+    );
+    return TimelineEntry(
+      clientNonce: var_clientNonce,
+      messageId: var_messageId,
+      authorId: var_authorId,
+      authorDisplayName: var_authorDisplayName,
+      fromSelf: var_fromSelf,
+      body: var_body,
+      delivery: var_delivery,
+      rejection: var_rejection,
+    );
+  }
+
+  @protected
+  TimelineSnapshot sse_decode_timeline_snapshot(SseDeserializer deserializer) {
+    var var_roomId = sse_decode_opt_box_autoadd_room_id(deserializer);
+    var var_entries = sse_decode_list_timeline_entry(deserializer);
+    var var_syncing = sse_decode_bool(deserializer);
+    var var_error = sse_decode_opt_box_autoadd_api_error(deserializer);
+    return TimelineSnapshot(
+      roomId: var_roomId,
+      entries: var_entries,
+      syncing: var_syncing,
+      error: var_error,
+    );
+  }
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer) {
     return deserializer.buffer.getUint16();
   }
@@ -1917,6 +2587,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   int sse_decode_u_32(SseDeserializer deserializer) {
     return deserializer.buffer.getUint32();
+  }
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    return deserializer.buffer.getBigUint64();
   }
 
   @protected
@@ -1932,6 +2607,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_supported = sse_decode_protocol_version(deserializer);
     var var_received = sse_decode_protocol_version(deserializer);
     return VersionMismatch(supported: var_supported, received: var_received);
+  }
+
+  @protected
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_StreamSink_client_snapshot_Sse(
+    RustStreamSink<ClientSnapshot> self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_client_snapshot,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
   }
 
   @protected
@@ -2013,6 +2712,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_client_nonce(
+    ClientNonce self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_client_nonce(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_create_campus_request(
     CreateCampusRequest self,
     SseSerializer serializer,
@@ -2045,8 +2752,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_message_id(
+    MessageId self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_message_id(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_message_rejection(
+    MessageRejection self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_message_rejection(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_room_id(RoomId self, SseSerializer serializer) {
     sse_encode_room_id(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_send_message(
+    SendMessage self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_send_message(self, serializer);
   }
 
   @protected
@@ -2100,12 +2831,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_client_nonce(ClientNonce self, SseSerializer serializer) {
+    sse_encode_Uuid(self.field0, serializer);
+  }
+
+  @protected
   void sse_encode_client_snapshot(
     ClientSnapshot self,
     SseSerializer serializer,
   ) {
+    sse_encode_u_64(self.sequence, serializer);
     sse_encode_connection_snapshot(self.network, serializer);
     sse_encode_session_snapshot(self.session, serializer);
+    sse_encode_timeline_snapshot(self.timeline, serializer);
   }
 
   @protected
@@ -2152,6 +2890,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_delivery_state(DeliveryState self, SseSerializer serializer) {
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_handshake_rejection(
     HandshakeRejection self,
     SseSerializer serializer,
@@ -2195,6 +2938,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     for (final item in self) {
       sse_encode_room(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_list_timeline_entry(
+    List<TimelineEntry> self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_timeline_entry(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_message_id(MessageId self, SseSerializer serializer) {
+    sse_encode_Uuid(self.field0, serializer);
+  }
+
+  @protected
+  void sse_encode_message_rejection(
+    MessageRejection self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -2249,6 +3016,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_input_field(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_message_id(
+    MessageId? self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_message_id(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_message_rejection(
+    MessageRejection? self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_message_rejection(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_room_id(
+    RoomId? self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_room_id(self, serializer);
     }
   }
 
@@ -2313,6 +3113,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_send_message(SendMessage self, SseSerializer serializer) {
+    sse_encode_room_id(self.roomId, serializer);
+    sse_encode_client_nonce(self.clientNonce, serializer);
+    sse_encode_String(self.body, serializer);
+  }
+
+  @protected
   void sse_encode_session_id(SessionId self, SseSerializer serializer) {
     sse_encode_Uuid(self.field0, serializer);
   }
@@ -2327,6 +3134,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_campus_summary(self.campuses, serializer);
     sse_encode_opt_box_autoadd_campus_id(self.activeCampusId, serializer);
     sse_encode_list_room(self.rooms, serializer);
+    sse_encode_opt_box_autoadd_room_id(self.activeRoomId, serializer);
     sse_encode_bool(self.busy, serializer);
     sse_encode_opt_box_autoadd_api_error(self.error, serializer);
   }
@@ -2351,6 +3159,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_timeline_entry(TimelineEntry self, SseSerializer serializer) {
+    sse_encode_client_nonce(self.clientNonce, serializer);
+    sse_encode_opt_box_autoadd_message_id(self.messageId, serializer);
+    sse_encode_account_id(self.authorId, serializer);
+    sse_encode_String(self.authorDisplayName, serializer);
+    sse_encode_bool(self.fromSelf, serializer);
+    sse_encode_String(self.body, serializer);
+    sse_encode_delivery_state(self.delivery, serializer);
+    sse_encode_opt_box_autoadd_message_rejection(self.rejection, serializer);
+  }
+
+  @protected
+  void sse_encode_timeline_snapshot(
+    TimelineSnapshot self,
+    SseSerializer serializer,
+  ) {
+    sse_encode_opt_box_autoadd_room_id(self.roomId, serializer);
+    sse_encode_list_timeline_entry(self.entries, serializer);
+    sse_encode_bool(self.syncing, serializer);
+    sse_encode_opt_box_autoadd_api_error(self.error, serializer);
+  }
+
+  @protected
   void sse_encode_u_16(int self, SseSerializer serializer) {
     serializer.buffer.putUint16(self);
   }
@@ -2358,6 +3189,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer) {
     serializer.buffer.putUint32(self);
+  }
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    serializer.buffer.putBigUint64(self);
   }
 
   @protected

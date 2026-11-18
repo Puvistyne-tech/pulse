@@ -47,4 +47,4 @@ enum ApiErrorCode {
       RustLib.instance.api.pulseProtocolApiApiErrorCodeHttpStatus(that: this);
 }
 
-enum InputField { email, displayName, password, slug }
+enum InputField { email, displayName, password, slug, messageBody }

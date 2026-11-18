@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::sync::LazyLock;
 
-use flutter_rust_bridge::StreamSink;
+use crate::frb_generated::StreamSink;
 use pulse_core::native::NativeClient;
 use pulse_core::unavailable_snapshot;
 use pulse_protocol::{

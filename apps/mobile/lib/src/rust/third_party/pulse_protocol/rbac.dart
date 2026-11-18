@@ -16,6 +16,7 @@ enum Permission {
   createRoom,
   manageMembers,
   manageCampus,
+  postMessage,
 }
 
 enum Role {

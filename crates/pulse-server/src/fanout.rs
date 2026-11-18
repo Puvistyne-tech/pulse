@@ -3,9 +3,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard, PoisonError};
 
 use futures_util::StreamExt;
-use pulse_protocol::{CampusId, RoomMessage};
+use pulse_protocol::{AccountId, CampusId, ServerFrame};
 use redis::AsyncCommands;
 use redis::aio::{MultiplexedConnection, PubSubSink, PubSubStream};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, broadcast};
 
 const FEED_CAPACITY: usize = 1024;
@@ -18,12 +19,19 @@ pub enum FanoutError {
     Payload(#[from] serde_json::Error),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FanoutEnvelope {
+    pub campus_id: CampusId,
+    pub account_id: Option<AccountId>,
+    pub frame: ServerFrame,
+}
+
 pub fn campus_channel(campus_id: CampusId) -> String {
     format!("pulse:campus:{campus_id}:messages")
 }
 
 struct CampusEntry {
-    sender: broadcast::Sender<RoomMessage>,
+    sender: broadcast::Sender<FanoutEnvelope>,
     generation: u64,
     feeds: usize,
 }
@@ -42,18 +50,18 @@ impl Inner {
     }
 
     fn deliver(&self, channel: &str, payload: &[u8]) {
-        let Ok(message) = serde_json::from_slice::<RoomMessage>(payload) else {
+        let Ok(envelope) = serde_json::from_slice::<FanoutEnvelope>(payload) else {
             return;
         };
-        if channel != campus_channel(message.campus_id) {
+        if channel != campus_channel(envelope.campus_id) {
             return;
         }
         let sender = self
             .campuses()
-            .get(&message.campus_id)
+            .get(&envelope.campus_id)
             .map(|entry| entry.sender.clone());
         if let Some(sender) = sender {
-            let _ = sender.send(message);
+            let _ = sender.send(envelope);
         }
     }
 }
@@ -64,7 +72,7 @@ pub struct Fanout {
 }
 
 pub struct CampusFeed {
-    receiver: broadcast::Receiver<RoomMessage>,
+    receiver: broadcast::Receiver<FanoutEnvelope>,
     campus_id: CampusId,
     generation: u64,
     inner: Arc<Inner>,
@@ -92,9 +100,9 @@ impl Fanout {
         }
     }
 
-    pub async fn publish(&self, message: &RoomMessage) -> Result<(), FanoutError> {
-        let payload = serde_json::to_string(message)?;
-        let channel = campus_channel(message.campus_id);
+    pub async fn publish(&self, envelope: &FanoutEnvelope) -> Result<(), FanoutError> {
+        let payload = serde_json::to_string(envelope)?;
+        let channel = campus_channel(envelope.campus_id);
         let mut publisher = self.inner.publisher.lock().await;
         let mut connection = match publisher.take() {
             Some(connection) => connection,
@@ -139,7 +147,7 @@ impl Fanout {
 }
 
 impl CampusFeed {
-    pub async fn recv(&mut self) -> Result<RoomMessage, broadcast::error::RecvError> {
+    pub async fn recv(&mut self) -> Result<FanoutEnvelope, broadcast::error::RecvError> {
         self.receiver.recv().await
     }
 }

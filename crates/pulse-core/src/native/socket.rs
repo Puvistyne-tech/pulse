@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use pulse_protocol::{ClientFrame, ClientSnapshot, Hello, ServerFrame, api_path};
@@ -12,6 +12,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
 use crate::client::{Client, LinkTarget};
 use crate::connection::{ConnectionCommand, ConnectionEvent};
+use crate::timeline::ThreadIntent;
 
 use super::http::HttpApiTransport;
 
@@ -43,6 +44,9 @@ pub(super) struct Shared {
     server_url: String,
     generation: AtomicU64,
     link: Mutex<Option<RunningLink>>,
+    started: Instant,
+    deadline_generation: AtomicU64,
+    deadline: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Shared {
@@ -56,6 +60,28 @@ impl Shared {
             server_url,
             generation: AtomicU64::new(0),
             link: Mutex::new(None),
+            started: Instant::now(),
+            deadline_generation: AtomicU64::new(0),
+            deadline: Mutex::new(None),
+        }
+    }
+
+    pub(super) fn now_ms(&self) -> u64 {
+        u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    pub(super) async fn arm_deadline(self: &Arc<Self>, deadline_ms: Option<u64>) {
+        let mut slot = self.deadline.lock().await;
+        if let Some(task) = slot.take() {
+            task.abort();
+        }
+        let generation = self.deadline_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Some(deadline_ms) = deadline_ms {
+            *slot = Some(tokio::spawn(run_deadline(
+                Arc::clone(self),
+                deadline_ms,
+                generation,
+            )));
         }
     }
 
@@ -117,6 +143,31 @@ impl Shared {
             return Err(Stale);
         }
         Ok(guard.0.drain_outbound())
+    }
+}
+
+async fn run_deadline(shared: Arc<Shared>, first_deadline_ms: u64, generation: u64) {
+    let mut deadline_ms = first_deadline_ms;
+    loop {
+        let wait = deadline_ms.saturating_sub(shared.now_ms());
+        tokio::time::sleep(Duration::from_millis(wait)).await;
+        let next = {
+            let mut guard = shared.core.lock().await;
+            if shared.deadline_generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let now_ms = shared.now_ms();
+            guard
+                .0
+                .thread_intent(ThreadIntent::ClockAdvanced { now_ms });
+            shared.publish(&guard.0);
+            guard.0.next_deadline_ms()
+        };
+        shared.wake.notify_one();
+        match next {
+            Some(next) => deadline_ms = next,
+            None => return,
+        }
     }
 }
 

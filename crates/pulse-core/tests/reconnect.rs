@@ -147,26 +147,29 @@ fn reconnect_sequences(#[case] script: Vec<(Step, Expected)>) {
 }
 
 #[rstest]
-#[case::same_campus_argument(CAMPUS_A, CAMPUS_A, ConnectionPhase::Connected, true)]
-#[case::other_campus_argument_is_ignored(CAMPUS_B, CAMPUS_A, ConnectionPhase::Connected, true)]
-#[case::other_campus_argument_welcome_rejected(
+#[case::same_campus_resumes(CAMPUS_A, CAMPUS_A, ConnectionPhase::Connected, true, 0)]
+#[case::other_campus_restarts_for_argument(CAMPUS_B, CAMPUS_B, ConnectionPhase::Connected, true, 1)]
+#[case::other_campus_rejects_stale_welcome(
     CAMPUS_B,
-    CAMPUS_B,
+    CAMPUS_A,
     ConnectionPhase::Disconnected,
-    false
+    false,
+    2
 )]
-fn resume_from_backoff_uses_stored_campus(
+fn resume_from_backoff_targets_argument_campus(
     #[case] argument: &str,
     #[case] welcome_campus: &str,
     #[case] expected_phase: ConnectionPhase,
     #[case] has_session: bool,
+    #[case] expected_closes: u32,
 ) {
     let mut transport =
         ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(welcome_campus)]);
     let resumed = block_on(handshake(backed_off(), &mut transport, campus(argument)));
     let snapshot = resumed.snapshot();
     assert_eq!(snapshot.connection, expected_phase);
-    assert_eq!(snapshot.campus_id, Some(campus(CAMPUS_A)));
+    assert_eq!(snapshot.campus_id, Some(campus(argument)));
     assert_eq!(snapshot.session_id.is_some(), has_session);
-    assert_eq!(transport.sent, vec![hello_frame(CAMPUS_A)]);
+    assert_eq!(transport.sent, vec![hello_frame(argument)]);
+    assert_eq!(transport.closes, expected_closes);
 }

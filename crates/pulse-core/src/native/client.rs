@@ -54,7 +54,7 @@ impl NativeClient {
         };
         let shared = Arc::clone(&self.shared);
         let handle = runtime.spawn(async move {
-            let (snapshot, target) = {
+            let snapshot = {
                 let mut guard = shared.core.lock().await;
                 let (client, api) = &mut *guard;
                 let snapshot = match intent {
@@ -68,9 +68,9 @@ impl NativeClient {
                     Intent::Discard(client_nonce) => client.discard_message(client_nonce),
                 };
                 shared.publish(client);
-                (snapshot, client.link_target())
+                shared.sync_link(client.link_target()).await;
+                snapshot
             };
-            shared.sync_link(target).await;
             shared.wake.notify_one();
             snapshot
         });

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard, PoisonError};
 
 use futures_util::StreamExt;
@@ -23,6 +24,7 @@ pub fn campus_channel(campus_id: CampusId) -> String {
 
 struct CampusEntry {
     sender: broadcast::Sender<RoomMessage>,
+    generation: u64,
     feeds: usize,
 }
 
@@ -31,6 +33,7 @@ struct Inner {
     publisher: Mutex<Option<MultiplexedConnection>>,
     subscriber: Mutex<Option<PubSubSink>>,
     campuses: StdMutex<HashMap<CampusId, CampusEntry>>,
+    generations: AtomicU64,
 }
 
 impl Inner {
@@ -63,7 +66,7 @@ pub struct Fanout {
 pub struct CampusFeed {
     receiver: broadcast::Receiver<RoomMessage>,
     campus_id: CampusId,
-    sender: broadcast::Sender<RoomMessage>,
+    generation: u64,
     inner: Arc<Inner>,
 }
 
@@ -84,6 +87,7 @@ impl Fanout {
                 publisher: Mutex::new(None),
                 subscriber: Mutex::new(None),
                 campuses: StdMutex::new(HashMap::new()),
+                generations: AtomicU64::new(0),
             }),
         }
     }
@@ -111,23 +115,20 @@ impl Fanout {
             tokio::spawn(dispatch(Arc::clone(&self.inner), stream));
             *subscriber = Some(sink);
         }
-        let (sender, receiver, first) = {
+        let (generation, receiver, first) = {
             let mut campuses = self.inner.campuses();
             let entry = campuses.entry(campus_id).or_insert_with(|| CampusEntry {
                 sender: broadcast::channel(FEED_CAPACITY).0,
+                generation: self.inner.generations.fetch_add(1, Ordering::Relaxed),
                 feeds: 0,
             });
             entry.feeds += 1;
-            (
-                entry.sender.clone(),
-                entry.sender.subscribe(),
-                entry.feeds == 1,
-            )
+            (entry.generation, entry.sender.subscribe(), entry.feeds == 1)
         };
         let feed = CampusFeed {
             receiver,
             campus_id,
-            sender,
+            generation,
             inner: Arc::clone(&self.inner),
         };
         if first && let Some(sink) = subscriber.as_mut() {
@@ -150,13 +151,13 @@ impl Drop for CampusFeed {
         };
         let inner = Arc::clone(&self.inner);
         let campus_id = self.campus_id;
-        let sender = self.sender.clone();
+        let generation = self.generation;
         handle.spawn(async move {
             let mut subscriber = inner.subscriber.lock().await;
             let last = {
                 let mut campuses = inner.campuses();
                 match campuses.get_mut(&campus_id) {
-                    Some(entry) if entry.sender.same_channel(&sender) => {
+                    Some(entry) if entry.generation == generation => {
                         entry.feeds = entry.feeds.saturating_sub(1);
                         if entry.feeds == 0 {
                             campuses.remove(&campus_id);

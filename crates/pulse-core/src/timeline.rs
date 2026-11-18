@@ -218,6 +218,12 @@ impl TimelineMachine {
                 if let Some(log) = self.logs.get_mut(&unavailable.room_id) {
                     log.syncing = false;
                 }
+                self.outbox
+                    .values_mut()
+                    .filter(|outgoing| {
+                        outgoing.room_id == unavailable.room_id && outgoing.failed.is_none()
+                    })
+                    .for_each(|outgoing| outgoing.failed = Some(MessageRejection::UnknownRoom));
                 Vec::new()
             }
             ServerFrame::MessageRejected(rejected) => {

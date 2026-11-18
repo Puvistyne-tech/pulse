@@ -35,7 +35,7 @@ fn conflict_on_slug(error: sqlx::Error) -> ApiFailure {
 }
 
 pub async fn campus_role(
-    db: &PgPool,
+    executor: impl sqlx::PgExecutor<'_>,
     campus_id: CampusId,
     account_id: AccountId,
 ) -> Result<Option<Role>, sqlx::Error> {
@@ -46,7 +46,7 @@ pub async fn campus_role(
     )
     .bind(campus_id.as_uuid())
     .bind(account_id.as_uuid())
-    .fetch_optional(db)
+    .fetch_optional(executor)
     .await?;
     text.as_deref().map(parse_role).transpose()
 }

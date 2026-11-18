@@ -19,3 +19,9 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Move shared event and machine builders into the crate's `tests/fixtures/mod.rs` as soon as a second test file needs them.
 - Give every snapshot field its own expected column in table tests; never derive expectations from another column.
 - Apply campus-mismatch resets in `handshake()` to every non-Disconnected phase.
+- Normalize every user-supplied text field through one `normalize_*` function in `pulse-protocol::validation` and store its output; never trim inline in the server.
+- Add a timeout-wrapped concurrent same-key test for every new unique constraint (one success, N-1 conflicts, exact row counts).
+- Plan frb regeneration in the same slice as any change to a type reachable from `apps/mobile/rust`; merge the core branch into the shells branch and regenerate there before anything reaches `main`.
+- `cargo test --workspace` needs `docker compose up -d postgres`; server tests create a fresh `pulse_test_*` database per test.
+- Wrap dynamic SQL in `sqlx::AssertSqlSafe(..)` under sqlx 0.9; use `Uuid::now_v7()` since the workspace enables only `v7`.
+- Use `sed -i ''` on macOS and check `git diff --stat` after every scripted edit.

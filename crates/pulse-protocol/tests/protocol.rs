@@ -1,3 +1,6 @@
+mod common;
+
+use common::{assert_wire, room_message, room_message_json};
 use pulse_protocol::fixtures::{
     ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, AUTH_TOKEN_A, CAMPUS_A, CAMPUS_B, EMOJI_A, EMOJI_B, MESSAGE_A,
     MESSAGE_B, MESSAGE_C, NONCE_A, NONCE_B, ROOM_A, ROOM_B, SESSION_A, VALID_PASSWORD, auth_token,
@@ -13,14 +16,15 @@ use pulse_protocol::{
     REACTION_EMOJI_MAX_CHARS, REACTION_KINDS_MAX, REACTION_PALETTE, React, ReactionAction,
     ReactionRejected, ReactionRejection, ReactionSummary, ReactionTally, ReplyPreview, Role, Room,
     RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced, RoomUnavailable, SYNC_MAX_ROOMS,
-    SYNC_PAGE_LIMIT, SegmentKind, SendMessage, ServerFrame, SessionId, SessionSnapshot,
-    SetThreadSubscription, SetTopicTitle, SignInRequest, SignUpRequest, SubscriptionOrigin,
-    SubscriptionState, SyncInbox, SyncRooms, SyncThread, TOPIC_TITLE_MAX_CHARS, ThreadChanged,
-    ThreadPreview, ThreadRejected, ThreadRejection, ThreadSnapshot, ThreadSummary, ThreadSynced,
-    TimelineEntry, TimelineSnapshot, Validate, VersionMismatch, Welcome, api_path, body_segments,
-    close_code, extract_mentions, mention_token, normalize_display_name, normalize_email,
-    normalize_message_body, normalize_reaction_emoji, normalize_topic_title, role_permits,
-    validate_display_name, validate_password, validate_slug,
+    SYNC_PAGE_LIMIT, SearchSnapshot, SegmentKind, SendMessage, ServerFrame, SessionId,
+    SessionSnapshot, SetThreadSubscription, SetTopicTitle, ShelfSnapshot, SignInRequest,
+    SignUpRequest, SubscriptionOrigin, SubscriptionState, SyncInbox, SyncRooms, SyncThread,
+    TOPIC_TITLE_MAX_CHARS, ThreadChanged, ThreadPreview, ThreadRejected, ThreadRejection,
+    ThreadSnapshot, ThreadSummary, ThreadSynced, TimelineEntry, TimelineSnapshot, Validate,
+    VaultSnapshot, VersionMismatch, Welcome, api_path, body_segments, close_code, extract_mentions,
+    mention_token, normalize_display_name, normalize_email, normalize_message_body,
+    normalize_reaction_emoji, normalize_topic_title, role_permits, validate_display_name,
+    validate_password, validate_slug,
 };
 use rstest::rstest;
 use serde::Serialize;
@@ -28,17 +32,6 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::fmt::Debug;
 use uuid::Uuid;
-
-fn assert_wire<T>(value: T, expected: Value)
-where
-    T: Serialize + DeserializeOwned + PartialEq + Debug,
-{
-    assert_eq!(serde_json::to_value(&value).expect("serialize"), expected);
-    assert_eq!(
-        serde_json::from_value::<T>(expected).expect("deserialize"),
-        value
-    );
-}
 
 fn campus_text() -> String {
     CAMPUS_A.to_string()
@@ -114,47 +107,11 @@ fn empty_timeline() -> TimelineSnapshot {
         syncing: false,
         error: None,
         reaction_palette: Vec::new(),
+        drafts: Vec::new(),
+        focus_message_id: None,
+        can_pin: false,
+        can_upload: false,
     }
-}
-
-fn room_message(message_id: MessageId, previous: Option<MessageId>) -> RoomMessage {
-    RoomMessage {
-        message_id,
-        previous_message_id: previous,
-        campus_id: CAMPUS_A,
-        room_id: ROOM_A,
-        author_id: ACCOUNT_A,
-        author_display_name: "Ada".to_owned(),
-        client_nonce: NONCE_A,
-        body: "hello".to_owned(),
-        thread_root_id: None,
-        topic_title: None,
-        reply_count: 0,
-        latest_reply_id: None,
-        mentions: Vec::new(),
-        reactions: Vec::new(),
-        activity_seq: 0,
-    }
-}
-
-fn room_message_json(message_id: MessageId, previous: Option<MessageId>) -> Value {
-    json!({
-        "message_id": message_id.to_string(),
-        "previous_message_id": previous.map(|id| id.to_string()),
-        "campus_id": CAMPUS_A.to_string(),
-        "room_id": ROOM_A.to_string(),
-        "author_id": ACCOUNT_A.to_string(),
-        "author_display_name": "Ada",
-        "client_nonce": NONCE_A.to_string(),
-        "body": "hello",
-        "thread_root_id": null,
-        "topic_title": null,
-        "reply_count": 0,
-        "latest_reply_id": null,
-        "mentions": [],
-        "reactions": [],
-        "activity_seq": 0,
-    })
 }
 
 fn timeline_entry(delivery: DeliveryState, rejection: Option<MessageRejection>) -> TimelineEntry {
@@ -172,6 +129,10 @@ fn timeline_entry(delivery: DeliveryState, rejection: Option<MessageRejection>) 
         thread: None,
         delivery,
         rejection,
+        attachments: Vec::new(),
+        pending_drafts: Vec::new(),
+        pinned: false,
+        shelved: false,
     }
 }
 
@@ -180,6 +141,7 @@ fn text_segment(text: &str) -> BodySegment {
         kind: SegmentKind::Text,
         text: text.to_owned(),
         account_id: None,
+        url: None,
     }
 }
 
@@ -196,12 +158,52 @@ fn timeline_entry_json(
         "author_mention_token": mention_token(ACCOUNT_A),
         "from_self": true,
         "body": "hello",
-        "segments": [{"kind": "text", "text": "hello", "account_id": null}],
+        "segments": [{"kind": "text", "text": "hello", "account_id": null, "url": null}],
         "thread_root_id": null,
         "reactions": [],
         "thread": null,
         "delivery": delivery,
         "rejection": rejection,
+        "attachments": [],
+        "pending_drafts": [],
+        "pinned": false,
+        "shelved": false,
+    })
+}
+
+fn search_default_json() -> Value {
+    json!({
+        "open": false,
+        "query": "",
+        "hits": [],
+        "selected_index": null,
+        "searching": false,
+        "error": null,
+    })
+}
+
+fn vault_default_json() -> Value {
+    json!({
+        "open": false,
+        "room_id": null,
+        "tab": "media",
+        "entries": [],
+        "loading": false,
+        "has_more": false,
+        "error": null,
+    })
+}
+
+fn shelf_default_json() -> Value {
+    json!({
+        "open": false,
+        "due": [],
+        "upcoming": [],
+        "done": [],
+        "due_count": 0,
+        "latest_reminder": null,
+        "presets": [],
+        "error": null,
     })
 }
 
@@ -371,7 +373,7 @@ fn disconnected_network() -> ConnectionSnapshot {
     }),
     json!({
         "type": "hello",
-        "protocol_version": 3,
+        "protocol_version": 4,
         "campus_id": campus_text(),
         "auth_token": "fixture-token-a",
     }),
@@ -383,6 +385,7 @@ fn disconnected_network() -> ConnectionSnapshot {
         client_nonce: NONCE_A,
         body: "hello".to_owned(),
         thread_root_id: None,
+        attachment_ids: Vec::new(),
     }),
     json!({
         "type": "send_message",
@@ -390,6 +393,7 @@ fn disconnected_network() -> ConnectionSnapshot {
         "client_nonce": NONCE_A.to_string(),
         "body": "hello",
         "thread_root_id": null,
+        "attachment_ids": [],
     }),
 )]
 #[case::send_reply(
@@ -398,6 +402,7 @@ fn disconnected_network() -> ConnectionSnapshot {
         client_nonce: NONCE_B,
         body: "reply".to_owned(),
         thread_root_id: Some(MESSAGE_A),
+        attachment_ids: Vec::new(),
     }),
     json!({
         "type": "send_message",
@@ -405,6 +410,7 @@ fn disconnected_network() -> ConnectionSnapshot {
         "client_nonce": NONCE_B.to_string(),
         "body": "reply",
         "thread_root_id": MESSAGE_A.to_string(),
+        "attachment_ids": [],
     }),
 )]
 #[case::sync_rooms(
@@ -521,7 +527,7 @@ fn client_frames_match_wire_format(#[case] frame: ClientFrame, #[case] expected:
     }),
     json!({
         "type": "welcome",
-        "protocol_version": 3,
+        "protocol_version": 4,
         "campus_id": CAMPUS_A.to_string(),
         "session_id": SESSION_A.to_string(),
         "account_id": ACCOUNT_A.to_string(),
@@ -534,7 +540,7 @@ fn client_frames_match_wire_format(#[case] frame: ClientFrame, #[case] expected:
         supported: ProtocolVersion::CURRENT,
         received: ProtocolVersion(99),
     }),
-    json!({"type": "version_mismatch", "supported": 3, "received": 99}),
+    json!({"type": "version_mismatch", "supported": 4, "received": 99}),
 )]
 #[case::handshake_rejected_campus(
     ServerFrame::HandshakeRejected(HandshakeRejected { reason: HandshakeRejection::CampusUnavailable }),
@@ -837,11 +843,14 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
         timeline: empty_timeline(),
         thread: ThreadSnapshot::default(),
         inbox: InboxSnapshot::default(),
+        search: SearchSnapshot::default(),
+        vault: VaultSnapshot::default(),
+        shelf: ShelfSnapshot::default(),
     },
     json!({
         "sequence": 0,
         "network": {
-            "protocol_version": 3,
+            "protocol_version": 4,
             "connection": "disconnected",
             "retry_in_ms": null,
             "campus_id": null,
@@ -866,6 +875,10 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "syncing": false,
             "error": null,
             "reaction_palette": [],
+            "drafts": [],
+            "focus_message_id": null,
+            "can_pin": false,
+            "can_upload": false,
         },
         "thread": {
             "room_id": null,
@@ -883,6 +896,9 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "selected_root_message_id": null,
             "replying": false,
         },
+        "search": search_default_json(),
+        "vault": vault_default_json(),
+        "shelf": shelf_default_json(),
     }),
 )]
 #[case::signed_in_rejected(
@@ -920,6 +936,10 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             syncing: true,
             error: Some(ApiError::invalid(InputField::MessageBody)),
             reaction_palette: vec![EMOJI_A.to_owned(), EMOJI_B.to_owned()],
+            drafts: Vec::new(),
+            focus_message_id: Some(MESSAGE_B),
+            can_pin: true,
+            can_upload: true,
         },
         thread: ThreadSnapshot {
             room_id: Some(ROOM_A),
@@ -937,17 +957,20 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             selected_root_message_id: Some(MESSAGE_A),
             replying: true,
         },
+        search: SearchSnapshot::default(),
+        vault: VaultSnapshot::default(),
+        shelf: ShelfSnapshot::default(),
     },
     json!({
         "sequence": 42,
         "network": {
-            "protocol_version": 3,
+            "protocol_version": 4,
             "connection": "backoff",
             "retry_in_ms": 1000,
             "campus_id": CAMPUS_A.to_string(),
             "session_id": SESSION_A.to_string(),
             "attempt": 2,
-            "rejection": {"supported": 3, "received": 1},
+            "rejection": {"supported": 4, "received": 1},
             "handshake_rejection": "campus_unavailable",
         },
         "session": {
@@ -969,6 +992,10 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "syncing": true,
             "error": {"code": "invalid_input", "field": "message_body"},
             "reaction_palette": [EMOJI_A, EMOJI_B],
+            "drafts": [],
+            "focus_message_id": MESSAGE_B.to_string(),
+            "can_pin": true,
+            "can_upload": true,
         },
         "thread": {
             "room_id": ROOM_A.to_string(),
@@ -986,6 +1013,9 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "selected_root_message_id": MESSAGE_A.to_string(),
             "replying": true,
         },
+        "search": search_default_json(),
+        "vault": vault_default_json(),
+        "shelf": shelf_default_json(),
     }),
 )]
 fn client_snapshot_matches_wire_format(#[case] snapshot: ClientSnapshot, #[case] expected: Value) {
@@ -1021,6 +1051,14 @@ fn client_snapshot_matches_wire_format(#[case] snapshot: ClientSnapshot, #[case]
 #[case::guest_react(Role::Guest, Permission::React, true)]
 #[case::guest_manage_members(Role::Guest, Permission::ManageMembers, false)]
 #[case::guest_manage_campus(Role::Guest, Permission::ManageCampus, false)]
+#[case::owner_pin_message(Role::Owner, Permission::PinMessage, true)]
+#[case::owner_upload_attachment(Role::Owner, Permission::UploadAttachment, true)]
+#[case::admin_pin_message(Role::Admin, Permission::PinMessage, true)]
+#[case::admin_upload_attachment(Role::Admin, Permission::UploadAttachment, true)]
+#[case::member_pin_message(Role::Member, Permission::PinMessage, true)]
+#[case::member_upload_attachment(Role::Member, Permission::UploadAttachment, true)]
+#[case::guest_pin_message(Role::Guest, Permission::PinMessage, false)]
+#[case::guest_upload_attachment(Role::Guest, Permission::UploadAttachment, false)]
 fn role_permission_matrix(
     #[case] role: Role,
     #[case] permission: Permission,
@@ -1032,7 +1070,7 @@ fn role_permission_matrix(
 #[test]
 fn role_and_permission_lists_are_complete() {
     assert_eq!(Role::ALL.len(), 4);
-    assert_eq!(Permission::ALL.len(), 7);
+    assert_eq!(Permission::ALL.len(), 9);
 }
 
 #[rstest]
@@ -1061,6 +1099,7 @@ fn send_message_validation(#[case] body: &str, #[case] field: Option<InputField>
         client_nonce: NONCE_A,
         body: body.to_owned(),
         thread_root_id: None,
+        attachment_ids: Vec::new(),
     };
     assert_eq!(
         request.validate().err().map(|error| error.field),
@@ -1314,8 +1353,8 @@ fn invalid_ids_are_rejected(#[case] text: &str) {
 }
 
 #[test]
-fn protocol_version_is_three() {
-    assert_eq!(ProtocolVersion::CURRENT, ProtocolVersion(3));
+fn protocol_version_is_four() {
+    assert_eq!(ProtocolVersion::CURRENT, ProtocolVersion(4));
 }
 
 #[rstest]
@@ -1628,6 +1667,7 @@ fn segment(kind: SegmentKind, text: &str, account_id: Option<AccountId>) -> Body
         kind,
         text: text.to_owned(),
         account_id,
+        url: None,
     }
 }
 

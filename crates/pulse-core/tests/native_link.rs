@@ -7,17 +7,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use fixtures::{
-    ACCOUNT_A, CAMPUS_A, CAMPUS_B, ROOM_A, ROOM_B, auth_session, campus_list, campus_summary,
-    confirmed_key, entry_keys, hello_frame, message_id, pending_key, room_message, send_frame,
-    sign_in_request, subscription_frame, sync_frame, sync_inbox_frame, sync_thread_frame, token_a,
-    welcome_for,
+    ACCOUNT_A, CAMPUS_A, CAMPUS_B, ROOM_A, ROOM_B, attachment_id, auth_session, campus_list,
+    campus_summary, chain_message, confirmed_key, entry_keys, hello_frame, message_id, pending_key,
+    room_message, send_frame, sign_in_request, subscription_frame, sync_frame, sync_inbox_frame,
+    sync_shelf_frame, sync_thread_frame, token_a, vault_item, vault_synced_frame, welcome_for,
 };
 use futures_util::{SinkExt, StreamExt};
 use pulse_core::THREAD_VIEW_FOLLOW_MS;
-use pulse_core::native::{NativeClient, websocket_url};
+use pulse_core::native::{ClientStorage, NativeClient, websocket_url};
 use pulse_protocol::{
     CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Role, Room, RoomList, ServerFrame,
-    SubscriptionOrigin, SubscriptionState, api_path,
+    SubscriptionOrigin, SubscriptionState, UploadState, UploadTicket, VaultTab, api_path,
 };
 use rstest::rstest;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -57,6 +57,23 @@ fn react(connection: usize, frame: &ClientFrame) -> Reaction {
             ))],
             close: false,
         },
+        ClientFrame::SyncVault(request) => Reaction {
+            replies: vec![vault_synced_frame(
+                request.room_id,
+                request.tab,
+                (1..=2)
+                    .map(|index| {
+                        vault_item(
+                            chain_message(request.room_id, index),
+                            None,
+                            Some("https://example.org/a"),
+                        )
+                    })
+                    .collect(),
+                None,
+            )],
+            close: false,
+        },
         _ => Reaction {
             replies: vec![],
             close: false,
@@ -93,12 +110,29 @@ fn http_response(status: &str, body: &[u8]) -> Vec<u8> {
     response
 }
 
-fn route(request_line: &str) -> Vec<u8> {
+fn route(request_line: &str, body: &str, address: SocketAddr) -> Vec<u8> {
     let mut parts = request_line.split_whitespace();
     let (method, path) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
     let json =
         |value: Result<Vec<u8>, serde_json::Error>| http_response("200 OK", &value.expect("json"));
+    let uploads = api_path::campus_room_uploads(CAMPUS_A, ROOM_A);
     match (method, path) {
+        ("POST", uploads_path) if uploads_path == uploads => {
+            let target = if body.contains("denied") {
+                "denied"
+            } else {
+                "accepted"
+            };
+            let ticket = UploadTicket {
+                attachment_id: attachment_id(1),
+                put_url: format!("http://{address}/objects/{target}"),
+                content_type: "image/png".to_owned(),
+                expires_at_ms: 1,
+            };
+            http_response("201 Created", &serde_json::to_vec(&ticket).expect("json"))
+        }
+        ("PUT", "/objects/accepted") => http_response("200 OK", b"{}"),
+        ("PUT", _) => http_response("403 Forbidden", br#"{"code":"forbidden","field":null}"#),
         ("POST", api_path::AUTH_TOKENS) => json(serde_json::to_vec(&auth_session())),
         ("GET", api_path::CAMPUSES) => json(serde_json::to_vec(&campus_list(vec![
             campus_summary(CAMPUS_A, "alpha", Role::Member),
@@ -132,10 +166,10 @@ fn content_length(head: &str) -> usize {
         .unwrap_or(0)
 }
 
-async fn serve_http(mut stream: TcpStream) {
+async fn serve_http(mut stream: TcpStream, address: SocketAddr) {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 2048];
-    let head = loop {
+    let (head, body) = loop {
         let Ok(read) = stream.read(&mut chunk).await else {
             return;
         };
@@ -146,12 +180,15 @@ async fn serve_http(mut stream: TcpStream) {
         if let Some(end) = header_end(&buffer) {
             let head = String::from_utf8_lossy(&buffer[..end]).into_owned();
             if buffer.len() >= end + content_length(&head) {
-                break head;
+                let body = String::from_utf8_lossy(&buffer[end..]).into_owned();
+                break (head, body);
             }
         }
     };
     let request_line = head.lines().next().unwrap_or("").to_owned();
-    let _ = stream.write_all(&route(&request_line)).await;
+    let _ = stream
+        .write_all(&route(&request_line, &body, address))
+        .await;
     let _ = stream.shutdown().await;
 }
 
@@ -212,7 +249,7 @@ impl FakeServer {
                         let connection = connections.fetch_add(1, Ordering::SeqCst);
                         serve_socket(stream, connection, sender).await;
                     } else {
-                        serve_http(stream).await;
+                        serve_http(stream, address).await;
                     }
                 });
             }
@@ -273,7 +310,7 @@ fn websocket_url_follows_server_scheme(#[case] server_url: &str, #[case] expecte
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
     let mut server = FakeServer::start().await;
-    let client = NativeClient::new(server.url()).expect("client");
+    let client = NativeClient::new(server.url(), ClientStorage::Memory).expect("client");
     let mut snapshots = watch(&client);
     let signed_in = within(client.sign_in(sign_in_request())).await;
     assert_eq!(signed_in.session.active_campus_id, Some(CAMPUS_A));
@@ -285,6 +322,7 @@ async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
     );
     assert_eq!(server.next_frame().await, (0, all_rooms.clone()));
     assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
+    assert_eq!(server.next_frame().await, (0, sync_shelf_frame()));
     snapshot_where(&mut snapshots, |snapshot| {
         snapshot.network.connection == ConnectionPhase::Connected
     })
@@ -302,6 +340,7 @@ async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
     );
     assert_eq!(server.next_frame().await, (1, all_rooms));
     assert_eq!(server.next_frame().await, (1, sync_inbox_frame()));
+    assert_eq!(server.next_frame().await, (1, sync_shelf_frame()));
     assert_eq!(
         server.next_frame().await,
         (1, send_frame(ROOM_A, client_nonce, "hello"))
@@ -327,7 +366,7 @@ async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn campus_switch_replaces_the_link_and_resets_timeline() {
     let mut server = FakeServer::start().await;
-    let client = NativeClient::new(server.url()).expect("client");
+    let client = NativeClient::new(server.url(), ClientStorage::Memory).expect("client");
     let mut snapshots = watch(&client);
     within(client.sign_in(sign_in_request())).await;
     assert_eq!(
@@ -344,6 +383,7 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
         (0, sync_frame(&[(ROOM_A, None), (ROOM_B, None)]))
     );
     assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
+    assert_eq!(server.next_frame().await, (0, sync_shelf_frame()));
     let switched = within(client.select_campus(CAMPUS_B)).await;
     assert_eq!(switched.session.active_campus_id, Some(CAMPUS_B));
     assert!(switched.timeline.entries.is_empty());
@@ -356,6 +396,7 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
         (1, sync_frame(&[(ROOM_B, None)]))
     );
     assert_eq!(server.next_frame().await, (1, sync_inbox_frame()));
+    assert_eq!(server.next_frame().await, (1, sync_shelf_frame()));
     let settled = snapshot_where(&mut snapshots, |snapshot| {
         snapshot.network.connection == ConnectionPhase::Connected
             && snapshot.network.campus_id == Some(CAMPUS_B)
@@ -368,7 +409,7 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_intents_during_campus_switch_leave_only_the_new_link() {
     let mut server = FakeServer::start().await;
-    let client = NativeClient::new(server.url()).expect("client");
+    let client = NativeClient::new(server.url(), ClientStorage::Memory).expect("client");
     let mut snapshots = watch(&client);
     within(client.sign_in(sign_in_request())).await;
     snapshot_where(&mut snapshots, |snapshot| {
@@ -424,8 +465,10 @@ const FOLLOW_MARGIN: Duration = Duration::from_millis(2500);
 const FOLLOW_DELAY: Duration = Duration::from_millis(THREAD_VIEW_FOLLOW_MS);
 const FOLLOW_EARLIEST: Duration = Duration::from_millis(THREAD_VIEW_FOLLOW_MS - 100);
 
-async fn connected_client(server: &mut FakeServer) -> NativeClient {
-    let client = NativeClient::new(server.url()).expect("client");
+async fn connected_watching(
+    server: &mut FakeServer,
+) -> (NativeClient, UnboundedReceiver<ClientSnapshot>) {
+    let client = NativeClient::new(server.url(), ClientStorage::Memory).expect("client");
     let mut snapshots = watch(&client);
     within(client.sign_in(sign_in_request())).await;
     snapshot_where(&mut snapshots, |snapshot| {
@@ -441,7 +484,12 @@ async fn connected_client(server: &mut FakeServer) -> NativeClient {
         (0, sync_frame(&[(ROOM_A, None), (ROOM_B, None)]))
     );
     assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
-    client
+    assert_eq!(server.next_frame().await, (0, sync_shelf_frame()));
+    (client, snapshots)
+}
+
+async fn connected_client(server: &mut FakeServer) -> NativeClient {
+    connected_watching(server).await.0
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -481,4 +529,95 @@ async fn closing_before_the_view_delay_sends_no_follow() {
     let silent = tokio::time::timeout(FOLLOW_DELAY + FOLLOW_MARGIN, server.next_frame()).await;
     assert!(silent.is_err());
     assert_eq!(server.buffered(), vec![]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn vault_pages_feed_offline_search_through_the_effect_runner() {
+    let mut server = FakeServer::start().await;
+    let (client, mut snapshots) = connected_watching(&mut server).await;
+    within(client.open_vault(ROOM_A, VaultTab::Links)).await;
+    snapshot_where(&mut snapshots, |snapshot| {
+        snapshot.vault.entries.len() == 2 && !snapshot.vault.loading
+    })
+    .await;
+    within(client.toggle_search()).await;
+    within(client.search("peer".to_owned())).await;
+    let found = snapshot_where(&mut snapshots, |snapshot| {
+        snapshot.search.hits.len() == 2 && !snapshot.search.searching
+    })
+    .await;
+    assert_eq!(
+        found
+            .search
+            .hits
+            .iter()
+            .map(|hit| hit.message_id)
+            .collect::<Vec<_>>(),
+        vec![message_id(2), message_id(1)]
+    );
+    assert_eq!(found.search.selected_index, Some(0));
+    let none = within(client.search("zzz".to_owned())).await;
+    assert!(none.search.query == "zzz");
+    let empty = snapshot_where(&mut snapshots, |snapshot| {
+        snapshot.search.query == "zzz" && !snapshot.search.searching
+    })
+    .await;
+    assert!(empty.search.hits.is_empty());
+    let observed = server.buffered();
+    assert!(
+        observed
+            .iter()
+            .any(|(_, frame)| matches!(frame, ClientFrame::SyncVault(_)))
+    );
+}
+
+#[rstest]
+#[case::accepted_upload("a.png", UploadState::Uploaded, true)]
+#[case::storage_refuses_the_put("denied.png", UploadState::Failed, false)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn attached_files_upload_before_the_message_is_sent(
+    #[case] file_name: &str,
+    #[case] expected: UploadState,
+    #[case] message_sent: bool,
+) {
+    let mut server = FakeServer::start().await;
+    let (client, mut snapshots) = connected_watching(&mut server).await;
+    within(client.attach_file(ROOM_A, file_name.to_owned(), vec![1, 2, 3])).await;
+    let settled = snapshot_where(&mut snapshots, |snapshot| {
+        snapshot
+            .timeline
+            .drafts
+            .iter()
+            .any(|draft| draft.upload != UploadState::Uploading)
+    })
+    .await;
+    assert_eq!(settled.timeline.drafts.len(), 1);
+    assert_eq!(settled.timeline.drafts[0].upload, expected);
+    assert_eq!(settled.timeline.drafts[0].byte_size, 3);
+    if !message_sent {
+        let sent = within(client.send_message(ROOM_A, String::new())).await;
+        assert_eq!(sent.timeline.entries.len(), 1);
+        assert_eq!(
+            sent.timeline.entries[0].rejection,
+            Some(pulse_protocol::MessageRejection::InvalidAttachment)
+        );
+        return;
+    }
+    within(client.send_message(ROOM_A, String::new())).await;
+    let frame = within(async {
+        loop {
+            let (_, frame) = server.next_frame().await;
+            if matches!(frame, ClientFrame::SendMessage(_)) {
+                return frame;
+            }
+        }
+    })
+    .await;
+    match frame {
+        ClientFrame::SendMessage(request) => {
+            assert_eq!(request.attachment_ids, vec![attachment_id(1)]);
+            assert_eq!(request.room_id, ROOM_A);
+        }
+        other => panic!("unexpected frame {other:?}"),
+    }
 }

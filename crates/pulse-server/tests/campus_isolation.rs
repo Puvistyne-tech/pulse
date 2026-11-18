@@ -5,16 +5,20 @@ use std::collections::HashSet;
 use axum::http::{Method, StatusCode};
 use common::{
     Observed, SCENARIO_DEADLINE, api_raw, campus_for, campus_with_owner, campuses_of, count_rows,
-    created_messages, directory_counts, expect_frame, frames_until_pong, fresh_state, grant_role,
-    handshake_outcome, joined_socket, mark_read, member_session, message_count, next_of, posted,
-    react, rooms_of, send, send_message, send_reply, set_subscription, set_title, sibling_state,
-    signed_up, spawn_server_with, subscribed_socket, sync_rooms, sync_thread, tally_race,
+    created_messages, directory_counts, download_tickets_of, expect_frame, frames_until_pong,
+    fresh_state, grant_role, handshake_outcome, joined_socket, mark_read, member_session,
+    message_count, next_of, parsed_tickets, pin_count, pin_frame, posted, react, rooms_of,
+    seed_attachments, seed_links, seed_messages, seed_pins, seed_shelf, send, send_message,
+    send_reply, set_subscription, set_title, shelf_frame, shelf_state_of, sibling_state, signed_up,
+    spawn_server_with, subscribed_socket, sync_rooms, sync_shelf_frame, sync_thread, tally_race,
+    vault_frame,
 };
 use pulse_protocol::fixtures::{CAMPUS_A, CAMPUS_B, EMOJI_A, NONCE_A, NONCE_B};
 use pulse_protocol::{
     AuthToken, CampusCreated, CampusId, ClientNonce, DEFAULT_ROOM_SLUGS, HandshakeRejected,
-    HandshakeRejection, MessageRejected, MessageRejection, ReactionAction, ReactionRejection, Role,
-    RoomUnavailable, ServerFrame, SubscriptionOrigin, SubscriptionState, ThreadRejection, api_path,
+    HandshakeRejection, MessageRejected, MessageRejection, PinRejection, ReactionAction,
+    ReactionRejection, Role, RoomUnavailable, ServerFrame, ShelfAction, ShelfRejection,
+    SubscriptionOrigin, SubscriptionState, ThreadRejection, VaultRejection, VaultTab, api_path,
     mention_token,
 };
 use pulse_server::fanout::campus_channel;
@@ -682,6 +686,148 @@ async fn inbox_sync_lists_only_threads_of_the_connected_campus() {
         .await;
         let (mut outsider, _) = joined_socket(addr, south.id, &bystander.token).await;
         assert!(common::inbox_of(&mut outsider).await.is_empty());
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MediaProbe {
+    PinForeignMessage,
+    UnpinForeignMessage,
+    Vault(VaultTab),
+    SaveForeignMessage,
+    DownloadForeignAttachment,
+    SyncShelfOfSharedAccount,
+}
+
+#[rstest]
+#[case::pin(MediaProbe::PinForeignMessage)]
+#[case::unpin(MediaProbe::UnpinForeignMessage)]
+#[case::vault_media(MediaProbe::Vault(VaultTab::Media))]
+#[case::vault_files(MediaProbe::Vault(VaultTab::Files))]
+#[case::vault_links(MediaProbe::Vault(VaultTab::Links))]
+#[case::vault_pinned(MediaProbe::Vault(VaultTab::Pinned))]
+#[case::shelf_save(MediaProbe::SaveForeignMessage)]
+#[case::download(MediaProbe::DownloadForeignAttachment)]
+#[case::shelf_sync(MediaProbe::SyncShelfOfSharedAccount)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn media_vault_and_shelf_requests_never_cross_a_campus(#[case] probe: MediaProbe) {
+    timeout(SCENARIO_DEADLINE, async {
+        let state = fresh_state().await;
+        let near = campus_with_owner(&state, "near@example.org", "north-quad").await;
+        let far = campus_with_owner(&state, "far@example.org", "south-quad").await;
+        let (near_account, far_account) =
+            (near.owner.account.account_id, far.owner.account.account_id);
+        grant_role(&state, near.id, far_account, Role::Member).await;
+        let (room, far_room) = (near.rooms[0], far.rooms[0]);
+        let seeded = seed_messages(&state, near.id, room, near_account, 2).await;
+        seed_attachments(
+            &state,
+            near.id,
+            room,
+            near_account,
+            &[(seeded[0], "image/png", "image")],
+        )
+        .await;
+        seed_links(&state, near.id, room, &seeded[1..]).await;
+        seed_pins(&state, near.id, room, near_account, &seeded[..1]).await;
+        seed_shelf(
+            &state,
+            near.id,
+            room,
+            far_account,
+            &seeded[..1],
+            Some(3_600_000),
+        )
+        .await;
+        let attachment_id = sqlx::query_scalar::<_, uuid::Uuid>(
+            "SELECT attachment_id FROM attachments WHERE campus_id = $1",
+        )
+        .bind(near.id.as_uuid())
+        .fetch_one(&state.db)
+        .await
+        .expect("attachment");
+        let addr = spawn_server_with(state.clone()).await;
+        let (mut socket, _) = joined_socket(addr, far.id, &far.owner.token).await;
+        let near_shape = |state: &pulse_server::AppState| {
+            let state = state.clone();
+            let (campus_id, message) = (near.id, seeded[0]);
+            async move {
+                (
+                    pin_count(&state, campus_id, room).await,
+                    shelf_state_of(&state, campus_id, far_account, message).await,
+                )
+            }
+        };
+        let before = near_shape(&state).await;
+        match probe {
+            MediaProbe::PinForeignMessage | MediaProbe::UnpinForeignMessage => {
+                let pinned = matches!(probe, MediaProbe::PinForeignMessage);
+                let aimed = if pinned { seeded[1] } else { seeded[0] };
+                send(&mut socket, &pin_frame(room, aimed, pinned)).await;
+                match expect_frame(&mut socket).await {
+                    ServerFrame::PinRejected(rejected) => {
+                        assert_eq!(rejected.reason, PinRejection::UnknownMessage)
+                    }
+                    other => panic!("expected pin rejection, got {other:?}"),
+                }
+            }
+            MediaProbe::Vault(tab) => {
+                send(&mut socket, &vault_frame(room, tab, None)).await;
+                match expect_frame(&mut socket).await {
+                    ServerFrame::VaultRejected(rejected) => {
+                        assert_eq!(rejected.reason, VaultRejection::UnknownRoom)
+                    }
+                    other => panic!("expected vault rejection, got {other:?}"),
+                }
+            }
+            MediaProbe::SaveForeignMessage => {
+                send(
+                    &mut socket,
+                    &shelf_frame(room, seeded[1], ShelfAction::Save, None),
+                )
+                .await;
+                match expect_frame(&mut socket).await {
+                    ServerFrame::ShelfRejected(rejected) => {
+                        assert_eq!(rejected.reason, ShelfRejection::UnknownMessage)
+                    }
+                    other => panic!("expected shelf rejection, got {other:?}"),
+                }
+                send(
+                    &mut socket,
+                    &shelf_frame(far_room, seeded[1], ShelfAction::Save, None),
+                )
+                .await;
+                match expect_frame(&mut socket).await {
+                    ServerFrame::ShelfRejected(rejected) => {
+                        assert_eq!(rejected.reason, ShelfRejection::UnknownMessage)
+                    }
+                    other => panic!("expected shelf rejection, got {other:?}"),
+                }
+            }
+            MediaProbe::DownloadForeignAttachment => {
+                let (status, body) = download_tickets_of(
+                    &state,
+                    &far.owner.token,
+                    far.id,
+                    vec![pulse_protocol::AttachmentId(attachment_id)],
+                )
+                .await;
+                assert_eq!(status, StatusCode::OK, "{body}");
+                assert!(parsed_tickets(body).tickets.is_empty());
+            }
+            MediaProbe::SyncShelfOfSharedAccount => {
+                send(&mut socket, &sync_shelf_frame()).await;
+                match expect_frame(&mut socket).await {
+                    ServerFrame::ShelfSynced(synced) => assert!(synced.items.is_empty()),
+                    other => panic!("expected shelf sync, got {other:?}"),
+                }
+            }
+        }
+        assert_eq!(near_shape(&state).await, before);
+        assert_eq!(count_rows(&state, "shelf_items", far.id).await, 0);
+        assert_eq!(count_rows(&state, "message_pins", far.id).await, 0);
     })
     .await
     .expect("scenario deadline");

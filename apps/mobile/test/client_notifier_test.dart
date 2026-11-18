@@ -7,7 +7,9 @@ import 'package:pulse_mobile/src/rust/frb_generated.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/auth.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/campus.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/ids.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/media.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/reaction.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/shelf.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/thread.dart';
 
@@ -131,6 +133,121 @@ class FakeRustApi extends Fake implements RustLibApi {
   Future<ClientSnapshot> crateApiClientCancelInboxReply() async {
     calls.add('cancelInboxReply');
     return snapshotAt(signedInWithMessages, 18);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientToggleSearch() async {
+    calls.add('toggleSearch');
+    return snapshotAt(signedInWithMessages, 19);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientSearch({required String query}) async {
+    calls.add(('search', query));
+    return snapshotAt(signedInWithMessages, 20);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientMoveSearchSelection({
+    required InboxStep step,
+  }) async {
+    calls.add(('moveSearchSelection', step));
+    return snapshotAt(signedInWithMessages, 21);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientOpenSearchSelection() async {
+    calls.add('openSearchSelection');
+    return snapshotAt(signedInWithMessages, 22);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientOpenSearchHit({
+    required MessageId messageId,
+  }) async {
+    calls.add(('openSearchHit', messageId));
+    return snapshotAt(signedInWithMessages, 23);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientAttachFile({
+    required RoomId roomId,
+    required String fileName,
+    required List<int> bytes,
+  }) async {
+    calls.add(('attachFile', roomId, fileName, bytes));
+    return snapshotAt(signedInWithMessages, 24);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientDiscardDraft({
+    required DraftId draftId,
+  }) async {
+    calls.add(('discardDraft', draftId));
+    return snapshotAt(signedInWithMessages, 25);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientRetryDraft({
+    required DraftId draftId,
+  }) async {
+    calls.add(('retryDraft', draftId));
+    return snapshotAt(signedInWithMessages, 26);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientSetPin({
+    required RoomId roomId,
+    required MessageId messageId,
+    required bool pinned,
+  }) async {
+    calls.add(('setPin', roomId, messageId, pinned));
+    return snapshotAt(signedInWithMessages, 27);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientOpenVault({
+    required RoomId roomId,
+    required VaultTab tab,
+  }) async {
+    calls.add(('openVault', roomId, tab));
+    return snapshotAt(signedInWithMessages, 28);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientLoadMoreVault() async {
+    calls.add('loadMoreVault');
+    return snapshotAt(signedInWithMessages, 29);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientCloseVault() async {
+    calls.add('closeVault');
+    return snapshotAt(signedInWithMessages, 30);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientToggleShelf() async {
+    calls.add('toggleShelf');
+    return snapshotAt(signedInWithMessages, 31);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientUpdateShelf({
+    required RoomId roomId,
+    required MessageId messageId,
+    required ShelfAction action,
+    ReminderPreset? preset,
+    BigInt? remindAtMs,
+  }) async {
+    calls.add(('updateShelf', roomId, messageId, action, preset, remindAtMs));
+    return snapshotAt(signedInWithMessages, 32);
+  }
+
+  @override
+  Future<ClientSnapshot> crateApiClientDismissReminder() async {
+    calls.add('dismissReminder');
+    return snapshotAt(signedInWithMessages, 33);
   }
 
   @override
@@ -327,6 +444,135 @@ final intentCases = <IntentCase>[
     (notifier) => notifier.cancelInboxReply(),
     'cancelInboxReply',
     snapshotAt(signedInWithMessages, 18),
+  ),
+  IntentCase(
+    'toggleSearch',
+    (notifier) => notifier.toggleSearch(),
+    'toggleSearch',
+    snapshotAt(signedInWithMessages, 19),
+  ),
+  IntentCase('search', (notifier) => notifier.search('alpha beta'), (
+    'search',
+    'alpha beta',
+  ), snapshotAt(signedInWithMessages, 20)),
+  IntentCase(
+    'moveSearchSelection next',
+    (notifier) => notifier.moveSearchSelection(InboxStep.next),
+    ('moveSearchSelection', InboxStep.next),
+    snapshotAt(signedInWithMessages, 21),
+  ),
+  IntentCase(
+    'moveSearchSelection previous',
+    (notifier) => notifier.moveSearchSelection(InboxStep.previous),
+    ('moveSearchSelection', InboxStep.previous),
+    snapshotAt(signedInWithMessages, 21),
+  ),
+  IntentCase(
+    'openSearchSelection',
+    (notifier) => notifier.openSearchSelection(),
+    'openSearchSelection',
+    snapshotAt(signedInWithMessages, 22),
+  ),
+  IntentCase(
+    'openSearchHit',
+    (notifier) => notifier.openSearchHit(messageAId),
+    ('openSearchHit', messageAId),
+    snapshotAt(signedInWithMessages, 23),
+  ),
+  IntentCase(
+    'attachFile',
+    (notifier) => notifier.attachFile(roomAId, 'plan.png', const [1, 2, 3]),
+    ('attachFile', roomAId, 'plan.png', const [1, 2, 3]),
+    snapshotAt(signedInWithMessages, 24),
+  ),
+  IntentCase('discardDraft', (notifier) => notifier.discardDraft(draftAId), (
+    'discardDraft',
+    draftAId,
+  ), snapshotAt(signedInWithMessages, 25)),
+  IntentCase('retryDraft', (notifier) => notifier.retryDraft(draftAId), (
+    'retryDraft',
+    draftAId,
+  ), snapshotAt(signedInWithMessages, 26)),
+  IntentCase(
+    'setPin pins',
+    (notifier) => notifier.setPin(roomAId, messageAId, true),
+    ('setPin', roomAId, messageAId, true),
+    snapshotAt(signedInWithMessages, 27),
+  ),
+  IntentCase(
+    'setPin unpins',
+    (notifier) => notifier.setPin(roomAId, messageAId, false),
+    ('setPin', roomAId, messageAId, false),
+    snapshotAt(signedInWithMessages, 27),
+  ),
+  for (final tab in VaultTab.values)
+    IntentCase(
+      'openVault ${tab.name}',
+      (notifier) => notifier.openVault(roomAId, tab),
+      ('openVault', roomAId, tab),
+      snapshotAt(signedInWithMessages, 28),
+    ),
+  IntentCase(
+    'loadMoreVault',
+    (notifier) => notifier.loadMoreVault(),
+    'loadMoreVault',
+    snapshotAt(signedInWithMessages, 29),
+  ),
+  IntentCase(
+    'closeVault',
+    (notifier) => notifier.closeVault(),
+    'closeVault',
+    snapshotAt(signedInWithMessages, 30),
+  ),
+  IntentCase(
+    'toggleShelf',
+    (notifier) => notifier.toggleShelf(),
+    'toggleShelf',
+    snapshotAt(signedInWithMessages, 31),
+  ),
+  IntentCase(
+    'updateShelf with a preset',
+    (notifier) => notifier.updateShelf(
+      roomAId,
+      messageAId,
+      ShelfAction.reschedule,
+      ReminderPreset.inOneHour,
+      null,
+    ),
+    (
+      'updateShelf',
+      roomAId,
+      messageAId,
+      ShelfAction.reschedule,
+      ReminderPreset.inOneHour,
+      null,
+    ),
+    snapshotAt(signedInWithMessages, 32),
+  ),
+  IntentCase(
+    'updateShelf with a custom time',
+    (notifier) => notifier.updateShelf(
+      roomAId,
+      messageAId,
+      ShelfAction.save,
+      null,
+      BigInt.from(1234),
+    ),
+    (
+      'updateShelf',
+      roomAId,
+      messageAId,
+      ShelfAction.save,
+      null,
+      BigInt.from(1234),
+    ),
+    snapshotAt(signedInWithMessages, 32),
+  ),
+  IntentCase(
+    'dismissReminder',
+    (notifier) => notifier.dismissReminder(),
+    'dismissReminder',
+    snapshotAt(signedInWithMessages, 33),
   ),
 ];
 

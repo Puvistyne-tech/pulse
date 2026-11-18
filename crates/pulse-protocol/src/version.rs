@@ -5,5 +5,5 @@ use ts_rs::TS;
 pub struct ProtocolVersion(pub u16);
 
 impl ProtocolVersion {
-    pub const CURRENT: ProtocolVersion = ProtocolVersion(2);
+    pub const CURRENT: ProtocolVersion = ProtocolVersion(3);
 }

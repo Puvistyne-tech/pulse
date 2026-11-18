@@ -45,8 +45,8 @@ pub use snapshot::{
 };
 pub use thread::{
     INBOX_SYNC_LIMIT, InboxSynced, MarkThreadRead, SetThreadSubscription, SetTopicTitle,
-    SubscriptionOrigin, SubscriptionState, SyncInbox, SyncThread, ThreadChanged, ThreadRejected,
-    ThreadRejection, ThreadSummary, ThreadSynced,
+    SubscriptionOrigin, SubscriptionState, SubscriptionStateParseError, SyncInbox, SyncThread,
+    ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ThreadSynced,
 };
 pub use validation::{
     DISPLAY_NAME_MAX_CHARS, EMAIL_MAX_CHARS, MESSAGE_BODY_MAX_CHARS, PASSWORD_MAX_CHARS,

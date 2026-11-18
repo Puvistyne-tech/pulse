@@ -58,6 +58,9 @@ impl OpenStreams {
         chunk: &StreamChunk,
         now_ms: u64,
     ) -> Result<StreamStep, StreamRejection> {
+        if chunk.phase != StreamPhase::Begin {
+            self.check_scope(chunk)?;
+        }
         match chunk.phase {
             StreamPhase::Begin => self.begin(chunk, now_ms),
             StreamPhase::Delta => self.append(chunk, now_ms),
@@ -74,6 +77,32 @@ impl OpenStreams {
                 .map(StreamStep::Cancelled)
                 .ok_or(StreamRejection::UnknownStream),
         }
+    }
+
+    fn check_scope(&mut self, chunk: &StreamChunk) -> Result<(), StreamRejection> {
+        let Some(stream) = self.streams.get(&chunk.stream_id) else {
+            return Ok(());
+        };
+        if stream.room_id == chunk.room_id && stream.thread_root_id == chunk.thread_root_id {
+            Ok(())
+        } else {
+            self.streams.remove(&chunk.stream_id);
+            Err(StreamRejection::Forbidden)
+        }
+    }
+
+    pub fn discard(&mut self, stream_id: StreamId) {
+        self.streams.remove(&stream_id);
+    }
+
+    pub fn take_outside(&mut self, rooms: &[RoomId]) -> Vec<(StreamId, OpenStream)> {
+        let outside: Vec<StreamId> = self
+            .streams
+            .iter()
+            .filter(|(_, stream)| !rooms.contains(&stream.room_id))
+            .map(|(stream_id, _)| *stream_id)
+            .collect();
+        self.take(outside)
     }
 
     fn begin(&mut self, chunk: &StreamChunk, now_ms: u64) -> Result<StreamStep, StreamRejection> {

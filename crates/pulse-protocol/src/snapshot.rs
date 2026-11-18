@@ -6,7 +6,9 @@ use crate::auth::AccountProfile;
 use crate::campus::{CampusSummary, Room};
 use crate::frames::{HandshakeRejection, VersionMismatch};
 use crate::ids::{AccountId, CampusId, ClientNonce, MessageId, RoomId, SessionId};
+use crate::mention::BodySegment;
 use crate::messaging::MessageRejection;
+use crate::thread::SubscriptionState;
 use crate::version::ProtocolVersion;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -60,13 +62,43 @@ pub enum DeliveryState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ReactionSummary {
+    pub emoji: String,
+    pub count: u32,
+    pub reacted_by_self: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ReplyPreview {
+    pub message_id: MessageId,
+    pub author_id: AccountId,
+    pub author_display_name: String,
+    pub preview: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ThreadPreview {
+    pub topic_title: Option<String>,
+    pub reply_count: u32,
+    pub latest_reply: Option<ReplyPreview>,
+    pub show_latest_reply: bool,
+    pub subscription: Option<SubscriptionState>,
+    pub unread_replies: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct TimelineEntry {
     pub client_nonce: ClientNonce,
     pub message_id: Option<MessageId>,
     pub author_id: AccountId,
     pub author_display_name: String,
+    pub author_mention_token: String,
     pub from_self: bool,
     pub body: String,
+    pub segments: Vec<BodySegment>,
+    pub thread_root_id: Option<MessageId>,
+    pub reactions: Vec<ReactionSummary>,
+    pub thread: Option<ThreadPreview>,
     pub delivery: DeliveryState,
     pub rejection: Option<MessageRejection>,
 }
@@ -77,6 +109,56 @@ pub struct TimelineSnapshot {
     pub entries: Vec<TimelineEntry>,
     pub syncing: bool,
     pub error: Option<ApiError>,
+    pub reaction_palette: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ThreadSnapshot {
+    pub room_id: Option<RoomId>,
+    pub root_message_id: Option<MessageId>,
+    pub root: Option<TimelineEntry>,
+    pub replies: Vec<TimelineEntry>,
+    pub topic_title: Option<String>,
+    pub subscription: Option<SubscriptionState>,
+    pub syncing: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum InboxItemKind {
+    Thread,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum InboxStep {
+    Next,
+    Previous,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct InboxItem {
+    pub kind: InboxItemKind,
+    pub room_id: RoomId,
+    pub root_message_id: MessageId,
+    pub topic_title: Option<String>,
+    pub root_author_display_name: String,
+    pub root_preview: String,
+    pub latest_reply: Option<ReplyPreview>,
+    pub reply_count: u32,
+    pub unread_replies: u32,
+    pub unread_mentions: u32,
+    pub subscription: SubscriptionState,
+    pub activity_message_id: MessageId,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct InboxSnapshot {
+    pub open: bool,
+    pub items: Vec<InboxItem>,
+    pub unread_threads: u32,
+    pub selected_root_message_id: Option<MessageId>,
+    pub replying: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -86,4 +168,6 @@ pub struct ClientSnapshot {
     pub network: ConnectionSnapshot,
     pub session: SessionSnapshot,
     pub timeline: TimelineSnapshot,
+    pub thread: ThreadSnapshot,
+    pub inbox: InboxSnapshot,
 }

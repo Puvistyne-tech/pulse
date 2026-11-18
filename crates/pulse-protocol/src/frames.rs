@@ -4,10 +4,15 @@ use ts_rs::TS;
 use crate::auth::AuthToken;
 use crate::ids::{AccountId, CampusId, SessionId};
 use crate::messaging::{
-    MessageAccepted, MessageCreated, MessageRejected, RoomSynced, RoomUnavailable, SendMessage,
-    SyncRooms,
+    MessageAccepted, MessageCreated, MessageRejected, MessageUpdated, RoomSynced, RoomUnavailable,
+    SendMessage, SyncRooms,
 };
 use crate::rbac::Role;
+use crate::reaction::{React, ReactionRejected};
+use crate::thread::{
+    InboxSynced, MarkThreadRead, SetThreadSubscription, SetTopicTitle, SyncInbox, SyncThread,
+    ThreadChanged, ThreadRejected, ThreadSynced,
+};
 use crate::version::ProtocolVersion;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -61,10 +66,17 @@ pub enum ClientFrame {
     Ping(Ping),
     SendMessage(SendMessage),
     SyncRooms(SyncRooms),
+    React(React),
+    SetTopicTitle(SetTopicTitle),
+    SetThreadSubscription(SetThreadSubscription),
+    MarkThreadRead(MarkThreadRead),
+    SyncThread(SyncThread),
+    SyncInbox(SyncInbox),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum ServerFrame {
     Welcome(Welcome),
     Pong(Pong),
@@ -75,6 +87,12 @@ pub enum ServerFrame {
     MessageRejected(MessageRejected),
     RoomSynced(RoomSynced),
     RoomUnavailable(RoomUnavailable),
+    MessageUpdated(MessageUpdated),
+    ReactionRejected(ReactionRejected),
+    ThreadRejected(ThreadRejected),
+    ThreadSynced(ThreadSynced),
+    InboxSynced(InboxSynced),
+    ThreadChanged(ThreadChanged),
 }
 
 pub mod close_code {

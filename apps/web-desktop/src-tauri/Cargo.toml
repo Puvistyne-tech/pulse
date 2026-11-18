@@ -1,0 +1,18 @@
+[package]
+name = "pulse-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "pulse_desktop"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+tauri = { workspace = true }
+pulse-core = { workspace = true }
+pulse-protocol = { workspace = true }

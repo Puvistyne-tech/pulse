@@ -6,3 +6,5 @@ build/
 .env
 .claude/worktrees/
 .claude/settings.local.json
+apps/mobile/ios/Pods/
+apps/mobile/android/.gradle/

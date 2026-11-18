@@ -1,0 +1,12 @@
+export type CampusId = string;
+export type SessionId = string;
+export type ProtocolVersion = number;
+export type Hello = { protocol_version: ProtocolVersion, campus_id: CampusId, };
+export type Welcome = { protocol_version: ProtocolVersion, campus_id: CampusId, session_id: SessionId, };
+export type Ping = { nonce: number, };
+export type Pong = { nonce: number, };
+export type VersionMismatch = { supported: ProtocolVersion, received: ProtocolVersion, };
+export type ClientFrame = { "type": "hello" } & Hello | { "type": "ping" } & Ping;
+export type ServerFrame = { "type": "welcome" } & Welcome | { "type": "pong" } & Pong | { "type": "version_mismatch" } & VersionMismatch;
+export type ConnectionPhase = "disconnected" | "connecting" | "handshaking" | "connected" | "backoff";
+export type ClientSnapshot = { protocol_version: ProtocolVersion, connection: ConnectionPhase, retry_in_ms: number | null, campus_id: CampusId | null, session_id: SessionId | null, attempt: number, rejection: VersionMismatch | null, };

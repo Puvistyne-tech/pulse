@@ -38,4 +38,11 @@ macro_rules! define_ids {
     )+};
 }
 
-define_ids!(CampusId, SessionId, AccountId, RoomId);
+define_ids!(
+    CampusId,
+    SessionId,
+    AccountId,
+    RoomId,
+    MessageId,
+    ClientNonce
+);

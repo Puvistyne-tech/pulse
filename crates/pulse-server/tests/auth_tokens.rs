@@ -1,11 +1,9 @@
 mod common;
 
-use std::time::Duration;
-
 use axum::http::{Method, StatusCode};
 use common::{
-    Observed, api_get, api_raw, campus_for, expire_token, handshake_outcome, sign_in_as, signed_up,
-    spawn_server_with, tally_race,
+    AUTH_DEADLINE, Observed, api_get, api_raw, campus_for, expire_token, handshake_outcome,
+    sign_in_as, signed_up, spawn_server_with, tally_race,
 };
 use pulse_protocol::{HandshakeRejected, HandshakeRejection, Role, ServerFrame, api_path};
 use rstest::rstest;
@@ -13,7 +11,6 @@ use serde_json::json;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-const DEADLINE: Duration = Duration::from_secs(30);
 const EMAIL: &str = "ada@example.org";
 
 #[derive(Clone, Copy)]
@@ -54,7 +51,7 @@ async fn token_lifecycle_is_enforced_on_http_and_websocket(
     #[case] sibling_http: StatusCode,
     #[case] ws: WsOutcome,
 ) {
-    timeout(DEADLINE, async {
+    timeout(AUTH_DEADLINE, async {
         let state = fresh_state_with_account().await;
         let probe = sign_in_as(&state, EMAIL).await;
         let sibling = sign_in_as(&state, EMAIL).await;
@@ -104,7 +101,7 @@ async fn token_lifecycle_is_enforced_on_http_and_websocket(
 
 #[tokio::test]
 async fn repeated_sign_ins_mint_distinct_tokens_that_all_authenticate() {
-    timeout(DEADLINE, async {
+    timeout(AUTH_DEADLINE, async {
         let state = fresh_state_with_account().await;
         let first = sign_in_as(&state, EMAIL).await;
         let second = sign_in_as(&state, EMAIL).await;
@@ -134,7 +131,7 @@ async fn repeated_sign_ins_mint_distinct_tokens_that_all_authenticate() {
 #[case::eight_racers(8)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_same_email_sign_ups_yield_exactly_one_account(#[case] racers: usize) {
-    timeout(DEADLINE, async {
+    timeout(AUTH_DEADLINE, async {
         let state = common::fresh_state().await;
         let mut attempts = JoinSet::new();
         for index in 0..racers {

@@ -4,10 +4,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 
 use common::{
-    SCENARIO_DEADLINE, campus_with_owner, created_messages, frames_until_pong, fresh_state,
-    joined_socket, member_session, posted, sibling_state, spawn_server_with, subscribed_socket,
+    SCENARIO_DEADLINE, assert_chain, campus_with_owner, created_messages, frames_until_pong,
+    fresh_state, joined_socket, member_session, posted, sibling_state, spawn_server_with,
+    subscribed_socket,
 };
-use pulse_protocol::{ClientNonce, MessageId, Role, RoomId, RoomMessage};
+use pulse_protocol::{ClientNonce, Role, RoomId, RoomMessage};
 use rstest::rstest;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
@@ -21,14 +22,6 @@ fn per_room(messages: Vec<RoomMessage>) -> BTreeMap<RoomId, Vec<RoomMessage>> {
         .values_mut()
         .for_each(|room| room.sort_by_key(|message| message.message_id));
     rooms
-}
-
-fn assert_contiguous(room: &[RoomMessage]) {
-    let mut tip: Option<MessageId> = None;
-    for message in room {
-        assert_eq!(message.previous_message_id, tip);
-        tip = Some(message.message_id);
-    }
 }
 
 #[rstest]
@@ -96,11 +89,13 @@ async fn every_subscriber_receives_every_message_exactly_once(
             assert_eq!(ids.into_iter().collect::<BTreeSet<_>>(), expected_ids);
             let rooms_seen = per_room(received);
             assert_eq!(rooms_seen.len(), rooms.len());
-            rooms_seen.values().for_each(|room| assert_contiguous(room));
+            rooms_seen
+                .values()
+                .for_each(|room| assert_chain(room, None));
             assert!(frames_until_pong(watcher, 3).await.is_empty());
         }
         let stored = per_room(expected);
-        stored.values().for_each(|room| assert_contiguous(room));
+        stored.values().for_each(|room| assert_chain(room, None));
     })
     .await
     .expect("scenario deadline");

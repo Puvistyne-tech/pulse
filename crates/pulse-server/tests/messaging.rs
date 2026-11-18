@@ -1,9 +1,9 @@
 mod common;
 
 use common::{
-    Observed, SCENARIO_DEADLINE, campus_with_owner, expect_frame, frames_until_pong, fresh_state,
-    grant_role, joined_socket, member_session, message_count, observe, posted, send, send_message,
-    spawn_server_with, stored_bodies, subscribed_socket, sync_rooms,
+    Observed, SCENARIO_DEADLINE, assert_chain, campus_with_owner, expect_frame, frames_until_pong,
+    fresh_state, grant_role, joined_socket, member_session, message_count, observe, posted, send,
+    send_message, spawn_server_with, stored_bodies, subscribed_socket, sync_rooms,
 };
 use pulse_protocol::fixtures::{NONCE_A, NONCE_B};
 use pulse_protocol::{
@@ -130,21 +130,13 @@ async fn consecutive_posts_chain_within_each_room() {
             let nonce = pulse_protocol::ClientNonce::generate();
             posts.push(posted(&mut socket, room_id, nonce, &format!("post {index}")).await);
         }
-        let chain_of = |room_id: RoomId| {
-            posts
-                .iter()
-                .filter(|message| message.room_id == room_id)
-                .map(|message| (message.previous_message_id, message.message_id))
-                .collect::<Vec<_>>()
-        };
         for room_id in &campus.rooms[..2] {
-            let chain = chain_of(*room_id);
-            let mut tip: Option<MessageId> = None;
-            for (previous, id) in chain {
-                assert_eq!(previous, tip);
-                assert!(tip.is_none_or(|tip| id > tip));
-                tip = Some(id);
-            }
+            let chain = posts
+                .iter()
+                .filter(|message| message.room_id == *room_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_chain(&chain, None);
         }
     })
     .await

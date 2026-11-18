@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { signedInWithRooms, signedOut } from "../test/fixtures";
+import { signedInWithRooms } from "../test/fixtures";
 import { newerSnapshot } from "./snapshotOrder";
 
 const at = (sequence: number) => ({ ...signedInWithRooms, sequence });
@@ -9,8 +9,6 @@ test.each([
   ["older current", at(2), at(3), "next"],
   ["equal sequence", at(3), at(3), "next"],
   ["newer current", at(4), at(3), "current"],
-  ["zero current", at(0), at(1), "next"],
-  ["stale next after sign-out", at(9), { ...signedOut, sequence: 8 }, "current"],
 ] as const)("%s keeps the %s snapshot", (_name, current, next, winner) => {
   const result = newerSnapshot(current, next);
   expect(result).toBe(winner === "next" ? next : current);

@@ -1,14 +1,13 @@
 mod common;
 
 use std::collections::HashSet;
-use std::time::Duration;
 
 use axum::http::{Method, StatusCode};
 use common::{
-    Observed, api_raw, campus_for, campus_with_owner, campuses_of, created_messages,
-    directory_counts, expect_frame, frames_until_pong, fresh_state, handshake_outcome,
-    joined_socket, message_count, posted, rooms_of, send, send_message, sibling_state, signed_up,
-    spawn_server_with, subscribed_socket, sync_rooms, tally_race,
+    Observed, SCENARIO_DEADLINE, api_raw, campus_for, campus_with_owner, campuses_of,
+    created_messages, directory_counts, expect_frame, frames_until_pong, fresh_state,
+    handshake_outcome, joined_socket, message_count, posted, rooms_of, send, send_message,
+    sibling_state, signed_up, spawn_server_with, subscribed_socket, sync_rooms, tally_race,
 };
 use pulse_protocol::fixtures::{CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B};
 use pulse_protocol::{
@@ -22,8 +21,6 @@ use serde_json::json;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-const DEADLINE: Duration = Duration::from_secs(60);
-
 struct Tenant {
     token: AuthToken,
     campus_id: CampusId,
@@ -35,7 +32,7 @@ struct Tenant {
 #[case::eight_accounts(8)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_accounts_see_only_their_own_campuses_and_rooms(#[case] accounts: usize) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let mut sessions = Vec::new();
         for index in 0..accounts {
@@ -133,7 +130,7 @@ async fn concurrent_accounts_see_only_their_own_campuses_and_rooms(#[case] accou
 #[case::eight_racers(8)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_same_slug_creates_yield_exactly_one_campus(#[case] racers: usize) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let mut sessions = Vec::new();
         for index in 0..racers {
@@ -168,7 +165,7 @@ async fn concurrent_same_slug_creates_yield_exactly_one_campus(#[case] racers: u
 #[case::four_tenants(4)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_handshakes_admit_only_the_owning_campus(#[case] tenants: usize) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let mut roster = Vec::new();
         for index in 0..tenants {
@@ -226,7 +223,7 @@ async fn concurrent_handshakes_admit_only_the_owning_campus(#[case] tenants: usi
 async fn subscriber_in_one_campus_never_observes_another_campus_messages(
     #[case] cross_instance: bool,
 ) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let north = campus_with_owner(&state, "north@example.org", "north-quad").await;
         let south = campus_with_owner(&state, "south@example.org", "south-quad").await;
@@ -279,7 +276,7 @@ enum Forged {
 #[case::foreign_beside_own_room(Forged::ForeignBesideOwnRoom)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn forged_foreign_room_in_sync_is_unavailable_and_never_subscribed(#[case] forged: Forged) {
-    timeout(DEADLINE, async {
+    timeout(SCENARIO_DEADLINE, async {
         let state = fresh_state().await;
         let north = campus_with_owner(&state, "north@example.org", "north-quad").await;
         let south = campus_with_owner(&state, "south@example.org", "south-quad").await;
@@ -330,9 +327,4 @@ async fn forged_foreign_room_in_sync_is_unavailable_and_never_subscribed(#[case]
 #[case::campus_b(CAMPUS_B, "pulse:campus:0193a5c0-0000-7000-8000-00000000000b:messages")]
 fn campus_channel_embeds_campus_id(#[case] campus_id: CampusId, #[case] expected: &str) {
     assert_eq!(campus_channel(campus_id), expected);
-}
-
-#[test]
-fn distinct_campuses_never_share_a_channel() {
-    assert_ne!(campus_channel(CAMPUS_A), campus_channel(CAMPUS_B));
 }

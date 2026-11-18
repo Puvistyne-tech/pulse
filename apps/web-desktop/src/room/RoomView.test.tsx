@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { MessageRejection, TimelineEntry } from "@pulse/protocol";
+import type { TimelineEntry } from "@pulse/protocol";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   NONCE_C,
@@ -64,7 +64,7 @@ describe("timeline entries", () => {
   test.each(entryRows)(
     "%s renders delivery, author and status",
     (_name, entry, delivery, author, status, discardable) => {
-      const { container } = renderRoom(timelineOf([entry]));
+      const { container, discardMessage } = renderRoom(timelineOf([entry]));
       const row = container.querySelector("li");
       expect(row?.getAttribute("data-delivery")).toBe(delivery);
       expect(screen.getAllByText(author)).toHaveLength(1);
@@ -73,24 +73,14 @@ describe("timeline entries", () => {
       if (status !== null && status !== "Sending") {
         expect(row?.textContent).toContain(status);
       }
-      expect(screen.queryByRole("button", { name: "Discard" }) !== null).toBe(
-        discardable,
-      );
+      const discard = screen.queryByRole("button", { name: "Discard" });
+      expect(discard !== null).toBe(discardable);
+      if (discard !== null) {
+        fireEvent.click(discard);
+        expect(discardMessage).toHaveBeenCalledExactlyOnceWith(NONCE_C);
+      }
     },
   );
-
-  test.each<[MessageRejection, string]>([
-    ["forbidden", "Not allowed to post here"],
-    ["invalid_body", "Message not accepted"],
-    ["unknown_room", "Room not found"],
-  ])("discarding a %s entry reports its nonce", (reason, label) => {
-    const { discardMessage } = renderRoom(
-      timelineOf([failedEntryFor(reason)]),
-    );
-    expect(screen.getByText(label, { exact: false })).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(discardMessage).toHaveBeenCalledExactlyOnceWith(NONCE_C);
-  });
 
   test("entries render in snapshot order", () => {
     const { container } = renderRoom(

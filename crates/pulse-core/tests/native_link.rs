@@ -222,6 +222,10 @@ impl FakeServer {
         format!("http://{}", self.address)
     }
 
+    fn buffered(&mut self) -> Vec<Observed> {
+        std::iter::from_fn(|| self.observed.try_recv().ok()).collect()
+    }
+
     async fn next_frame(&mut self) -> Observed {
         within(self.observed.recv()).await.expect("frame")
     }
@@ -353,4 +357,59 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
     .await;
     assert_eq!(settled.session.active_room_id, Some(ROOM_B));
     assert!(settled.timeline.entries.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_intents_during_campus_switch_leave_only_the_new_link() {
+    let mut server = FakeServer::start().await;
+    let client = NativeClient::new(server.url()).expect("client");
+    let mut snapshots = watch(&client);
+    within(client.sign_in(sign_in_request())).await;
+    snapshot_where(&mut snapshots, |snapshot| {
+        snapshot.network.connection == ConnectionPhase::Connected
+            && snapshot.network.campus_id == Some(CAMPUS_A)
+    })
+    .await;
+    let (switched, _, _, _, _, _, _) = within(async {
+        tokio::join!(
+            client.select_campus(CAMPUS_B),
+            client.snapshot(),
+            client.send_message(ROOM_A, "one".to_owned()),
+            client.snapshot(),
+            client.send_message(ROOM_A, "two".to_owned()),
+            client.send_message(ROOM_B, "three".to_owned()),
+            client.snapshot(),
+        )
+    })
+    .await;
+    assert_eq!(switched.session.active_campus_id, Some(CAMPUS_B));
+    let settled = snapshot_where(&mut snapshots, |snapshot| {
+        snapshot.network.connection == ConnectionPhase::Connected
+            && snapshot.network.campus_id == Some(CAMPUS_B)
+    })
+    .await;
+    assert_eq!(settled.session.active_campus_id, Some(CAMPUS_B));
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let hellos = server
+        .buffered()
+        .into_iter()
+        .filter_map(|(connection, frame)| match frame {
+            ClientFrame::Hello(hello) => Some((connection, hello.campus_id)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let (last_connection, last_campus) = *hellos.last().expect("hello");
+    assert_eq!(last_campus, CAMPUS_B);
+    assert!(
+        hellos
+            .iter()
+            .filter(|(_, campus_id)| *campus_id == CAMPUS_A)
+            .all(|(connection, _)| *connection < last_connection)
+    );
+    let final_snapshot = within(client.snapshot()).await;
+    assert_eq!(
+        final_snapshot.network.connection,
+        ConnectionPhase::Connected
+    );
+    assert_eq!(final_snapshot.network.campus_id, Some(CAMPUS_B));
 }

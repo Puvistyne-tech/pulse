@@ -13,6 +13,7 @@ use pulse_protocol::{
 };
 use rstest::rstest;
 
+#[allow(clippy::large_enum_variant)]
 enum Expect {
     Welcome(Role),
     Exact(Observed),

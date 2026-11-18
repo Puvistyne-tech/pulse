@@ -921,3 +921,41 @@ pub fn settled_connection() -> Vec<TimelineEvent> {
         received(synced_frame(ROOM_A, vec![], false)),
     ]
 }
+
+pub fn settled_machine(events: Vec<TimelineEvent>) -> TimelineMachine {
+    let mut all = settled_connection();
+    all.extend(events);
+    timeline_after(all)
+}
+
+pub fn step_all(
+    machine: TimelineMachine,
+    events: Vec<TimelineEvent>,
+) -> (TimelineMachine, Vec<ClientFrame>) {
+    events
+        .into_iter()
+        .fold((machine, Vec::new()), |(machine, mut frames), event| {
+            let (machine, emitted) = machine.step(event);
+            frames.extend(emitted);
+            (machine, frames)
+        })
+}
+
+pub fn permutations<T: Clone>(items: &[T]) -> Vec<Vec<T>> {
+    if items.len() <= 1 {
+        return vec![items.to_vec()];
+    }
+    (0..items.len())
+        .flat_map(|index| {
+            let mut rest = items.to_vec();
+            let head = rest.remove(index);
+            permutations(&rest)
+                .into_iter()
+                .map(move |mut tail| {
+                    tail.insert(0, head.clone());
+                    tail
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}

@@ -9,13 +9,15 @@ use std::time::Duration;
 use fixtures::{
     ACCOUNT_A, CAMPUS_A, CAMPUS_B, ROOM_A, ROOM_B, auth_session, campus_list, campus_summary,
     confirmed_key, entry_keys, hello_frame, message_id, pending_key, room_message, send_frame,
-    sign_in_request, sync_frame, token_a, welcome_for,
+    sign_in_request, subscription_frame, sync_frame, sync_inbox_frame, sync_thread_frame, token_a,
+    welcome_for,
 };
 use futures_util::{SinkExt, StreamExt};
+use pulse_core::THREAD_VIEW_FOLLOW_MS;
 use pulse_core::native::{NativeClient, websocket_url};
 use pulse_protocol::{
     CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Role, Room, RoomList, ServerFrame,
-    api_path,
+    SubscriptionOrigin, SubscriptionState, api_path,
 };
 use rstest::rstest;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -55,7 +57,7 @@ fn react(connection: usize, frame: &ClientFrame) -> Reaction {
             ))],
             close: false,
         },
-        ClientFrame::Ping(_) | ClientFrame::SyncRooms(_) => Reaction {
+        _ => Reaction {
             replies: vec![],
             close: false,
         },
@@ -282,6 +284,7 @@ async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
         (0, hello_frame(CAMPUS_A, token_a()))
     );
     assert_eq!(server.next_frame().await, (0, all_rooms.clone()));
+    assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
     snapshot_where(&mut snapshots, |snapshot| {
         snapshot.network.connection == ConnectionPhase::Connected
     })
@@ -298,6 +301,7 @@ async fn link_completes_handshake_then_resends_pending_nonce_after_drop() {
         (1, hello_frame(CAMPUS_A, token_a()))
     );
     assert_eq!(server.next_frame().await, (1, all_rooms));
+    assert_eq!(server.next_frame().await, (1, sync_inbox_frame()));
     assert_eq!(
         server.next_frame().await,
         (1, send_frame(ROOM_A, client_nonce, "hello"))
@@ -339,6 +343,7 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
         server.next_frame().await,
         (0, sync_frame(&[(ROOM_A, None), (ROOM_B, None)]))
     );
+    assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
     let switched = within(client.select_campus(CAMPUS_B)).await;
     assert_eq!(switched.session.active_campus_id, Some(CAMPUS_B));
     assert!(switched.timeline.entries.is_empty());
@@ -350,6 +355,7 @@ async fn campus_switch_replaces_the_link_and_resets_timeline() {
         server.next_frame().await,
         (1, sync_frame(&[(ROOM_B, None)]))
     );
+    assert_eq!(server.next_frame().await, (1, sync_inbox_frame()));
     let settled = snapshot_where(&mut snapshots, |snapshot| {
         snapshot.network.connection == ConnectionPhase::Connected
             && snapshot.network.campus_id == Some(CAMPUS_B)
@@ -412,4 +418,67 @@ async fn concurrent_intents_during_campus_switch_leave_only_the_new_link() {
         ConnectionPhase::Connected
     );
     assert_eq!(final_snapshot.network.campus_id, Some(CAMPUS_B));
+}
+
+const FOLLOW_MARGIN: Duration = Duration::from_millis(2500);
+const FOLLOW_DELAY: Duration = Duration::from_millis(THREAD_VIEW_FOLLOW_MS);
+const FOLLOW_EARLIEST: Duration = Duration::from_millis(THREAD_VIEW_FOLLOW_MS - 100);
+
+async fn connected_client(server: &mut FakeServer) -> NativeClient {
+    let client = NativeClient::new(server.url()).expect("client");
+    let mut snapshots = watch(&client);
+    within(client.sign_in(sign_in_request())).await;
+    snapshot_where(&mut snapshots, |snapshot| {
+        snapshot.network.connection == ConnectionPhase::Connected
+    })
+    .await;
+    assert_eq!(
+        server.next_frame().await,
+        (0, hello_frame(CAMPUS_A, token_a()))
+    );
+    assert_eq!(
+        server.next_frame().await,
+        (0, sync_frame(&[(ROOM_A, None), (ROOM_B, None)]))
+    );
+    assert_eq!(server.next_frame().await, (0, sync_inbox_frame()));
+    client
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn opened_thread_syncs_then_follows_after_the_view_delay() {
+    let mut server = FakeServer::start().await;
+    let client = connected_client(&mut server).await;
+    let started = tokio::time::Instant::now();
+    let opened = within(client.open_thread(ROOM_A, message_id(1))).await;
+    assert_eq!(opened.thread.root_message_id, Some(message_id(1)));
+    assert_eq!(server.next_frame().await, (0, sync_thread_frame(1, None)));
+    let follow = tokio::time::timeout(FOLLOW_DELAY + FOLLOW_MARGIN, server.next_frame())
+        .await
+        .expect("follow within the delay plus margin");
+    assert_eq!(
+        follow,
+        (
+            0,
+            subscription_frame(1, SubscriptionState::Following, SubscriptionOrigin::Viewed)
+        )
+    );
+    assert!(started.elapsed() >= FOLLOW_EARLIEST);
+    let settled = within(client.snapshot()).await;
+    assert_eq!(
+        settled.thread.subscription,
+        Some(SubscriptionState::Following)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn closing_before_the_view_delay_sends_no_follow() {
+    let mut server = FakeServer::start().await;
+    let client = connected_client(&mut server).await;
+    within(client.open_thread(ROOM_A, message_id(1))).await;
+    assert_eq!(server.next_frame().await, (0, sync_thread_frame(1, None)));
+    let closed = within(client.close_thread()).await;
+    assert_eq!(closed.thread.root_message_id, None);
+    let silent = tokio::time::timeout(FOLLOW_DELAY + FOLLOW_MARGIN, server.next_frame()).await;
+    assert!(silent.is_err());
+    assert_eq!(server.buffered(), vec![]);
 }

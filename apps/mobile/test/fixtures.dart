@@ -6,13 +6,15 @@ import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/auth.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/campus.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/frames.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/ids.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/mention.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/messaging.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/rbac.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
+import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/thread.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/version.dart';
 import 'package:uuid/uuid.dart';
 
-const _version = ProtocolVersion(field0: 2);
+const _version = ProtocolVersion(field0: 3);
 
 UuidValue _uuid(String suffix) =>
     UuidValue.fromString('0193a5c0-0000-7000-8000-0000000000$suffix');
@@ -24,9 +26,17 @@ final roomAId = RoomId(field0: _uuid('d1'));
 final roomBId = RoomId(field0: _uuid('d2'));
 final messageAId = MessageId(field0: _uuid('e1'));
 final messageBId = MessageId(field0: _uuid('e2'));
+final messageCId = MessageId(field0: _uuid('e3'));
+final messageDId = MessageId(field0: _uuid('e4'));
 final nonceA = ClientNonce(field0: _uuid('f1'));
 final nonceB = ClientNonce(field0: _uuid('f2'));
 final nonceC = ClientNonce(field0: _uuid('f3'));
+
+final graceId = AccountId(field0: _uuid('c2'));
+
+String mentionToken(AccountId accountId) => '<@${accountId.field0}>';
+
+const reactionPalette = ['👍', '❤️', '🎉', '👀', '✅', '🙏'];
 
 final account = AccountProfile(
   accountId: AccountId(field0: _uuid('c1')),
@@ -76,17 +86,29 @@ TimelineEntry _entry(
   String authorDisplayName = 'Ada',
   bool fromSelf = true,
   String body = 'hello',
+  List<BodySegment>? segments,
+  MessageId? threadRootId,
+  List<ReactionSummary> reactions = const [],
+  ThreadPreview? thread,
   MessageRejection? rejection,
-}) => TimelineEntry(
-  clientNonce: clientNonce,
-  messageId: messageId,
-  authorId: authorId ?? account.accountId,
-  authorDisplayName: authorDisplayName,
-  fromSelf: fromSelf,
-  body: body,
-  delivery: delivery,
-  rejection: rejection,
-);
+}) {
+  final author = authorId ?? account.accountId;
+  return TimelineEntry(
+    clientNonce: clientNonce,
+    messageId: messageId,
+    authorId: author,
+    authorDisplayName: authorDisplayName,
+    authorMentionToken: mentionToken(author),
+    fromSelf: fromSelf,
+    body: body,
+    segments: segments ?? [BodySegment(kind: SegmentKind.text, text: body)],
+    threadRootId: threadRootId,
+    reactions: reactions,
+    thread: thread,
+    delivery: delivery,
+    rejection: rejection,
+  );
+}
 
 final pendingEntry = _entry(DeliveryState.pending, clientNonce: nonceA);
 
@@ -94,10 +116,91 @@ final confirmedEntry = _entry(
   DeliveryState.confirmed,
   clientNonce: nonceB,
   messageId: messageAId,
-  authorId: AccountId(field0: _uuid('c2')),
+  authorId: graceId,
   authorDisplayName: 'Grace',
   fromSelf: false,
   body: 'welcome',
+);
+
+TimelineEntry _gracesEntry({
+  required ClientNonce clientNonce,
+  required MessageId messageId,
+  String body = 'welcome',
+  List<BodySegment>? segments,
+  MessageId? threadRootId,
+  List<ReactionSummary> reactions = const [],
+  ThreadPreview? thread,
+}) => _entry(
+  DeliveryState.confirmed,
+  clientNonce: clientNonce,
+  messageId: messageId,
+  authorId: graceId,
+  authorDisplayName: 'Grace',
+  fromSelf: false,
+  body: body,
+  segments: segments,
+  threadRootId: threadRootId,
+  reactions: reactions,
+  thread: thread,
+);
+
+final mentionEntry = _gracesEntry(
+  clientNonce: nonceC,
+  messageId: messageCId,
+  body: 'hi ${mentionToken(account.accountId)}',
+  segments: [
+    const BodySegment(kind: SegmentKind.text, text: 'hi '),
+    BodySegment(
+      kind: SegmentKind.mention,
+      text: '@Ada',
+      accountId: account.accountId,
+    ),
+  ],
+);
+
+final reactedEntry = _gracesEntry(
+  clientNonce: nonceB,
+  messageId: messageAId,
+  reactions: const [
+    ReactionSummary(emoji: '👍', count: 2, reactedBySelf: true),
+    ReactionSummary(emoji: '🎉', count: 1, reactedBySelf: false),
+  ],
+);
+
+ThreadPreview threadPreviewOf({
+  String? topicTitle,
+  int replyCount = 3,
+  bool showLatestReply = true,
+  bool hasLatestReply = true,
+  SubscriptionState? subscription = SubscriptionState.following,
+  int unreadReplies = 2,
+}) => ThreadPreview(
+  topicTitle: topicTitle,
+  replyCount: replyCount,
+  latestReply: hasLatestReply
+      ? ReplyPreview(
+          messageId: messageDId,
+          authorId: graceId,
+          authorDisplayName: 'Grace',
+          preview: 'latest words',
+        )
+      : null,
+  showLatestReply: showLatestReply,
+  subscription: subscription,
+  unreadReplies: unreadReplies,
+);
+
+TimelineEntry threadedEntry([ThreadPreview? preview]) => _gracesEntry(
+  clientNonce: nonceB,
+  messageId: messageAId,
+  thread: preview ?? threadPreviewOf(),
+);
+
+final replyEntry = _gracesEntry(
+  clientNonce: nonceC,
+  messageId: messageDId,
+  body: 'a reply',
+  threadRootId: messageAId,
 );
 
 final confirmedOwnEntry = _entry(
@@ -119,14 +222,104 @@ TimelineSnapshot timelineOf(
   RoomId? roomId,
   bool syncing = false,
   ApiError? error,
+  List<String> palette = reactionPalette,
 }) => TimelineSnapshot(
   roomId: roomId ?? roomAId,
   entries: entries,
   syncing: syncing,
   error: error,
+  reactionPalette: palette,
 );
 
-const emptyTimeline = TimelineSnapshot(entries: [], syncing: false);
+const emptyTimeline = TimelineSnapshot(
+  entries: [],
+  syncing: false,
+  reactionPalette: reactionPalette,
+);
+
+const emptyThread = ThreadSnapshot(replies: [], syncing: false);
+
+const emptyInbox = InboxSnapshot(
+  open: false,
+  items: [],
+  unreadThreads: 0,
+  replying: false,
+);
+
+ThreadSnapshot threadOf({
+  TimelineEntry? root,
+  bool withRoot = true,
+  List<TimelineEntry>? replies,
+  String? topicTitle,
+  SubscriptionState? subscription = SubscriptionState.following,
+  bool syncing = false,
+  bool anchored = true,
+}) => ThreadSnapshot(
+  roomId: anchored ? roomAId : null,
+  rootMessageId: anchored ? messageAId : null,
+  root: withRoot ? (root ?? confirmedEntry) : null,
+  replies: replies ?? [replyEntry],
+  topicTitle: topicTitle,
+  subscription: subscription,
+  syncing: syncing,
+);
+
+InboxItem inboxItemOf(
+  MessageId root,
+  String preview, {
+  String? topicTitle,
+  ReplyPreview? latestReply,
+  int unreadReplies = 0,
+  int unreadMentions = 0,
+  SubscriptionState subscription = SubscriptionState.following,
+}) => InboxItem(
+  kind: InboxItemKind.thread,
+  roomId: roomAId,
+  rootMessageId: root,
+  topicTitle: topicTitle,
+  rootAuthorDisplayName: 'Grace',
+  rootPreview: preview,
+  latestReply: latestReply,
+  replyCount: 0,
+  unreadReplies: unreadReplies,
+  unreadMentions: unreadMentions,
+  subscription: subscription,
+  activityMessageId: root,
+);
+
+InboxSnapshot inboxOf(
+  List<InboxItem> items, {
+  bool open = true,
+  bool replying = false,
+  int? unreadThreads,
+  MessageId? selected,
+  bool selectFirst = true,
+}) => InboxSnapshot(
+  open: open,
+  items: items,
+  unreadThreads:
+      unreadThreads ??
+      items
+          .where((item) => item.unreadReplies > 0 || item.unreadMentions > 0)
+          .length,
+  selectedRootMessageId:
+      selected ??
+      (selectFirst && items.isNotEmpty ? items.first.rootMessageId : null),
+  replying: replying,
+);
+
+ClientSnapshot withExtras(
+  ClientSnapshot snapshot, {
+  ThreadSnapshot? thread,
+  InboxSnapshot? inbox,
+}) => ClientSnapshot(
+  sequence: snapshot.sequence,
+  network: snapshot.network,
+  session: snapshot.session,
+  timeline: snapshot.timeline,
+  thread: thread ?? snapshot.thread,
+  inbox: inbox ?? snapshot.inbox,
+);
 
 ClientSnapshot snapshotAt(ClientSnapshot snapshot, int sequence) =>
     ClientSnapshot(
@@ -134,6 +327,8 @@ ClientSnapshot snapshotAt(ClientSnapshot snapshot, int sequence) =>
       network: snapshot.network,
       session: snapshot.session,
       timeline: snapshot.timeline,
+      thread: snapshot.thread,
+      inbox: snapshot.inbox,
     );
 
 ClientSnapshot _snapshot({
@@ -150,6 +345,8 @@ ClientSnapshot _snapshot({
 }) => ClientSnapshot(
   sequence: BigInt.from(sequence),
   timeline: timeline,
+  thread: emptyThread,
+  inbox: emptyInbox,
   network: network(),
   session: SessionSnapshot(
     auth: auth,
@@ -235,7 +432,7 @@ final networkCases = <NetworkCase>[
         received: ProtocolVersion(field0: 99),
       ),
     ),
-    'Version rejected: supported 2, received 99',
+    'Version rejected: supported 3, received 99',
   ),
   NetworkCase(
     'handshake rejected',
@@ -256,6 +453,23 @@ class RecordedIntents {
       selectRoom: (roomId) async => calls.add(roomId),
       sendMessage: (roomId, body) async => calls.add((roomId, body)),
       discardMessage: (clientNonce) async => calls.add(clientNonce),
+      sendReply: (roomId, rootMessageId, body) async =>
+          calls.add(('sendReply', roomId, rootMessageId, body)),
+      react: (roomId, messageId, emoji, action) async =>
+          calls.add(('react', roomId, messageId, emoji, action)),
+      setTopicTitle: (roomId, rootMessageId, topicTitle) async =>
+          calls.add(('setTopicTitle', roomId, rootMessageId, topicTitle)),
+      setThreadSubscription: (roomId, rootMessageId, state) async =>
+          calls.add(('setThreadSubscription', roomId, rootMessageId, state)),
+      openThread: (roomId, rootMessageId) async =>
+          calls.add(('openThread', roomId, rootMessageId)),
+      closeThread: () async => calls.add('closeThread'),
+      toggleInbox: () async => calls.add('toggleInbox'),
+      moveInboxSelection: (step) async =>
+          calls.add(('moveInboxSelection', step)),
+      archiveInboxSelection: () async => calls.add('archiveInboxSelection'),
+      startInboxReply: () async => calls.add('startInboxReply'),
+      cancelInboxReply: () async => calls.add('cancelInboxReply'),
     );
   }
 

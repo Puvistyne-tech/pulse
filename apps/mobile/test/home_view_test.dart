@@ -43,6 +43,47 @@ final homeCases = <HomeCase>[
   ),
 ];
 
+class PanelCase {
+  const PanelCase(this.name, this.snapshot, this.key, this.visible);
+
+  final String name;
+  final ClientSnapshot snapshot;
+  final Key key;
+  final bool visible;
+}
+
+final openInboxSnapshot = withExtras(
+  signedInWithRooms,
+  inbox: inboxOf([inboxItemOf(messageAId, 'first root', unreadReplies: 2)]),
+);
+
+final panelCases = <PanelCase>[
+  PanelCase(
+    'closed inbox hides the inbox',
+    signedInWithRooms,
+    const Key('inboxView'),
+    false,
+  ),
+  PanelCase(
+    'open inbox shows the inbox',
+    openInboxSnapshot,
+    const Key('inboxView'),
+    true,
+  ),
+  PanelCase(
+    'no open thread hides the thread panel',
+    signedInWithRooms,
+    const Key('threadView'),
+    false,
+  ),
+  PanelCase(
+    'open thread shows the thread panel',
+    withExtras(signedInWithRooms, thread: threadOf()),
+    const Key('threadView'),
+    true,
+  ),
+];
+
 class RoomCase {
   const RoomCase(this.label, this.roomId);
 
@@ -139,6 +180,51 @@ void main() {
         expect(text.style?.fontWeight == FontWeight.bold, bold);
       });
     }
+
+    for (final fixture in panelCases) {
+      testWidgets(fixture.name, (tester) async {
+        await pumpView(
+          tester,
+          HomeView(
+            snapshot: fixture.snapshot,
+            intents: RecordedIntents().intents,
+          ),
+        );
+        expect(
+          find.byKey(fixture.key),
+          fixture.visible ? findsOneWidget : findsNothing,
+        );
+      });
+    }
+
+    for (final (name, unread) in [
+      ('no unread threads', 0),
+      ('three unread', 3),
+    ]) {
+      testWidgets('the inbox button shows $name', (tester) async {
+        await pumpView(
+          tester,
+          HomeView(
+            snapshot: withExtras(
+              signedInWithRooms,
+              inbox: inboxOf([], open: false, unreadThreads: unread),
+            ),
+            intents: RecordedIntents().intents,
+          ),
+        );
+        expect(find.text('Inbox $unread'), findsOneWidget);
+      });
+    }
+
+    testWidgets('the inbox button toggles the inbox', (tester) async {
+      final recorded = RecordedIntents();
+      await pumpView(
+        tester,
+        HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
+      );
+      await tester.tap(find.text('Inbox 0'));
+      expect(recorded.calls, ['toggleInbox']);
+    });
 
     testWidgets('sending forwards the active room id and draft', (
       tester,

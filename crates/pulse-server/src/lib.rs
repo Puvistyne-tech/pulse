@@ -1,3 +1,5 @@
+pub mod auth;
+pub mod campus;
 pub mod config;
 pub mod error;
 pub mod migrate;

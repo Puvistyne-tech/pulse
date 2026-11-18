@@ -1,8 +1,8 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, campus, connect, hello_frame, machine_after,
-    refused, session, welcome, welcome_frame,
+    CAMPUS_A, CAMPUS_B, SESSION_A, ScriptedTransport, connect, hello_frame, machine_after, refused,
+    rejected, token_a, token_b, welcome, welcome_frame,
 };
 use futures::executor::block_on;
 use pulse_core::{
@@ -10,7 +10,8 @@ use pulse_core::{
     handshake, initial_snapshot,
 };
 use pulse_protocol::{
-    ClientFrame, ConnectionPhase, Hello, Pong, ProtocolVersion, ServerFrame, VersionMismatch,
+    AuthPhase, ClientFrame, ConnectionPhase, HandshakeRejection, Hello, Pong, ProtocolVersion,
+    ServerFrame, VersionMismatch,
 };
 use rstest::rstest;
 
@@ -24,7 +25,8 @@ fn mismatch() -> VersionMismatch {
 fn hello() -> ConnectionCommand {
     ConnectionCommand::SendHello(Hello {
         protocol_version: ProtocolVersion::CURRENT,
-        campus_id: campus(CAMPUS_A),
+        campus_id: CAMPUS_A,
+        auth_token: token_a(),
     })
 }
 
@@ -71,6 +73,22 @@ fn hello() -> ConnectionCommand {
     Some(ConnectionCommand::CloseTransport),
     0,
     false,
+)]
+#[case::handshake_rejected_unauthenticated(
+    vec![connect(), ConnectionEvent::TransportOpened],
+    ConnectionEvent::HandshakeRejected(rejected(HandshakeRejection::Unauthenticated)),
+    ConnectionPhase::Disconnected, None,
+    Some(ConnectionCommand::CloseTransport),
+    0,
+    false,
+)]
+#[case::ignored_rejection_when_connected(
+    vec![connect(), ConnectionEvent::TransportOpened, welcome(CAMPUS_A)],
+    ConnectionEvent::HandshakeRejected(rejected(HandshakeRejection::CampusUnavailable)),
+    ConnectionPhase::Connected, None,
+    None,
+    0,
+    true,
 )]
 #[case::connected_transport_failed(
     vec![connect(), ConnectionEvent::TransportOpened, welcome(CAMPUS_A)],
@@ -145,7 +163,7 @@ fn step_follows_transition_table(
     assert_eq!(snapshot.attempt, expected_attempt);
     assert_eq!(snapshot.session_id.is_some(), has_session);
     if has_session {
-        assert_eq!(snapshot.session_id, Some(session(SESSION_A)));
+        assert_eq!(snapshot.session_id, Some(SESSION_A));
     }
 }
 
@@ -161,9 +179,32 @@ fn version_rejection_is_recorded_and_cleared_on_next_connect() {
     assert_eq!(retried.snapshot().rejection, None);
 }
 
+#[rstest]
+#[case::unauthenticated(HandshakeRejection::Unauthenticated)]
+#[case::campus_unavailable(HandshakeRejection::CampusUnavailable)]
+fn handshake_rejection_is_recorded_and_cleared_on_next_connect(#[case] reason: HandshakeRejection) {
+    let denied = machine_after(vec![
+        connect(),
+        ConnectionEvent::TransportOpened,
+        ConnectionEvent::HandshakeRejected(rejected(reason)),
+    ]);
+    assert_eq!(denied.snapshot().handshake_rejection, Some(reason));
+    let (retried, _) = denied.step(connect());
+    assert_eq!(retried.snapshot().handshake_rejection, None);
+}
+
 #[test]
-fn initial_snapshot_is_disconnected_at_current_version() {
-    let snapshot = initial_snapshot();
+fn initial_snapshot_is_signed_out_and_disconnected_at_current_version() {
+    let full = initial_snapshot();
+    assert_eq!(full.session.auth, AuthPhase::SignedOut);
+    assert_eq!(full.session.account, None);
+    assert!(full.session.campuses.is_empty());
+    assert_eq!(full.session.active_campus_id, None);
+    assert!(full.session.rooms.is_empty());
+    assert!(!full.session.busy);
+    assert_eq!(full.session.error, None);
+    let snapshot = full.network;
+    assert_eq!(snapshot.handshake_rejection, None);
     assert_eq!(snapshot.connection, ConnectionPhase::Disconnected);
     assert_eq!(snapshot.retry_in_ms, None);
     assert_eq!(snapshot.protocol_version, ProtocolVersion::CURRENT);
@@ -189,14 +230,21 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     ConnectionPhase::Connected,
     true,
     0,
-    vec![hello_frame(CAMPUS_A)],
+    vec![hello_frame(CAMPUS_A, token_a())],
+)]
+#[case::handshake_rejected(
+    ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::HandshakeRejected(rejected(HandshakeRejection::CampusUnavailable)))]),
+    ConnectionPhase::Disconnected,
+    false,
+    1,
+    vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::version_mismatch(
     ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::VersionMismatch(mismatch()))]),
     ConnectionPhase::Disconnected,
     false,
     1,
-    vec![hello_frame(CAMPUS_A)],
+    vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::open_failure(
     ScriptedTransport::scripted(vec![refused()], vec![]),
@@ -210,21 +258,21 @@ fn backoff_doubles_until_cap(#[case] attempt: u32, #[case] expected: u32) {
     ConnectionPhase::Backoff,
     false,
     0,
-    vec![hello_frame(CAMPUS_A)],
+    vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::unexpected_frame(
     ScriptedTransport::scripted(vec![], vec![Ok(ServerFrame::Pong(Pong { nonce: 1 }))]),
     ConnectionPhase::Backoff,
     false,
     0,
-    vec![hello_frame(CAMPUS_A)],
+    vec![hello_frame(CAMPUS_A, token_a())],
 )]
 #[case::wrong_campus(
     ScriptedTransport::scripted(vec![], vec![welcome_frame(CAMPUS_B)]),
     ConnectionPhase::Disconnected,
     false,
     1,
-    vec![hello_frame(CAMPUS_A)],
+    vec![hello_frame(CAMPUS_A, token_a())],
 )]
 fn handshake_scenarios(
     #[case] mut transport: ScriptedTransport,
@@ -236,7 +284,8 @@ fn handshake_scenarios(
     let machine = block_on(handshake(
         ConnectionMachine::new(BackoffPolicy::default()),
         &mut transport,
-        campus(CAMPUS_A),
+        CAMPUS_A,
+        token_a(),
     ));
     let snapshot = machine.snapshot();
     assert_eq!(snapshot.connection, expected_phase);
@@ -245,7 +294,21 @@ fn handshake_scenarios(
     assert_eq!(snapshot.session_id.is_some(), has_session);
     assert_eq!(transport.closes, expected_closes);
     assert_eq!(transport.sent, expected_sent);
-    assert_eq!(snapshot.campus_id, Some(campus(CAMPUS_A)));
+    assert_eq!(snapshot.campus_id, Some(CAMPUS_A));
+}
+
+#[test]
+fn handshake_with_different_token_restarts_connected_machine() {
+    let connected = machine_after(vec![
+        connect(),
+        ConnectionEvent::TransportOpened,
+        welcome(CAMPUS_A),
+    ]);
+    let mut transport = ScriptedTransport::scripted(vec![Ok(())], vec![welcome_frame(CAMPUS_A)]);
+    let restarted = block_on(handshake(connected, &mut transport, CAMPUS_A, token_b()));
+    assert_eq!(restarted.snapshot().connection, ConnectionPhase::Connected);
+    assert_eq!(transport.closes, 1);
+    assert_eq!(transport.sent, vec![hello_frame(CAMPUS_A, token_b())]);
 }
 
 #[test]
@@ -259,7 +322,8 @@ fn handshake_leaves_connected_machine_untouched() {
     let unchanged = block_on(handshake(
         connected.clone(),
         &mut transport,
-        campus(CAMPUS_A),
+        CAMPUS_A,
+        token_a(),
     ));
     assert_eq!(unchanged, connected);
     assert!(transport.sent.is_empty());

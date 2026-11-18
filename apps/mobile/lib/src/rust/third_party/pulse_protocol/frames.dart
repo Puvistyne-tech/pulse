@@ -4,6 +4,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 import 'version.dart';
 
+enum HandshakeRejection { unauthenticated, campusUnavailable }
+
 class VersionMismatch {
   final ProtocolVersion supported;
   final ProtocolVersion received;

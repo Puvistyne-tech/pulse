@@ -11,7 +11,11 @@ uuid.workspace = true
 ts-rs.workspace = true
 thiserror.workspace = true
 
+[features]
+fixtures = []
+
 [dev-dependencies]
+pulse-protocol = { path = ".", features = ["fixtures"] }
 serde_json.workspace = true
 rstest.workspace = true
 

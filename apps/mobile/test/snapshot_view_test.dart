@@ -5,9 +5,9 @@ import 'fixtures.dart';
 
 void main() {
   group('SnapshotView', () {
-    for (final fixture in snapshotCases) {
-      testWidgets('renders ${fixture.name} snapshot', (tester) async {
-        await tester.pumpWidget(SnapshotView(snapshot: fixture.snapshot));
+    for (final fixture in networkCases) {
+      testWidgets('renders ${fixture.name} network', (tester) async {
+        await tester.pumpWidget(SnapshotView(network: fixture.network));
         expect(find.text(fixture.expected), findsOneWidget);
       });
     }

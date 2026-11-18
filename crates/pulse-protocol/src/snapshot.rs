@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::frames::VersionMismatch;
+use crate::api::ApiError;
+use crate::auth::AccountProfile;
+use crate::campus::{CampusSummary, Room};
+use crate::frames::{HandshakeRejection, VersionMismatch};
 use crate::ids::{CampusId, SessionId};
 use crate::version::ProtocolVersion;
 
@@ -15,8 +18,16 @@ pub enum ConnectionPhase {
     Backoff,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthPhase {
+    SignedOut,
+    Authenticating,
+    SignedIn,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct ClientSnapshot {
+pub struct ConnectionSnapshot {
     pub protocol_version: ProtocolVersion,
     pub connection: ConnectionPhase,
     pub retry_in_ms: Option<u32>,
@@ -24,4 +35,22 @@ pub struct ClientSnapshot {
     pub session_id: Option<SessionId>,
     pub attempt: u32,
     pub rejection: Option<VersionMismatch>,
+    pub handshake_rejection: Option<HandshakeRejection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct SessionSnapshot {
+    pub auth: AuthPhase,
+    pub account: Option<AccountProfile>,
+    pub campuses: Vec<CampusSummary>,
+    pub active_campus_id: Option<CampusId>,
+    pub rooms: Vec<Room>,
+    pub busy: bool,
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ClientSnapshot {
+    pub network: ConnectionSnapshot,
+    pub session: SessionSnapshot,
 }

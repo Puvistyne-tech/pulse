@@ -1,6 +1,6 @@
 use pulse_protocol::{
-    CampusId, ClientFrame, ClientSnapshot, ConnectionPhase, Hello, ProtocolVersion, ServerFrame,
-    SessionId, VersionMismatch, Welcome,
+    AuthToken, CampusId, ClientFrame, ConnectionPhase, ConnectionSnapshot, HandshakeRejected,
+    HandshakeRejection, Hello, ProtocolVersion, ServerFrame, SessionId, VersionMismatch, Welcome,
 };
 
 use crate::backoff::BackoffPolicy;
@@ -8,10 +8,14 @@ use crate::transport::NetworkTransport;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionEvent {
-    ConnectRequested { campus_id: CampusId },
+    ConnectRequested {
+        campus_id: CampusId,
+        auth_token: AuthToken,
+    },
     TransportOpened,
     WelcomeReceived(Welcome),
     VersionRejected(VersionMismatch),
+    HandshakeRejected(HandshakeRejected),
     TransportFailed,
     BackoffElapsed,
     DisconnectRequested,
@@ -31,8 +35,10 @@ pub struct ConnectionMachine {
     attempt: u32,
     retry_in_ms: Option<u32>,
     campus_id: Option<CampusId>,
+    auth_token: Option<AuthToken>,
     session_id: Option<SessionId>,
     rejection: Option<VersionMismatch>,
+    handshake_rejection: Option<HandshakeRejection>,
     policy: BackoffPolicy,
 }
 
@@ -43,8 +49,10 @@ impl ConnectionMachine {
             attempt: 0,
             retry_in_ms: None,
             campus_id: None,
+            auth_token: None,
             session_id: None,
             rejection: None,
+            handshake_rejection: None,
             policy,
         }
     }
@@ -53,8 +61,8 @@ impl ConnectionMachine {
         &self.phase
     }
 
-    pub fn snapshot(&self) -> ClientSnapshot {
-        ClientSnapshot {
+    pub fn snapshot(&self) -> ConnectionSnapshot {
+        ConnectionSnapshot {
             protocol_version: ProtocolVersion::CURRENT,
             connection: self.phase,
             campus_id: self.campus_id,
@@ -62,6 +70,7 @@ impl ConnectionMachine {
             retry_in_ms: self.retry_in_ms,
             attempt: self.attempt,
             rejection: self.rejection.clone(),
+            handshake_rejection: self.handshake_rejection,
         }
     }
 
@@ -77,18 +86,28 @@ impl ConnectionMachine {
 
     pub fn step(mut self, event: ConnectionEvent) -> (Self, Option<ConnectionCommand>) {
         let command = match (self.phase, event) {
-            (ConnectionPhase::Disconnected, ConnectionEvent::ConnectRequested { campus_id }) => {
+            (
+                ConnectionPhase::Disconnected,
+                ConnectionEvent::ConnectRequested {
+                    campus_id,
+                    auth_token,
+                },
+            ) => {
                 self.enter(ConnectionPhase::Connecting);
                 self.campus_id = Some(campus_id);
+                self.auth_token = Some(auth_token);
                 self.rejection = None;
+                self.handshake_rejection = None;
                 Some(ConnectionCommand::OpenTransport)
             }
             (ConnectionPhase::Connecting, ConnectionEvent::TransportOpened) => {
-                self.campus_id.map(|campus_id| {
+                let credentials = self.campus_id.zip(self.auth_token.clone());
+                credentials.map(|(campus_id, auth_token)| {
                     self.enter(ConnectionPhase::Handshaking);
                     ConnectionCommand::SendHello(Hello {
                         protocol_version: ProtocolVersion::CURRENT,
                         campus_id,
+                        auth_token,
                     })
                 })
             }
@@ -118,6 +137,11 @@ impl ConnectionMachine {
                 self.rejection = Some(mismatch);
                 Some(ConnectionCommand::CloseTransport)
             }
+            (ConnectionPhase::Handshaking, ConnectionEvent::HandshakeRejected(rejected)) => {
+                self.enter(ConnectionPhase::Disconnected);
+                self.handshake_rejection = Some(rejected.reason);
+                Some(ConnectionCommand::CloseTransport)
+            }
             (ConnectionPhase::Connected, ConnectionEvent::TransportFailed) => {
                 let delay_ms = self.policy.delay_ms(0);
                 self.enter_backoff(delay_ms);
@@ -142,10 +166,6 @@ impl ConnectionMachine {
     }
 }
 
-pub fn initial_snapshot() -> ClientSnapshot {
-    ConnectionMachine::new(BackoffPolicy::default()).snapshot()
-}
-
 async fn run_command<T: NetworkTransport>(
     command: ConnectionCommand,
     transport: &mut T,
@@ -164,6 +184,9 @@ async fn run_command<T: NetworkTransport>(
                 Ok(ServerFrame::VersionMismatch(mismatch)) => {
                     ConnectionEvent::VersionRejected(mismatch)
                 }
+                Ok(ServerFrame::HandshakeRejected(rejected)) => {
+                    ConnectionEvent::HandshakeRejected(rejected)
+                }
                 Ok(ServerFrame::Pong(_)) | Err(_) => ConnectionEvent::TransportFailed,
             })
         }
@@ -179,10 +202,13 @@ pub async fn handshake<T: NetworkTransport>(
     machine: ConnectionMachine,
     transport: &mut T,
     campus_id: CampusId,
+    auth_token: AuthToken,
 ) -> ConnectionMachine {
     let machine = match machine.phase() {
         ConnectionPhase::Disconnected => machine,
-        _ if machine.campus_id != Some(campus_id) => {
+        _ if machine.campus_id != Some(campus_id)
+            || machine.auth_token.as_ref() != Some(&auth_token) =>
+        {
             let (reset, command) = machine.step(ConnectionEvent::DisconnectRequested);
             if let Some(command) = command {
                 run_command(command, transport).await;
@@ -192,7 +218,10 @@ pub async fn handshake<T: NetworkTransport>(
         _ => machine,
     };
     let starting_event = match machine.phase() {
-        ConnectionPhase::Disconnected => ConnectionEvent::ConnectRequested { campus_id },
+        ConnectionPhase::Disconnected => ConnectionEvent::ConnectRequested {
+            campus_id,
+            auth_token,
+        },
         ConnectionPhase::Backoff => ConnectionEvent::BackoffElapsed,
         _ => return machine,
     };

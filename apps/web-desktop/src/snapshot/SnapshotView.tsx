@@ -1,4 +1,8 @@
-import type { ClientSnapshot, ConnectionPhase } from "@pulse/protocol";
+import type {
+  ConnectionPhase,
+  ConnectionSnapshot,
+  HandshakeRejection,
+} from "@pulse/protocol";
 
 function phaseLabel(connection: ConnectionPhase): string {
   switch (connection) {
@@ -15,26 +19,35 @@ function phaseLabel(connection: ConnectionPhase): string {
   }
 }
 
-export function SnapshotView({ snapshot }: { snapshot: ClientSnapshot }) {
+const handshakeRejectionLabels: Record<HandshakeRejection, string> = {
+  unauthenticated: "Handshake rejected: unauthenticated",
+  campus_unavailable: "Handshake rejected: campus unavailable",
+};
+
+export function SnapshotView({ network }: { network: ConnectionSnapshot }) {
   return (
-    <main className="mx-auto max-w-md space-y-2 p-6 text-slate-900">
-      <h1 className="text-2xl font-semibold">Pulse</h1>
-      <p className="text-lg">{phaseLabel(snapshot.connection)}</p>
+    <section className="space-y-1 text-slate-900">
+      <p className="text-lg">{phaseLabel(network.connection)}</p>
       <p className="text-sm text-slate-600">
-        Protocol version {snapshot.protocol_version}
+        Protocol version {network.protocol_version}
       </p>
-      <p className="text-sm text-slate-600">Attempt {snapshot.attempt}</p>
-      {snapshot.retry_in_ms !== null && (
+      <p className="text-sm text-slate-600">Attempt {network.attempt}</p>
+      {network.retry_in_ms !== null && (
         <p className="text-sm text-slate-600">
-          Retrying in {snapshot.retry_in_ms} ms
+          Retrying in {network.retry_in_ms} ms
         </p>
       )}
-      {snapshot.rejection && (
+      {network.rejection && (
         <p className="text-sm text-red-700">
-          Version rejected: supported {snapshot.rejection.supported}, received{" "}
-          {snapshot.rejection.received}
+          Version rejected: supported {network.rejection.supported}, received{" "}
+          {network.rejection.received}
         </p>
       )}
-    </main>
+      {network.handshake_rejection && (
+        <p className="text-sm text-red-700">
+          {handshakeRejectionLabels[network.handshake_rejection]}
+        </p>
+      )}
+    </section>
   );
 }

@@ -14,6 +14,37 @@ pub enum SubscriptionState {
     Archived,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("unknown subscription state")]
+pub struct SubscriptionStateParseError;
+
+impl SubscriptionState {
+    pub const ALL: [SubscriptionState; 3] = [
+        SubscriptionState::Following,
+        SubscriptionState::Muted,
+        SubscriptionState::Archived,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            SubscriptionState::Following => "following",
+            SubscriptionState::Muted => "muted",
+            SubscriptionState::Archived => "archived",
+        }
+    }
+}
+
+impl core::str::FromStr for SubscriptionState {
+    type Err = SubscriptionStateParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        SubscriptionState::ALL
+            .into_iter()
+            .find(|state| state.as_str() == value)
+            .ok_or(SubscriptionStateParseError)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum SubscriptionOrigin {

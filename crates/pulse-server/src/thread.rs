@@ -5,11 +5,13 @@ use pulse_protocol::{
     SetThreadSubscription, SetTopicTitle, SubscriptionOrigin, SubscriptionState, ThreadRejection,
     ThreadSummary, normalize_topic_title, role_permits,
 };
-use sqlx::{PgConnection, PgPool};
+use sqlx::{Connection, PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::campus::campus_role;
-use crate::message::{fetch_message, fetch_messages, lock_room, message_root, stamp_activity};
+use crate::message::{
+    fetch_message, fetch_messages, is_top_level, latest_thread_message, lock_room, stamp_activity,
+};
 
 #[derive(Debug)]
 pub enum ThreadFailure {
@@ -34,30 +36,27 @@ type SummaryRow = (
     i64,
 );
 
-const fn state_text(state: SubscriptionState) -> &'static str {
-    match state {
-        SubscriptionState::Following => "following",
-        SubscriptionState::Muted => "muted",
-        SubscriptionState::Archived => "archived",
-    }
-}
-
-fn parse_state(text: &str) -> Result<SubscriptionState, sqlx::Error> {
-    [
-        SubscriptionState::Following,
-        SubscriptionState::Muted,
-        SubscriptionState::Archived,
-    ]
-    .into_iter()
-    .find(|state| state_text(*state) == text)
-    .ok_or(sqlx::Error::RowNotFound)
-}
-
 fn count(value: i64) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
 }
 
 pub async fn thread_summaries(
+    executor: &mut PgConnection,
+    campus_id: CampusId,
+    account_id: AccountId,
+    roots: Option<&[MessageId]>,
+    limit: usize,
+) -> Result<Vec<ThreadSummary>, sqlx::Error> {
+    let mut transaction = executor
+        .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ")
+        .await?;
+    let summaries =
+        snapshot_summaries(&mut transaction, campus_id, account_id, roots, limit).await?;
+    transaction.commit().await?;
+    Ok(summaries)
+}
+
+async fn snapshot_summaries(
     executor: &mut PgConnection,
     campus_id: CampusId,
     account_id: AccountId,
@@ -122,7 +121,9 @@ pub async fn thread_summaries(
                     latest_reply: latest.and_then(|id| messages.get(&MessageId(id)).cloned()),
                     unread_replies: count(unread_replies),
                     unread_mentions: count(unread_mentions),
-                    subscription: parse_state(&state)?,
+                    subscription: state
+                        .parse()
+                        .map_err(|error| sqlx::Error::Decode(Box::new(error)))?,
                     read_through: read_through.map(MessageId),
                     revision: u64::try_from(revision).unwrap_or(0),
                 })
@@ -163,7 +164,7 @@ pub async fn auto_follow(
     .bind(room_id.as_uuid())
     .bind(root_message_id.as_uuid())
     .bind(account_id.as_uuid())
-    .bind(state_text(SubscriptionState::Following))
+    .bind(SubscriptionState::Following.as_str())
     .bind(read_through.map(|id| id.as_uuid()))
     .execute(executor)
     .await?;
@@ -200,33 +201,11 @@ async fn require_root(
     room_id: RoomId,
     root_message_id: MessageId,
 ) -> Result<(), ThreadFailure> {
-    let top_level = message_root(connection, campus_id, room_id, root_message_id)
-        .await?
-        .is_some_and(|thread_root| thread_root.is_none());
-    if top_level {
+    if is_top_level(connection, campus_id, room_id, root_message_id).await? {
         Ok(())
     } else {
         Err(ThreadFailure::Rejected(ThreadRejection::UnknownThread))
     }
-}
-
-async fn latest_thread_message(
-    connection: &mut PgConnection,
-    campus_id: CampusId,
-    room_id: RoomId,
-    root_message_id: MessageId,
-) -> Result<MessageId, sqlx::Error> {
-    let latest = sqlx::query_scalar::<_, Uuid>(
-        "SELECT message_id FROM room_messages \
-         WHERE campus_id = $1 AND room_id = $2 AND (message_id = $3 OR thread_root_id = $3) \
-         ORDER BY message_id DESC LIMIT 1",
-    )
-    .bind(campus_id.as_uuid())
-    .bind(room_id.as_uuid())
-    .bind(root_message_id.as_uuid())
-    .fetch_one(connection)
-    .await?;
-    Ok(MessageId(latest))
 }
 
 pub async fn set_topic_title(
@@ -286,6 +265,10 @@ pub async fn set_subscription(
     account_id: AccountId,
     request: SetThreadSubscription,
 ) -> Result<Option<ThreadSummary>, ThreadFailure> {
+    if request.origin == SubscriptionOrigin::Viewed && request.state != SubscriptionState::Following
+    {
+        return Err(ThreadFailure::Rejected(ThreadRejection::Forbidden));
+    }
     let mut connection = db.acquire().await?;
     require_root(
         &mut connection,
@@ -327,7 +310,7 @@ pub async fn set_subscription(
         .bind(request.room_id.as_uuid())
         .bind(request.root_message_id.as_uuid())
         .bind(account_id.as_uuid())
-        .bind(state_text(request.state))
+        .bind(request.state.as_str())
         .bind(latest.as_uuid())
         .fetch_optional(&mut *connection)
         .await?

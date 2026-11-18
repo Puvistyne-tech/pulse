@@ -202,6 +202,36 @@ pub(crate) async fn message_root(
     Ok(root.map(|root| root.map(MessageId)))
 }
 
+pub(crate) async fn is_top_level(
+    connection: &mut PgConnection,
+    campus_id: CampusId,
+    room_id: RoomId,
+    message_id: MessageId,
+) -> Result<bool, sqlx::Error> {
+    Ok(message_root(connection, campus_id, room_id, message_id)
+        .await?
+        .is_some_and(|thread_root| thread_root.is_none()))
+}
+
+pub(crate) async fn latest_thread_message(
+    connection: &mut PgConnection,
+    campus_id: CampusId,
+    room_id: RoomId,
+    root_message_id: MessageId,
+) -> Result<MessageId, sqlx::Error> {
+    let latest = sqlx::query_scalar::<_, Uuid>(
+        "SELECT message_id FROM room_messages \
+         WHERE campus_id = $1 AND room_id = $2 AND (message_id = $3 OR thread_root_id = $3) \
+         ORDER BY message_id DESC LIMIT 1",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .bind(root_message_id.as_uuid())
+    .fetch_one(connection)
+    .await?;
+    Ok(MessageId(latest))
+}
+
 pub(crate) async fn stamp_activity(
     connection: &mut PgConnection,
     campus_id: CampusId,
@@ -407,10 +437,7 @@ pub async fn post_message(
     }
     let mut first_reply = false;
     if let Some(root) = request.thread_root_id {
-        let top_level = message_root(&mut transaction, campus_id, request.room_id, root)
-            .await?
-            .is_some_and(|thread_root| thread_root.is_none());
-        if !top_level {
+        if !is_top_level(&mut transaction, campus_id, request.room_id, root).await? {
             return Err(PostFailure::Rejected(MessageRejection::UnknownThread));
         }
         first_reply = !thread_has_replies(&mut transaction, campus_id, root).await?;
@@ -588,14 +615,13 @@ pub async fn sync_thread(
     let mut transaction = db
         .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ")
         .await?;
-    let top_level = message_root(
+    let top_level = is_top_level(
         &mut transaction,
         campus_id,
         request.room_id,
         request.root_message_id,
     )
-    .await?
-    .is_some_and(|thread_root| thread_root.is_none());
+    .await?;
     if !top_level {
         return Ok(None);
     }

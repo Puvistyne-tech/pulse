@@ -15,9 +15,12 @@ import 'third_party/pulse_protocol/auth.dart';
 import 'third_party/pulse_protocol/campus.dart';
 import 'third_party/pulse_protocol/frames.dart';
 import 'third_party/pulse_protocol/ids.dart';
+import 'third_party/pulse_protocol/mention.dart';
 import 'third_party/pulse_protocol/messaging.dart';
 import 'third_party/pulse_protocol/rbac.dart';
+import 'third_party/pulse_protocol/reaction.dart';
 import 'third_party/pulse_protocol/snapshot.dart';
+import 'third_party/pulse_protocol/thread.dart';
 import 'third_party/pulse_protocol/validation.dart';
 import 'third_party/pulse_protocol/version.dart';
 
@@ -62,6 +65,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AuthPhase dco_decode_auth_phase(dynamic raw);
 
   @protected
+  BodySegment dco_decode_body_segment(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -98,6 +104,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   MessageRejection dco_decode_box_autoadd_message_rejection(dynamic raw);
 
   @protected
+  React dco_decode_box_autoadd_react(dynamic raw);
+
+  @protected
+  ReplyPreview dco_decode_box_autoadd_reply_preview(dynamic raw);
+
+  @protected
   RoomId dco_decode_box_autoadd_room_id(dynamic raw);
 
   @protected
@@ -107,10 +119,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SessionId dco_decode_box_autoadd_session_id(dynamic raw);
 
   @protected
+  SetTopicTitle dco_decode_box_autoadd_set_topic_title(dynamic raw);
+
+  @protected
   SignInRequest dco_decode_box_autoadd_sign_in_request(dynamic raw);
 
   @protected
   SignUpRequest dco_decode_box_autoadd_sign_up_request(dynamic raw);
+
+  @protected
+  SubscriptionState dco_decode_box_autoadd_subscription_state(dynamic raw);
+
+  @protected
+  ThreadPreview dco_decode_box_autoadd_thread_preview(dynamic raw);
+
+  @protected
+  TimelineEntry dco_decode_box_autoadd_timeline_entry(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
@@ -152,13 +176,43 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_i_32(dynamic raw);
 
   @protected
+  InboxItem dco_decode_inbox_item(dynamic raw);
+
+  @protected
+  InboxItemKind dco_decode_inbox_item_kind(dynamic raw);
+
+  @protected
+  InboxSnapshot dco_decode_inbox_snapshot(dynamic raw);
+
+  @protected
+  InboxStep dco_decode_inbox_step(dynamic raw);
+
+  @protected
   InputField dco_decode_input_field(dynamic raw);
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<AccountId> dco_decode_list_account_id(dynamic raw);
+
+  @protected
+  List<BodySegment> dco_decode_list_body_segment(dynamic raw);
 
   @protected
   List<CampusSummary> dco_decode_list_campus_summary(dynamic raw);
 
   @protected
+  List<InboxItem> dco_decode_list_inbox_item(dynamic raw);
+
+  @protected
+  List<MentionRef> dco_decode_list_mention_ref(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  List<ReactionSummary> dco_decode_list_reaction_summary(dynamic raw);
 
   @protected
   List<Room> dco_decode_list_room(dynamic raw);
@@ -167,10 +221,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<TimelineEntry> dco_decode_list_timeline_entry(dynamic raw);
 
   @protected
+  MentionRef dco_decode_mention_ref(dynamic raw);
+
+  @protected
   MessageId dco_decode_message_id(dynamic raw);
 
   @protected
   MessageRejection dco_decode_message_rejection(dynamic raw);
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  AccountId? dco_decode_opt_box_autoadd_account_id(dynamic raw);
 
   @protected
   AccountProfile? dco_decode_opt_box_autoadd_account_profile(dynamic raw);
@@ -196,10 +259,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   MessageRejection? dco_decode_opt_box_autoadd_message_rejection(dynamic raw);
 
   @protected
+  ReplyPreview? dco_decode_opt_box_autoadd_reply_preview(dynamic raw);
+
+  @protected
   RoomId? dco_decode_opt_box_autoadd_room_id(dynamic raw);
 
   @protected
   SessionId? dco_decode_opt_box_autoadd_session_id(dynamic raw);
+
+  @protected
+  SubscriptionState? dco_decode_opt_box_autoadd_subscription_state(dynamic raw);
+
+  @protected
+  ThreadPreview? dco_decode_opt_box_autoadd_thread_preview(dynamic raw);
+
+  @protected
+  TimelineEntry? dco_decode_opt_box_autoadd_timeline_entry(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
@@ -214,6 +289,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProtocolVersion dco_decode_protocol_version(dynamic raw);
 
   @protected
+  React dco_decode_react(dynamic raw);
+
+  @protected
+  ReactionAction dco_decode_reaction_action(dynamic raw);
+
+  @protected
+  ReactionSummary dco_decode_reaction_summary(dynamic raw);
+
+  @protected
+  ReplyPreview dco_decode_reply_preview(dynamic raw);
+
+  @protected
   Role dco_decode_role(dynamic raw);
 
   @protected
@@ -221,6 +308,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RoomId dco_decode_room_id(dynamic raw);
+
+  @protected
+  SegmentKind dco_decode_segment_kind(dynamic raw);
 
   @protected
   SendMessage dco_decode_send_message(dynamic raw);
@@ -232,10 +322,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SessionSnapshot dco_decode_session_snapshot(dynamic raw);
 
   @protected
+  SetTopicTitle dco_decode_set_topic_title(dynamic raw);
+
+  @protected
   SignInRequest dco_decode_sign_in_request(dynamic raw);
 
   @protected
   SignUpRequest dco_decode_sign_up_request(dynamic raw);
+
+  @protected
+  SubscriptionState dco_decode_subscription_state(dynamic raw);
+
+  @protected
+  ThreadPreview dco_decode_thread_preview(dynamic raw);
+
+  @protected
+  ThreadSnapshot dco_decode_thread_snapshot(dynamic raw);
 
   @protected
   TimelineEntry dco_decode_timeline_entry(dynamic raw);
@@ -291,6 +393,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AuthPhase sse_decode_auth_phase(SseDeserializer deserializer);
 
   @protected
+  BodySegment sse_decode_body_segment(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -337,6 +442,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  React sse_decode_box_autoadd_react(SseDeserializer deserializer);
+
+  @protected
+  ReplyPreview sse_decode_box_autoadd_reply_preview(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RoomId sse_decode_box_autoadd_room_id(SseDeserializer deserializer);
 
   @protected
@@ -346,12 +459,32 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SessionId sse_decode_box_autoadd_session_id(SseDeserializer deserializer);
 
   @protected
+  SetTopicTitle sse_decode_box_autoadd_set_topic_title(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   SignInRequest sse_decode_box_autoadd_sign_in_request(
     SseDeserializer deserializer,
   );
 
   @protected
   SignUpRequest sse_decode_box_autoadd_sign_up_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SubscriptionState sse_decode_box_autoadd_subscription_state(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ThreadPreview sse_decode_box_autoadd_thread_preview(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TimelineEntry sse_decode_box_autoadd_timeline_entry(
     SseDeserializer deserializer,
   );
 
@@ -405,7 +538,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
+  InboxItem sse_decode_inbox_item(SseDeserializer deserializer);
+
+  @protected
+  InboxItemKind sse_decode_inbox_item_kind(SseDeserializer deserializer);
+
+  @protected
+  InboxSnapshot sse_decode_inbox_snapshot(SseDeserializer deserializer);
+
+  @protected
+  InboxStep sse_decode_inbox_step(SseDeserializer deserializer);
+
+  @protected
   InputField sse_decode_input_field(SseDeserializer deserializer);
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<AccountId> sse_decode_list_account_id(SseDeserializer deserializer);
+
+  @protected
+  List<BodySegment> sse_decode_list_body_segment(SseDeserializer deserializer);
 
   @protected
   List<CampusSummary> sse_decode_list_campus_summary(
@@ -413,7 +567,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<InboxItem> sse_decode_list_inbox_item(SseDeserializer deserializer);
+
+  @protected
+  List<MentionRef> sse_decode_list_mention_ref(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<ReactionSummary> sse_decode_list_reaction_summary(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<Room> sse_decode_list_room(SseDeserializer deserializer);
@@ -424,10 +589,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  MentionRef sse_decode_mention_ref(SseDeserializer deserializer);
+
+  @protected
   MessageId sse_decode_message_id(SseDeserializer deserializer);
 
   @protected
   MessageRejection sse_decode_message_rejection(SseDeserializer deserializer);
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  AccountId? sse_decode_opt_box_autoadd_account_id(
+    SseDeserializer deserializer,
+  );
 
   @protected
   AccountProfile? sse_decode_opt_box_autoadd_account_profile(
@@ -461,10 +637,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ReplyPreview? sse_decode_opt_box_autoadd_reply_preview(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RoomId? sse_decode_opt_box_autoadd_room_id(SseDeserializer deserializer);
 
   @protected
   SessionId? sse_decode_opt_box_autoadd_session_id(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SubscriptionState? sse_decode_opt_box_autoadd_subscription_state(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ThreadPreview? sse_decode_opt_box_autoadd_thread_preview(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TimelineEntry? sse_decode_opt_box_autoadd_timeline_entry(
     SseDeserializer deserializer,
   );
 
@@ -483,6 +679,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProtocolVersion sse_decode_protocol_version(SseDeserializer deserializer);
 
   @protected
+  React sse_decode_react(SseDeserializer deserializer);
+
+  @protected
+  ReactionAction sse_decode_reaction_action(SseDeserializer deserializer);
+
+  @protected
+  ReactionSummary sse_decode_reaction_summary(SseDeserializer deserializer);
+
+  @protected
+  ReplyPreview sse_decode_reply_preview(SseDeserializer deserializer);
+
+  @protected
   Role sse_decode_role(SseDeserializer deserializer);
 
   @protected
@@ -490,6 +698,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RoomId sse_decode_room_id(SseDeserializer deserializer);
+
+  @protected
+  SegmentKind sse_decode_segment_kind(SseDeserializer deserializer);
 
   @protected
   SendMessage sse_decode_send_message(SseDeserializer deserializer);
@@ -501,10 +712,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SessionSnapshot sse_decode_session_snapshot(SseDeserializer deserializer);
 
   @protected
+  SetTopicTitle sse_decode_set_topic_title(SseDeserializer deserializer);
+
+  @protected
   SignInRequest sse_decode_sign_in_request(SseDeserializer deserializer);
 
   @protected
   SignUpRequest sse_decode_sign_up_request(SseDeserializer deserializer);
+
+  @protected
+  SubscriptionState sse_decode_subscription_state(SseDeserializer deserializer);
+
+  @protected
+  ThreadPreview sse_decode_thread_preview(SseDeserializer deserializer);
+
+  @protected
+  ThreadSnapshot sse_decode_thread_snapshot(SseDeserializer deserializer);
 
   @protected
   TimelineEntry sse_decode_timeline_entry(SseDeserializer deserializer);
@@ -565,6 +788,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_auth_phase(AuthPhase self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_body_segment(BodySegment self, SseSerializer serializer);
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
@@ -636,6 +862,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_react(React self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_reply_preview(
+    ReplyPreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_room_id(RoomId self, SseSerializer serializer);
 
   @protected
@@ -651,6 +886,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_set_topic_title(
+    SetTopicTitle self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_sign_in_request(
     SignInRequest self,
     SseSerializer serializer,
@@ -659,6 +900,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_sign_up_request(
     SignUpRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_subscription_state(
+    SubscriptionState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_thread_preview(
+    ThreadPreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_timeline_entry(
+    TimelineEntry self,
     SseSerializer serializer,
   );
 
@@ -723,7 +982,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_inbox_item(InboxItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_inbox_item_kind(InboxItemKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_inbox_snapshot(InboxSnapshot self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_inbox_step(InboxStep self, SseSerializer serializer);
+
+  @protected
   void sse_encode_input_field(InputField self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_account_id(
+    List<AccountId> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_body_segment(
+    List<BodySegment> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_campus_summary(
@@ -732,8 +1018,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_inbox_item(
+    List<InboxItem> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_mention_ref(
+    List<MentionRef> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_reaction_summary(
+    List<ReactionSummary> self,
     SseSerializer serializer,
   );
 
@@ -747,11 +1051,23 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_mention_ref(MentionRef self, SseSerializer serializer);
+
+  @protected
   void sse_encode_message_id(MessageId self, SseSerializer serializer);
 
   @protected
   void sse_encode_message_rejection(
     MessageRejection self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_account_id(
+    AccountId? self,
     SseSerializer serializer,
   );
 
@@ -798,6 +1114,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_reply_preview(
+    ReplyPreview? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_room_id(
     RoomId? self,
     SseSerializer serializer,
@@ -806,6 +1128,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_session_id(
     SessionId? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_subscription_state(
+    SubscriptionState? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_thread_preview(
+    ThreadPreview? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_timeline_entry(
+    TimelineEntry? self,
     SseSerializer serializer,
   );
 
@@ -828,6 +1168,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_react(React self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_reaction_action(
+    ReactionAction self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_reaction_summary(
+    ReactionSummary self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_reply_preview(ReplyPreview self, SseSerializer serializer);
+
+  @protected
   void sse_encode_role(Role self, SseSerializer serializer);
 
   @protected
@@ -835,6 +1193,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_room_id(RoomId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_segment_kind(SegmentKind self, SseSerializer serializer);
 
   @protected
   void sse_encode_send_message(SendMessage self, SseSerializer serializer);
@@ -849,10 +1210,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_set_topic_title(SetTopicTitle self, SseSerializer serializer);
+
+  @protected
   void sse_encode_sign_in_request(SignInRequest self, SseSerializer serializer);
 
   @protected
   void sse_encode_sign_up_request(SignUpRequest self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_subscription_state(
+    SubscriptionState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_thread_preview(ThreadPreview self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_thread_snapshot(
+    ThreadSnapshot self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_timeline_entry(TimelineEntry self, SseSerializer serializer);

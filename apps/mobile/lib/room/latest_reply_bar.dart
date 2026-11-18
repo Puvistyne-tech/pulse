@@ -35,7 +35,9 @@ class _LatestReplyBarState extends State<LatestReplyBar> {
         if (!_collapsed) ...[
           Text(latest.authorDisplayName),
           const SizedBox(width: 8),
-          Flexible(child: Text(latest.preview, overflow: TextOverflow.ellipsis)),
+          Flexible(
+            child: Text(latest.preview, overflow: TextOverflow.ellipsis),
+          ),
           TextButton(
             onPressed: widget.openThread,
             child: const Text('Open thread'),

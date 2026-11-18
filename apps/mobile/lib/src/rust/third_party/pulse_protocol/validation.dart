@@ -12,6 +12,14 @@ Future<String> normalizeDisplayName({required String raw}) =>
 Future<String> normalizeMessageBody({required String raw}) =>
     RustLib.instance.api.pulseProtocolValidationNormalizeMessageBody(raw: raw);
 
+Future<String?> normalizeTopicTitle({required String raw}) =>
+    RustLib.instance.api.pulseProtocolValidationNormalizeTopicTitle(raw: raw);
+
+Future<String> normalizeReactionEmoji({required String raw}) => RustLib
+    .instance
+    .api
+    .pulseProtocolValidationNormalizeReactionEmoji(raw: raw);
+
 Future<void> validateDisplayName({required String raw}) =>
     RustLib.instance.api.pulseProtocolValidationValidateDisplayName(raw: raw);
 

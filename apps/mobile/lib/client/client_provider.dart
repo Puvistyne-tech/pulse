@@ -93,9 +93,8 @@ class ClientNotifier extends AsyncNotifier<ClientSnapshot> {
     ),
   );
 
-  Future<void> openThread(RoomId roomId, MessageId rootMessageId) => _publish(
-    bridge.openThread(roomId: roomId, rootMessageId: rootMessageId),
-  );
+  Future<void> openThread(RoomId roomId, MessageId rootMessageId) =>
+      _publish(bridge.openThread(roomId: roomId, rootMessageId: rootMessageId));
 
   Future<void> closeThread() => _publish(bridge.closeThread());
 

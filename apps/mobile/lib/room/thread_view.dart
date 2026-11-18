@@ -63,7 +63,7 @@ class _ThreadViewState extends State<ThreadView> {
     }
     final intents = widget.intents;
     final root = thread.root;
-    final entries = [if (root != null) root, ...thread.replies];
+    final entries = [?root, ...thread.replies];
     final actions = EntryActions(
       react: intents.react,
       discardMessage: intents.discardMessage,
@@ -106,9 +106,7 @@ class _ThreadViewState extends State<ThreadView> {
                 key: ValueKey('subscription-${entry.key.name}'),
                 style: thread.subscription == entry.key
                     ? TextButton.styleFrom(
-                        textStyle: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
                       )
                     : null,
                 onPressed: () =>

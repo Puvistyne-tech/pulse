@@ -6,7 +6,8 @@ const _invalidFieldMessages = {
   InputField.password: 'Enter a valid password',
   InputField.slug: 'Use lowercase letters, digits and hyphens for the slug',
   InputField.messageBody: 'Message is empty or too long',
-  InputField.topicTitle: 'Enter a shorter topic title without control characters',
+  InputField.topicTitle:
+      'Enter a shorter topic title without control characters',
   InputField.reactionEmoji: 'Choose a single emoji reaction',
 };
 

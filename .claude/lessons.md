@@ -16,3 +16,6 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Use the hyphenated package name `pulse-protocol` in `flutter_rust_bridge.yaml` `rust_input`, and create an empty `rust/src/frb_generated.rs` before the first codegen run.
 - Under pnpm 11 allow esbuild with `allowBuilds: { esbuild: true }` in `pnpm-workspace.yaml`; add `@types/node` when `vite.config.ts` imports `node:*`.
 - Run multi-step shell edits inside worktrees as separate plain Bash calls or scripts written with the Write tool; compound `cd`/heredoc/`mkdir` chains are refused.
+- Move shared event and machine builders into the crate's `tests/fixtures/mod.rs` as soon as a second test file needs them.
+- Give every snapshot field its own expected column in table tests; never derive expectations from another column.
+- Apply campus-mismatch resets in `handshake()` to every non-Disconnected phase.

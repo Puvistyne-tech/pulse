@@ -1,12 +1,18 @@
+import { Channel } from "@tauri-apps/api/core";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import type { ClientSnapshot } from "@pulse/protocol";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   CAMPUS_B,
+  NONCE_B,
+  ROOM_B,
   createCampusRequest,
   signInRequest,
   signUpRequest,
+  signedInWithMessages,
   signedInWithRooms,
+  snapshotOf,
+  timelineOf,
 } from "../test/fixtures";
 import { pulseClient } from "./pulseClient";
 
@@ -62,6 +68,24 @@ describe("pulseClient", () => {
       "select_campus",
       { campusId: CAMPUS_B },
     ],
+    [
+      "selectRoom",
+      () => pulseClient.selectRoom(ROOM_B),
+      "select_room",
+      { roomId: ROOM_B },
+    ],
+    [
+      "sendMessage",
+      () => pulseClient.sendMessage(ROOM_B, "  hello  "),
+      "send_message",
+      { roomId: ROOM_B, body: "  hello  " },
+    ],
+    [
+      "discardMessage",
+      () => pulseClient.discardMessage(NONCE_B),
+      "discard_message",
+      { clientNonce: NONCE_B },
+    ],
   ])("%s invokes the matching command", async (_name, call, command, args) => {
     const invocations = recordInvocations(signedInWithRooms);
     const result = await call();
@@ -74,5 +98,28 @@ describe("pulseClient", () => {
       expect(invocation?.args).toEqual(args);
     }
     expect(result).toEqual(signedInWithRooms);
+  });
+
+  test.each([
+    ["one push", 1],
+    ["three pushes", 3],
+  ])("watchSnapshots delivers %s in order", async (_name, pushes) => {
+    const received: ClientSnapshot[] = [];
+    const invocations: Invocation[] = [];
+    mockIPC((command, args) => {
+      invocations.push({ command, args });
+    });
+    await pulseClient.watchSnapshots((snapshot) => received.push(snapshot));
+    expect(invocations).toHaveLength(1);
+    const [invocation] = invocations;
+    expect(invocation?.command).toBe("watch_snapshots");
+    const channel = (invocation?.args as { onSnapshot: Channel<ClientSnapshot> })
+      .onSnapshot;
+    expect(channel).toBeInstanceOf(Channel);
+    const pushed = Array.from({ length: pushes }, (_, index) =>
+      snapshotOf(signedInWithMessages.session, timelineOf([]), index + 1),
+    );
+    pushed.forEach((snapshot) => channel.onmessage(snapshot));
+    expect(received).toEqual(pushed);
   });
 });

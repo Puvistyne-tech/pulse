@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use crate::auth::AuthToken;
-use crate::ids::{AccountId, CampusId, RoomId, SessionId};
+use crate::ids::{AccountId, CampusId, ClientNonce, MessageId, RoomId, SessionId};
 
 pub const CAMPUS_A: CampusId = CampusId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_00000000000a));
 pub const CAMPUS_B: CampusId = CampusId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_00000000000b));
@@ -10,6 +10,14 @@ pub const SESSION_A: SessionId = SessionId(Uuid::from_u128(0x0193a5c0_0000_7000_
 pub const ACCOUNT_A: AccountId = AccountId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000c1));
 pub const ACCOUNT_B: AccountId = AccountId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000c2));
 pub const ROOM_A: RoomId = RoomId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000d1));
+pub const ROOM_B: RoomId = RoomId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000d2));
+pub const MESSAGE_A: MessageId = MessageId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000e1));
+pub const MESSAGE_B: MessageId = MessageId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000e2));
+pub const MESSAGE_C: MessageId = MessageId(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000e3));
+pub const NONCE_A: ClientNonce =
+    ClientNonce(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000f1));
+pub const NONCE_B: ClientNonce =
+    ClientNonce(Uuid::from_u128(0x0193a5c0_0000_7000_8000_0000000000f2));
 
 pub const AUTH_TOKEN_A: &str = "fixture-token-a";
 pub const AUTH_TOKEN_B: &str = "fixture-token-b";

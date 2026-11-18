@@ -1,10 +1,12 @@
 mod common;
 
 use common::{
-    Observed, Outgoing, campus_for, connect, fresh_state, hello, observe, ping, send, signed_up,
-    spawn_server, spawn_server_with,
+    Observed, Outgoing, campus_for, connect, fresh_state, hello, observe, ping, send, send_message,
+    signed_up, spawn_server, spawn_server_with, sync_rooms,
 };
-use pulse_protocol::fixtures::{AUTH_TOKEN_A, AUTH_TOKEN_B, CAMPUS_A, CAMPUS_B, auth_token};
+use pulse_protocol::fixtures::{
+    AUTH_TOKEN_A, AUTH_TOKEN_B, CAMPUS_A, CAMPUS_B, NONCE_A, ROOM_A, auth_token,
+};
 use pulse_protocol::{
     AuthToken, CampusId, HandshakeRejected, HandshakeRejection, Pong, ProtocolVersion, Role,
     ServerFrame, VersionMismatch, close_code,
@@ -56,6 +58,14 @@ fn check(actual: &Observed, wanted: &Expect, campus_id: CampusId) {
     ],
 )]
 #[case::ping_before_hello(vec![ping(1)], vec![close(close_code::POLICY_VIOLATION)])]
+#[case::send_message_before_hello(
+    vec![send_message(ROOM_A, NONCE_A, "early")],
+    vec![close(close_code::POLICY_VIOLATION)],
+)]
+#[case::sync_rooms_before_hello(
+    vec![sync_rooms(&[(ROOM_A, None)])],
+    vec![close(close_code::POLICY_VIOLATION)],
+)]
 #[case::unparseable_text(
     vec![Outgoing::Raw("not json".to_owned())],
     vec![close(close_code::INVALID_PAYLOAD)],

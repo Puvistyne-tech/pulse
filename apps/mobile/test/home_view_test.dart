@@ -35,6 +35,24 @@ final homeCases = <HomeCase>[
     '#commons',
     '#courtyard',
   ], []),
+  HomeCase(
+    'signed in with messages',
+    signedInWithMessages,
+    ['Grace', 'welcome', 'You', 'hello', 'Sending', 'Syncing', 'Send'],
+    ['Discard'],
+  ),
+];
+
+class RoomCase {
+  const RoomCase(this.label, this.roomId);
+
+  final String label;
+  final Object roomId;
+}
+
+final roomCases = <RoomCase>[
+  RoomCase('#commons', roomAId),
+  RoomCase('#courtyard', roomBId),
 ];
 
 void main() {
@@ -92,6 +110,48 @@ void main() {
       );
       await tester.tap(find.text('Beta Campus'));
       expect(recorded.calls, [campusBId]);
+    });
+
+    for (final fixture in roomCases) {
+      testWidgets('selecting ${fixture.label} forwards its room id', (
+        tester,
+      ) async {
+        final recorded = RecordedIntents();
+        await pumpView(
+          tester,
+          HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
+        );
+        await tester.tap(find.text(fixture.label));
+        expect(recorded.calls, [fixture.roomId]);
+      });
+    }
+
+    for (final (label, bold) in [('#commons', true), ('#courtyard', false)]) {
+      testWidgets('active room marking for $label', (tester) async {
+        await pumpView(
+          tester,
+          HomeView(
+            snapshot: signedInWithRooms,
+            intents: RecordedIntents().intents,
+          ),
+        );
+        final text = tester.widget<Text>(find.text(label));
+        expect(text.style?.fontWeight == FontWeight.bold, bold);
+      });
+    }
+
+    testWidgets('sending forwards the active room id and draft', (
+      tester,
+    ) async {
+      final recorded = RecordedIntents();
+      await pumpView(
+        tester,
+        HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
+      );
+      await tester.enterText(find.byKey(const Key('messageDraft')), 'hi');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('sendMessage')));
+      expect(recorded.calls, [(roomAId, 'hi')]);
     });
   });
 }

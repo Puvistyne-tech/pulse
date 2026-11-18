@@ -46,6 +46,7 @@ pub enum InputField {
     DisplayName,
     Password,
     Slug,
+    MessageBody,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

@@ -1,14 +1,18 @@
 use pulse_protocol::fixtures::{
-    ACCOUNT_A, AUTH_TOKEN_A, CAMPUS_A, CAMPUS_B, ROOM_A, SESSION_A, VALID_PASSWORD, auth_token,
+    ACCOUNT_A, AUTH_TOKEN_A, CAMPUS_A, CAMPUS_B, MESSAGE_A, MESSAGE_B, NONCE_A, ROOM_A, ROOM_B,
+    SESSION_A, VALID_PASSWORD, auth_token,
 };
 use pulse_protocol::{
     AccountId, AccountProfile, ApiError, ApiErrorCode, AuthPhase, AuthSession, CampusCreated,
-    CampusId, CampusList, CampusSummary, ClientFrame, ClientSnapshot, ConnectionPhase,
-    ConnectionSnapshot, CreateCampusRequest, CreateRoomRequest, HandshakeRejected,
-    HandshakeRejection, Hello, IdParseError, InputField, Permission, Ping, Pong, ProtocolVersion,
-    Role, Room, RoomId, RoomList, ServerFrame, SessionId, SessionSnapshot, SignInRequest,
-    SignUpRequest, Validate, VersionMismatch, Welcome, api_path, close_code,
-    normalize_display_name, normalize_email, role_permits, validate_display_name,
+    CampusId, CampusList, CampusSummary, ClientFrame, ClientNonce, ClientSnapshot, ConnectionPhase,
+    ConnectionSnapshot, CreateCampusRequest, CreateRoomRequest, DeliveryState, HandshakeRejected,
+    HandshakeRejection, Hello, IdParseError, InputField, MESSAGE_BODY_MAX_CHARS, MessageAccepted,
+    MessageCreated, MessageId, MessageRejected, MessageRejection, Permission, Ping, Pong,
+    ProtocolVersion, Role, Room, RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced,
+    RoomUnavailable, SYNC_MAX_ROOMS, SYNC_PAGE_LIMIT, SendMessage, ServerFrame, SessionId,
+    SessionSnapshot, SignInRequest, SignUpRequest, SyncRooms, TimelineEntry, TimelineSnapshot,
+    Validate, VersionMismatch, Welcome, api_path, close_code, normalize_display_name,
+    normalize_email, normalize_message_body, role_permits, validate_display_name,
     validate_password, validate_slug,
 };
 use rstest::rstest;
@@ -90,9 +94,75 @@ fn signed_out_session() -> SessionSnapshot {
         campuses: Vec::new(),
         active_campus_id: None,
         rooms: Vec::new(),
+        active_room_id: None,
         busy: false,
         error: None,
     }
+}
+
+fn empty_timeline() -> TimelineSnapshot {
+    TimelineSnapshot {
+        room_id: None,
+        entries: Vec::new(),
+        syncing: false,
+        error: None,
+    }
+}
+
+fn room_message(message_id: MessageId, previous: Option<MessageId>) -> RoomMessage {
+    RoomMessage {
+        message_id,
+        previous_message_id: previous,
+        campus_id: CAMPUS_A,
+        room_id: ROOM_A,
+        author_id: ACCOUNT_A,
+        author_display_name: "Ada".to_owned(),
+        client_nonce: NONCE_A,
+        body: "hello".to_owned(),
+    }
+}
+
+fn room_message_json(message_id: MessageId, previous: Option<MessageId>) -> Value {
+    json!({
+        "message_id": message_id.to_string(),
+        "previous_message_id": previous.map(|id| id.to_string()),
+        "campus_id": CAMPUS_A.to_string(),
+        "room_id": ROOM_A.to_string(),
+        "author_id": ACCOUNT_A.to_string(),
+        "author_display_name": "Ada",
+        "client_nonce": NONCE_A.to_string(),
+        "body": "hello",
+    })
+}
+
+fn timeline_entry(delivery: DeliveryState, rejection: Option<MessageRejection>) -> TimelineEntry {
+    TimelineEntry {
+        client_nonce: NONCE_A,
+        message_id: matches!(delivery, DeliveryState::Confirmed).then_some(MESSAGE_A),
+        author_id: ACCOUNT_A,
+        author_display_name: "Ada".to_owned(),
+        from_self: true,
+        body: "hello".to_owned(),
+        delivery,
+        rejection,
+    }
+}
+
+fn timeline_entry_json(
+    message_id: Option<MessageId>,
+    delivery: &str,
+    rejection: Option<&str>,
+) -> Value {
+    json!({
+        "client_nonce": NONCE_A.to_string(),
+        "message_id": message_id.map(|id| id.to_string()),
+        "author_id": ACCOUNT_A.to_string(),
+        "author_display_name": "Ada",
+        "from_self": true,
+        "body": "hello",
+        "delivery": delivery,
+        "rejection": rejection,
+    })
 }
 
 fn disconnected_network() -> ConnectionSnapshot {
@@ -123,6 +193,34 @@ fn disconnected_network() -> ConnectionSnapshot {
     }),
 )]
 #[case::ping(ClientFrame::Ping(Ping { nonce: 7 }), json!({"type": "ping", "nonce": 7}))]
+#[case::send_message(
+    ClientFrame::SendMessage(SendMessage {
+        room_id: ROOM_A,
+        client_nonce: NONCE_A,
+        body: "hello".to_owned(),
+    }),
+    json!({
+        "type": "send_message",
+        "room_id": ROOM_A.to_string(),
+        "client_nonce": NONCE_A.to_string(),
+        "body": "hello",
+    }),
+)]
+#[case::sync_rooms(
+    ClientFrame::SyncRooms(SyncRooms {
+        cursors: vec![
+            RoomCursor { room_id: ROOM_A, after: None },
+            RoomCursor { room_id: ROOM_B, after: Some(MESSAGE_A) },
+        ],
+    }),
+    json!({
+        "type": "sync_rooms",
+        "cursors": [
+            {"room_id": ROOM_A.to_string(), "after": null},
+            {"room_id": ROOM_B.to_string(), "after": MESSAGE_A.to_string()},
+        ],
+    }),
+)]
 fn client_frames_match_wire_format(#[case] frame: ClientFrame, #[case] expected: Value) {
     assert_wire(frame, expected);
 }
@@ -161,6 +259,38 @@ fn client_frames_match_wire_format(#[case] frame: ClientFrame, #[case] expected:
     ServerFrame::HandshakeRejected(HandshakeRejected { reason: HandshakeRejection::Unauthenticated }),
     json!({"type": "handshake_rejected", "reason": "unauthenticated"}),
 )]
+#[case::message_accepted(
+    ServerFrame::MessageAccepted(MessageAccepted { message: room_message(MESSAGE_A, None) }),
+    json!({"type": "message_accepted", "message": room_message_json(MESSAGE_A, None)}),
+)]
+#[case::message_created(
+    ServerFrame::MessageCreated(MessageCreated { message: room_message(MESSAGE_B, Some(MESSAGE_A)) }),
+    json!({"type": "message_created", "message": room_message_json(MESSAGE_B, Some(MESSAGE_A))}),
+)]
+#[case::message_rejected(
+    ServerFrame::MessageRejected(MessageRejected {
+        client_nonce: NONCE_A,
+        reason: MessageRejection::Forbidden,
+    }),
+    json!({"type": "message_rejected", "client_nonce": NONCE_A.to_string(), "reason": "forbidden"}),
+)]
+#[case::room_synced(
+    ServerFrame::RoomSynced(RoomSynced {
+        room_id: ROOM_A,
+        messages: vec![room_message(MESSAGE_A, None)],
+        has_more: true,
+    }),
+    json!({
+        "type": "room_synced",
+        "room_id": ROOM_A.to_string(),
+        "messages": [room_message_json(MESSAGE_A, None)],
+        "has_more": true,
+    }),
+)]
+#[case::room_unavailable(
+    ServerFrame::RoomUnavailable(RoomUnavailable { room_id: ROOM_B }),
+    json!({"type": "room_unavailable", "room_id": ROOM_B.to_string()}),
+)]
 fn server_frames_match_wire_format(#[case] frame: ServerFrame, #[case] expected: Value) {
     assert_wire(frame, expected);
 }
@@ -198,6 +328,7 @@ fn role_tags(#[case] role: Role, #[case] expected: Value) {
 #[case::create_room(Permission::CreateRoom, json!("create_room"))]
 #[case::manage_members(Permission::ManageMembers, json!("manage_members"))]
 #[case::manage_campus(Permission::ManageCampus, json!("manage_campus"))]
+#[case::post_message(Permission::PostMessage, json!("post_message"))]
 fn permission_tags(#[case] permission: Permission, #[case] expected: Value) {
     assert_wire(permission, expected);
 }
@@ -232,6 +363,7 @@ fn unknown_statuses_map_to_internal(#[case] status: u16) {
 #[case::display_name(InputField::DisplayName, json!("display_name"))]
 #[case::password(InputField::Password, json!("password"))]
 #[case::slug(InputField::Slug, json!("slug"))]
+#[case::message_body(InputField::MessageBody, json!("message_body"))]
 fn input_field_tags(#[case] field: InputField, #[case] expected: Value) {
     assert_wire(field, expected);
 }
@@ -306,9 +438,58 @@ where
 }
 
 #[rstest]
+#[case::forbidden(MessageRejection::Forbidden, json!("forbidden"))]
+#[case::invalid_body(MessageRejection::InvalidBody, json!("invalid_body"))]
+#[case::unknown_room(MessageRejection::UnknownRoom, json!("unknown_room"))]
+fn message_rejection_tags(#[case] reason: MessageRejection, #[case] expected: Value) {
+    assert_wire(reason, expected);
+}
+
+#[rstest]
+#[case::pending(DeliveryState::Pending, json!("pending"))]
+#[case::confirmed(DeliveryState::Confirmed, json!("confirmed"))]
+#[case::failed(DeliveryState::Failed, json!("failed"))]
+fn delivery_state_tags(#[case] state: DeliveryState, #[case] expected: Value) {
+    assert_wire(state, expected);
+}
+
+#[rstest]
+#[case::root(room_message(MESSAGE_A, None), room_message_json(MESSAGE_A, None))]
+#[case::chained(
+    room_message(MESSAGE_B, Some(MESSAGE_A)),
+    room_message_json(MESSAGE_B, Some(MESSAGE_A))
+)]
+fn room_message_wire_format(#[case] message: RoomMessage, #[case] expected: Value) {
+    assert_wire(message, expected);
+}
+
+#[rstest]
+#[case::pending(
+    timeline_entry(DeliveryState::Pending, None),
+    timeline_entry_json(None, "pending", None)
+)]
+#[case::confirmed(
+    timeline_entry(DeliveryState::Confirmed, None),
+    timeline_entry_json(Some(MESSAGE_A), "confirmed", None)
+)]
+#[case::failed(
+    timeline_entry(DeliveryState::Failed, Some(MessageRejection::InvalidBody)),
+    timeline_entry_json(None, "failed", Some("invalid_body"))
+)]
+fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Value) {
+    assert_wire(entry, expected);
+}
+
+#[rstest]
 #[case::signed_out(
-    ClientSnapshot { network: disconnected_network(), session: signed_out_session() },
+    ClientSnapshot {
+        sequence: 0,
+        network: disconnected_network(),
+        session: signed_out_session(),
+        timeline: empty_timeline(),
+    },
     json!({
+        "sequence": 0,
         "network": {
             "protocol_version": 2,
             "connection": "disconnected",
@@ -325,13 +506,16 @@ where
             "campuses": [],
             "active_campus_id": null,
             "rooms": [],
+            "active_room_id": null,
             "busy": false,
             "error": null,
         },
+        "timeline": {"room_id": null, "entries": [], "syncing": false, "error": null},
     }),
 )]
 #[case::signed_in_rejected(
     ClientSnapshot {
+        sequence: 42,
         network: ConnectionSnapshot {
             protocol_version: ProtocolVersion::CURRENT,
             connection: ConnectionPhase::Backoff,
@@ -351,11 +535,22 @@ where
             campuses: vec![summary()],
             active_campus_id: Some(CAMPUS_A),
             rooms: vec![room("commons")],
+            active_room_id: Some(ROOM_A),
             busy: true,
             error: Some(ApiError::invalid(InputField::Slug)),
         },
+        timeline: TimelineSnapshot {
+            room_id: Some(ROOM_A),
+            entries: vec![
+                timeline_entry(DeliveryState::Confirmed, None),
+                timeline_entry(DeliveryState::Failed, Some(MessageRejection::Forbidden)),
+            ],
+            syncing: true,
+            error: Some(ApiError::invalid(InputField::MessageBody)),
+        },
     },
     json!({
+        "sequence": 42,
         "network": {
             "protocol_version": 2,
             "connection": "backoff",
@@ -372,8 +567,18 @@ where
             "campuses": [summary_json()],
             "active_campus_id": CAMPUS_A.to_string(),
             "rooms": [room_json("commons")],
+            "active_room_id": ROOM_A.to_string(),
             "busy": true,
             "error": {"code": "invalid_input", "field": "slug"},
+        },
+        "timeline": {
+            "room_id": ROOM_A.to_string(),
+            "entries": [
+                timeline_entry_json(Some(MESSAGE_A), "confirmed", None),
+                timeline_entry_json(None, "failed", Some("forbidden")),
+            ],
+            "syncing": true,
+            "error": {"code": "invalid_input", "field": "message_body"},
         },
     }),
 )]
@@ -385,21 +590,25 @@ fn client_snapshot_matches_wire_format(#[case] snapshot: ClientSnapshot, #[case]
 #[case::owner_view_campus(Role::Owner, Permission::ViewCampus, true)]
 #[case::owner_view_rooms(Role::Owner, Permission::ViewRooms, true)]
 #[case::owner_create_room(Role::Owner, Permission::CreateRoom, true)]
+#[case::owner_post_message(Role::Owner, Permission::PostMessage, true)]
 #[case::owner_manage_members(Role::Owner, Permission::ManageMembers, true)]
 #[case::owner_manage_campus(Role::Owner, Permission::ManageCampus, true)]
 #[case::admin_view_campus(Role::Admin, Permission::ViewCampus, true)]
 #[case::admin_view_rooms(Role::Admin, Permission::ViewRooms, true)]
 #[case::admin_create_room(Role::Admin, Permission::CreateRoom, true)]
+#[case::admin_post_message(Role::Admin, Permission::PostMessage, true)]
 #[case::admin_manage_members(Role::Admin, Permission::ManageMembers, true)]
 #[case::admin_manage_campus(Role::Admin, Permission::ManageCampus, false)]
 #[case::member_view_campus(Role::Member, Permission::ViewCampus, true)]
 #[case::member_view_rooms(Role::Member, Permission::ViewRooms, true)]
 #[case::member_create_room(Role::Member, Permission::CreateRoom, true)]
+#[case::member_post_message(Role::Member, Permission::PostMessage, true)]
 #[case::member_manage_members(Role::Member, Permission::ManageMembers, false)]
 #[case::member_manage_campus(Role::Member, Permission::ManageCampus, false)]
 #[case::guest_view_campus(Role::Guest, Permission::ViewCampus, true)]
 #[case::guest_view_rooms(Role::Guest, Permission::ViewRooms, true)]
 #[case::guest_create_room(Role::Guest, Permission::CreateRoom, false)]
+#[case::guest_post_message(Role::Guest, Permission::PostMessage, false)]
 #[case::guest_manage_members(Role::Guest, Permission::ManageMembers, false)]
 #[case::guest_manage_campus(Role::Guest, Permission::ManageCampus, false)]
 fn role_permission_matrix(
@@ -413,7 +622,45 @@ fn role_permission_matrix(
 #[test]
 fn role_and_permission_lists_are_complete() {
     assert_eq!(Role::ALL.len(), 4);
-    assert_eq!(Permission::ALL.len(), 5);
+    assert_eq!(Permission::ALL.len(), 6);
+}
+
+#[rstest]
+#[case::trims_padding("  hello  ", Ok("hello".to_owned()))]
+#[case::empty("", Err(InputField::MessageBody))]
+#[case::blank(" \n\t ", Err(InputField::MessageBody))]
+#[case::at_limit(&"a".repeat(MESSAGE_BODY_MAX_CHARS), Ok("a".repeat(MESSAGE_BODY_MAX_CHARS)))]
+#[case::over_limit(&"a".repeat(MESSAGE_BODY_MAX_CHARS + 1), Err(InputField::MessageBody))]
+#[case::multibyte_at_limit(&"é".repeat(MESSAGE_BODY_MAX_CHARS), Ok("é".repeat(MESSAGE_BODY_MAX_CHARS)))]
+#[case::multibyte_over_limit(&"é".repeat(MESSAGE_BODY_MAX_CHARS + 1), Err(InputField::MessageBody))]
+#[case::inner_newline_kept("a\nb", Ok("a\nb".to_owned()))]
+#[case::inner_tab_kept("a\tb", Ok("a\tb".to_owned()))]
+#[case::bell_rejected("a\u{7}b", Err(InputField::MessageBody))]
+#[case::null_rejected("a\0b", Err(InputField::MessageBody))]
+fn message_body_normalization(#[case] raw: &str, #[case] expected: Result<String, InputField>) {
+    assert_eq!(normalize_message_body(raw), expected);
+}
+
+#[rstest]
+#[case::valid("hello", None)]
+#[case::empty("", Some(InputField::MessageBody))]
+#[case::control("a\u{7}", Some(InputField::MessageBody))]
+fn send_message_validation(#[case] body: &str, #[case] field: Option<InputField>) {
+    let request = SendMessage {
+        room_id: ROOM_A,
+        client_nonce: NONCE_A,
+        body: body.to_owned(),
+    };
+    assert_eq!(
+        request.validate().err().map(|error| error.field),
+        field.map(Some)
+    );
+}
+
+#[test]
+fn sync_limits_are_stable() {
+    assert_eq!(SYNC_PAGE_LIMIT, 100);
+    assert_eq!(SYNC_MAX_ROOMS, 256);
 }
 
 #[rstest]
@@ -620,6 +867,7 @@ fn close_codes_are_stable() {
     assert_eq!(close_code::INVALID_PAYLOAD, 1007);
     assert_eq!(close_code::POLICY_VIOLATION, 1008);
     assert_eq!(close_code::INTERNAL_ERROR, 1011);
+    assert_eq!(close_code::TRY_AGAIN_LATER, 1013);
 }
 
 #[test]
@@ -628,6 +876,8 @@ fn generated_ids_are_version_seven() {
     assert_eq!(SessionId::generate().as_uuid().get_version_num(), 7);
     assert_eq!(AccountId::generate().as_uuid().get_version_num(), 7);
     assert_eq!(RoomId::generate().as_uuid().get_version_num(), 7);
+    assert_eq!(MessageId::generate().as_uuid().get_version_num(), 7);
+    assert_eq!(ClientNonce::generate().as_uuid().get_version_num(), 7);
 }
 
 #[rstest]

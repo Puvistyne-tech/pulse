@@ -1,7 +1,7 @@
 use pulse_protocol::{
     AccountProfile, ApiError, ApiErrorCode, AuthPhase, AuthSession, AuthToken, CampusCreated,
-    CampusId, CampusList, CampusSummary, CreateCampusRequest, Room, RoomList, SessionSnapshot,
-    SignInRequest, SignUpRequest, Validate,
+    CampusId, CampusList, CampusSummary, CreateCampusRequest, Room, RoomId, RoomList,
+    SessionSnapshot, SignInRequest, SignUpRequest, Validate,
 };
 
 use crate::api::ApiTransport;
@@ -17,6 +17,7 @@ pub enum SessionEvent {
     CampusCreated(CampusCreated),
     CampusSelected(CampusId),
     RoomsLoaded(RoomList),
+    RoomSelected(RoomId),
     RequestFailed(ApiError),
     SignOutRequested,
 }
@@ -45,6 +46,7 @@ pub struct SessionMachine {
     campuses: Vec<CampusSummary>,
     active_campus_id: Option<CampusId>,
     rooms: Vec<Room>,
+    active_room_id: Option<RoomId>,
     busy: bool,
     error: Option<ApiError>,
 }
@@ -58,6 +60,7 @@ impl Default for SessionMachine {
             campuses: Vec::new(),
             active_campus_id: None,
             rooms: Vec::new(),
+            active_room_id: None,
             busy: false,
             error: None,
         }
@@ -73,6 +76,23 @@ impl SessionMachine {
         self.token.as_ref()
     }
 
+    pub fn account(&self) -> Option<&AccountProfile> {
+        self.account.as_ref()
+    }
+
+    pub fn active_campus_id(&self) -> Option<CampusId> {
+        self.active_campus_id
+    }
+
+    fn settle_active_room(&mut self) {
+        let still_listed = self
+            .active_room_id
+            .is_some_and(|active| self.rooms.iter().any(|room| room.room_id == active));
+        if !still_listed {
+            self.active_room_id = self.rooms.first().map(|room| room.room_id);
+        }
+    }
+
     pub fn snapshot(&self) -> SessionSnapshot {
         SessionSnapshot {
             auth: self.auth,
@@ -80,6 +100,7 @@ impl SessionMachine {
             campuses: self.campuses.clone(),
             active_campus_id: self.active_campus_id,
             rooms: self.rooms.clone(),
+            active_room_id: self.active_room_id,
             busy: self.busy,
             error: self.error,
         }
@@ -108,6 +129,7 @@ impl SessionMachine {
         let token = self.token.clone()?;
         self.active_campus_id = Some(campus_id);
         self.rooms.clear();
+        self.active_room_id = None;
         self.busy = true;
         Some(SessionCommand::LoadRooms { token, campus_id })
     }
@@ -135,6 +157,7 @@ impl SessionMachine {
                 if !active_is_listed {
                     self.active_campus_id = None;
                     self.rooms.clear();
+                    self.active_room_id = None;
                 }
                 let first = self.campuses.first().map(|campus| campus.campus_id);
                 let command = match (self.active_campus_id, first) {
@@ -163,6 +186,7 @@ impl SessionMachine {
                 }
                 self.active_campus_id = Some(created.campus.campus_id);
                 self.rooms = created.rooms;
+                self.settle_active_room();
                 self.busy = false;
                 (self, None)
             }
@@ -181,7 +205,14 @@ impl SessionMachine {
             SessionEvent::RoomsLoaded(list) => {
                 if Some(list.campus_id) == self.active_campus_id {
                     self.rooms = list.rooms;
+                    self.settle_active_room();
                     self.busy = false;
+                }
+                (self, None)
+            }
+            SessionEvent::RoomSelected(room_id) => {
+                if self.rooms.iter().any(|room| room.room_id == room_id) {
+                    self.active_room_id = Some(room_id);
                 }
                 (self, None)
             }

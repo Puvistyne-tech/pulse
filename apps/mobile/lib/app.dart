@@ -19,6 +19,9 @@ class PulseApp extends ConsumerWidget {
       createCampus: notifier.createCampus,
       selectCampus: notifier.selectCampus,
       refreshCampuses: notifier.refreshCampuses,
+      selectRoom: notifier.selectRoom,
+      sendMessage: notifier.sendMessage,
+      discardMessage: notifier.discardMessage,
     );
     return MaterialApp(
       title: 'Pulse',

@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use pulse_protocol::{
     AccountId, ApiError, ApiErrorCode, CampusCreated, CampusId, CampusList, CampusSummary,
     CreateCampusRequest, CreateRoomRequest, DEFAULT_ROOM_SLUGS, InputField, Permission, Role,
-    RoleParseError, Room, RoomId, RoomList, Validate, role_permits,
+    RoleParseError, Room, RoomId, RoomList, Validate, normalize_display_name, role_permits,
 };
 use sqlx::{PgPool, Postgres};
 use uuid::Uuid;
@@ -122,12 +122,13 @@ pub async fn create_campus(
     ApiJson(request): ApiJson<CreateCampusRequest>,
 ) -> Result<(StatusCode, Json<CampusCreated>), ApiFailure> {
     request.validate()?;
+    let display_name = normalize_display_name(&request.display_name).map_err(ApiError::invalid)?;
     let campus_id = CampusId::generate();
     let mut transaction = state.db.begin().await?;
     sqlx::query("INSERT INTO campuses (campus_id, slug, display_name) VALUES ($1, $2, $3)")
         .bind(campus_id.as_uuid())
         .bind(&request.slug)
-        .bind(&request.display_name)
+        .bind(&display_name)
         .execute(&mut *transaction)
         .await
         .map_err(conflict_on_slug)?;
@@ -145,7 +146,7 @@ pub async fn create_campus(
     let campus = CampusSummary {
         campus_id,
         slug: request.slug,
-        display_name: request.display_name,
+        display_name,
         role: Role::Owner,
     };
     Ok((StatusCode::CREATED, Json(CampusCreated { campus, rooms })))

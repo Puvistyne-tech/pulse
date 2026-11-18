@@ -10,7 +10,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use pulse_protocol::{
     AccountId, AccountProfile, ApiError, ApiErrorCode, AuthSession, AuthToken, InputField,
-    SignInRequest, SignUpRequest, Validate, normalize_email,
+    SignInRequest, SignUpRequest, Validate, normalize_display_name, normalize_email,
 };
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -126,7 +126,7 @@ pub async fn sign_up(
 ) -> Result<(StatusCode, Json<AuthSession>), ApiFailure> {
     request.validate()?;
     let email = normalize_email(&request.email).map_err(ApiError::invalid)?;
-    let display_name = request.display_name.trim().to_owned();
+    let display_name = normalize_display_name(&request.display_name).map_err(ApiError::invalid)?;
     let password_hash = hash_password(request.password).await?;
     let account_id = AccountId::generate();
     sqlx::query(

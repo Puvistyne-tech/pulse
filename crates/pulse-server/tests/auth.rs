@@ -221,3 +221,26 @@ async fn sign_out_without_bearer_is_unauthenticated() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body, error("unauthenticated", None));
 }
+
+#[rstest]
+#[case::padded("  Ada  ", "Ada")]
+#[case::clean("Ada", "Ada")]
+#[tokio::test]
+async fn sign_up_stores_trimmed_display_name(#[case] raw: &str, #[case] stored: &str) {
+    let state = fresh_state().await;
+    let (status, body) = api_raw(
+        &state,
+        Method::POST,
+        api_path::ACCOUNTS,
+        None,
+        Some(registration("ada@example.org", raw, VALID_PASSWORD)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["account"]["display_name"], json!(stored));
+    let persisted = sqlx::query_scalar::<_, String>("SELECT display_name FROM accounts")
+        .fetch_one(&state.db)
+        .await
+        .expect("account row");
+    assert_eq!(persisted, stored);
+}

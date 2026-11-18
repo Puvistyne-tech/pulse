@@ -28,16 +28,20 @@ pub fn normalize_email(raw: &str) -> Result<String, InputField> {
     }
 }
 
-pub fn validate_display_name(raw: &str) -> Result<(), InputField> {
+pub fn normalize_display_name(raw: &str) -> Result<String, InputField> {
     let trimmed = raw.trim();
     let length = trimmed.chars().count();
     let valid =
         (1..=DISPLAY_NAME_MAX_CHARS).contains(&length) && !trimmed.chars().any(char::is_control);
     if valid {
-        Ok(())
+        Ok(trimmed.to_owned())
     } else {
         Err(InputField::DisplayName)
     }
+}
+
+pub fn validate_display_name(raw: &str) -> Result<(), InputField> {
+    normalize_display_name(raw).map(|_| ())
 }
 
 pub fn validate_password(raw: &str) -> Result<(), InputField> {
@@ -81,10 +85,11 @@ impl Validate for SignUpRequest {
 impl Validate for SignInRequest {
     fn validate(&self) -> Result<(), ApiError> {
         normalize_email(&self.email).map_err(invalid)?;
-        if self.password.is_empty() {
-            return Err(ApiError::invalid(InputField::Password));
+        if (1..=PASSWORD_MAX_CHARS).contains(&self.password.chars().count()) {
+            Ok(())
+        } else {
+            Err(ApiError::invalid(InputField::Password))
         }
-        Ok(())
     }
 }
 

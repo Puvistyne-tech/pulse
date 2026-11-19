@@ -1,7 +1,10 @@
 ALTER TABLE accounts ADD COLUMN kind TEXT NOT NULL DEFAULT 'person' CHECK (kind IN ('person', 'steward'));
 ALTER TABLE accounts ALTER COLUMN email DROP NOT NULL, ALTER COLUMN password_hash DROP NOT NULL;
 ALTER TABLE accounts ADD CONSTRAINT accounts_credentials_by_kind
-    CHECK ((kind = 'person') = (email IS NOT NULL AND password_hash IS NOT NULL));
+    CHECK (
+        (kind = 'person' AND email IS NOT NULL AND password_hash IS NOT NULL)
+        OR (kind = 'steward' AND email IS NULL AND password_hash IS NULL)
+    );
 ALTER TABLE campus_members DROP CONSTRAINT campus_members_role_check;
 ALTER TABLE campus_members ADD CONSTRAINT campus_members_role_check
     CHECK (role IN ('owner', 'admin', 'member', 'guest', 'steward'));

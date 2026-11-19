@@ -835,6 +835,14 @@ const REPLY_TO_STORED: Statement = (
     vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Text("bot@example.org"), Bind::Text("hash"), Bind::Text("steward")])],
     Some(CHECK_VIOLATION),
 )]
+#[case::steward_account_with_only_an_email(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Text("bot@example.org"), Bind::Null, Bind::Text("steward")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::steward_account_with_only_a_password(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Null, Bind::Text("hash"), Bind::Text("steward")])],
+    Some(CHECK_VIOLATION),
+)]
 #[case::person_account_without_a_password(
     vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Text("p@example.org"), Bind::Null, Bind::Text("person")])],
     Some(CHECK_VIOLATION),

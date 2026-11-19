@@ -2,7 +2,7 @@ mod common;
 
 use std::collections::BTreeSet;
 
-use common::{campus_for, fresh_state, signed_up};
+use common::{campus_for, fresh_state, signed_up, state_before};
 use pulse_protocol::{AccountId, CampusId, ClientNonce, MessageId, RoomId};
 use pulse_server::{AppState, MIGRATOR};
 use rstest::rstest;
@@ -26,6 +26,7 @@ fn migrations_apply_in_order() {
             "create room messages".to_owned(),
             "create threads reactions subscriptions".to_owned(),
             "create media vault shelf".to_owned(),
+            "create stewards lounges".to_owned(),
         ]
     );
 }
@@ -374,8 +375,16 @@ async fn rooms_gain_an_activity_sequence() {
     "message_mentions_account_idx",
     "CREATE INDEX message_mentions_account_idx ON public.message_mentions USING btree (campus_id, account_id, message_id)"
 )]
+#[case::steward_rooms_by_room(
+    "steward_rooms_room_idx",
+    "CREATE INDEX steward_rooms_room_idx ON public.steward_rooms USING btree (campus_id, room_id)"
+)]
+#[case::one_campus_lounge(
+    "lounges_campus_scope_idx",
+    "CREATE UNIQUE INDEX lounges_campus_scope_idx ON public.lounges USING btree (campus_id) WHERE (room_id IS NULL)"
+)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn thread_indexes_exist(#[case] name: &str, #[case] definition: &str) {
+async fn indexes_exist(#[case] name: &str, #[case] definition: &str) {
     let state = fresh_state().await;
     let found =
         sqlx::query_scalar::<_, String>("SELECT indexdef FROM pg_indexes WHERE indexname = $1")
@@ -398,6 +407,7 @@ enum Bind {
     Nil,
     Owner,
     Outsider,
+    Null,
     Text(&'static str),
 }
 
@@ -447,6 +457,61 @@ const THREAD_TITLED: Statement = (
     &[Bind::Campus, Bind::Room, Bind::Message, Bind::Text("Plans")],
 );
 
+const INSERT_ACCOUNT: &str = "INSERT INTO accounts (account_id, email, display_name, password_hash, kind) \
+    VALUES ($1, $2, 'Fixture', $3, $4)";
+const INSERT_ACCOUNT_DEFAULT_KIND: &str = "INSERT INTO accounts (account_id, email, display_name, password_hash) \
+    VALUES ($1, 'plain@example.org', 'Fixture', 'hash')";
+const INSERT_MEMBER: &str =
+    "INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3)";
+const INSERT_STEWARD_FIRST: &str = "INSERT INTO stewards (campus_id, steward_id, token_hash) \
+    VALUES ($1, $2, decode('aa01', 'hex'))";
+const INSERT_STEWARD_SECOND: &str = "INSERT INTO stewards (campus_id, steward_id, token_hash) \
+    VALUES ($1, $2, decode('aa02', 'hex'))";
+const INSERT_ASSIGNMENT: &str =
+    "INSERT INTO steward_rooms (campus_id, steward_id, room_id) VALUES ($1, $2, $3)";
+const INSERT_LOUNGE: &str = "INSERT INTO lounges (campus_id, lounge_id) VALUES ($1, $2)";
+const INSERT_ROOM_LOUNGE: &str =
+    "INSERT INTO lounges (campus_id, lounge_id, room_id) VALUES ($1, $2, $3)";
+
+fn robot_account() -> Statement {
+    stmt(
+        INSERT_ACCOUNT,
+        &[Bind::Fresh, Bind::Null, Bind::Null, Bind::Text("steward")],
+    )
+}
+
+fn steward_member(campus: Bind) -> Statement {
+    match campus {
+        Bind::ForeignCampus => stmt(
+            INSERT_MEMBER,
+            &[Bind::ForeignCampus, Bind::Fresh, Bind::Text("steward")],
+        ),
+        _ => stmt(
+            INSERT_MEMBER,
+            &[Bind::Campus, Bind::Fresh, Bind::Text("steward")],
+        ),
+    }
+}
+
+fn steward_row(sql: &'static str, campus: Bind) -> Statement {
+    match campus {
+        Bind::ForeignCampus => stmt(sql, &[Bind::ForeignCampus, Bind::Fresh]),
+        _ => stmt(sql, &[Bind::Campus, Bind::Fresh]),
+    }
+}
+
+fn onboarded_steward() -> Vec<Statement> {
+    vec![
+        robot_account(),
+        steward_member(Bind::Campus),
+        steward_row(INSERT_STEWARD_FIRST, Bind::Campus),
+    ]
+}
+
+fn onboarded_then(extras: Vec<Statement>) -> Vec<Statement> {
+    [onboarded_steward(), extras].concat()
+}
+
 fn resolve(bind: Bind, context: &Context, fresh_id: MessageId) -> Param {
     match bind {
         Bind::Campus => Param::Id(context.stored.campus_id.as_uuid()),
@@ -460,12 +525,14 @@ fn resolve(bind: Bind, context: &Context, fresh_id: MessageId) -> Param {
         Bind::Owner => Param::Id(context.stored.author_id.as_uuid()),
         Bind::Outsider => Param::Id(context.other_author.as_uuid()),
         Bind::Text(text) => Param::Text(text),
+        Bind::Null => Param::Null,
     }
 }
 
 enum Param {
     Id(Uuid),
     Text(&'static str),
+    Null,
 }
 
 async fn run_statement(
@@ -479,6 +546,7 @@ async fn run_statement(
         query = match resolve(*bind, context, fresh_id) {
             Param::Id(id) => query.bind(id),
             Param::Text(text) => query.bind(text),
+            Param::Null => query.bind(None::<&str>),
         };
     }
     query.execute(&state.db).await.map(|_| ())
@@ -762,8 +830,93 @@ const REPLY_TO_STORED: Statement = (
     vec![stmt(INSERT_MENTION, &[Bind::Campus, Bind::SiblingRoom, Bind::Message, Bind::Owner])],
     Some(FOREIGN_KEY_VIOLATION),
 )]
+#[case::steward_account_without_credentials_is_valid(vec![robot_account()], None)]
+#[case::steward_account_with_full_credentials(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Text("bot@example.org"), Bind::Text("hash"), Bind::Text("steward")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::steward_account_with_only_an_email(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Text("bot@example.org"), Bind::Null, Bind::Text("steward")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::steward_account_with_only_a_password(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Null, Bind::Text("hash"), Bind::Text("steward")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::person_account_without_a_password(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Text("p@example.org"), Bind::Null, Bind::Text("person")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::person_account_without_an_email(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Null, Bind::Text("hash"), Bind::Text("person")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::unknown_account_kind(
+    vec![stmt(INSERT_ACCOUNT, &[Bind::Fresh, Bind::Text("r@example.org"), Bind::Text("hash"), Bind::Text("robot")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::accounts_default_to_person(
+    vec![stmt(INSERT_ACCOUNT_DEFAULT_KIND, &[Bind::Fresh])],
+    None,
+)]
+#[case::steward_member_role_is_valid(vec![robot_account(), steward_member(Bind::Campus)], None)]
+#[case::unknown_member_role(
+    vec![robot_account(), stmt(INSERT_MEMBER, &[Bind::Campus, Bind::Fresh, Bind::Text("wizard")])],
+    Some(CHECK_VIOLATION),
+)]
+#[case::steward_row_needs_a_membership(
+    vec![robot_account(), steward_row(INSERT_STEWARD_FIRST, Bind::Campus)],
+    Some(FOREIGN_KEY_VIOLATION),
+)]
+#[case::steward_row_is_valid(onboarded_steward(), None)]
+#[case::token_digest_is_unique(
+    onboarded_then(vec![stmt(INSERT_STEWARD_FIRST, &[Bind::Campus, Bind::Owner])]),
+    Some(UNIQUE_VIOLATION),
+)]
+#[case::steward_belongs_to_one_campus(
+    onboarded_then(vec![
+        steward_member(Bind::ForeignCampus),
+        steward_row(INSERT_STEWARD_SECOND, Bind::ForeignCampus),
+    ]),
+    Some(UNIQUE_VIOLATION),
+)]
+#[case::assignment_is_valid(
+    onboarded_then(vec![stmt(INSERT_ASSIGNMENT, &[Bind::Campus, Bind::Fresh, Bind::Room])]),
+    None,
+)]
+#[case::assignment_is_unique(
+    onboarded_then(vec![
+        stmt(INSERT_ASSIGNMENT, &[Bind::Campus, Bind::Fresh, Bind::Room]),
+        stmt(INSERT_ASSIGNMENT, &[Bind::Campus, Bind::Fresh, Bind::Room]),
+    ]),
+    Some(UNIQUE_VIOLATION),
+)]
+#[case::assignment_needs_an_existing_room(
+    onboarded_then(vec![stmt(INSERT_ASSIGNMENT, &[Bind::Campus, Bind::Fresh, Bind::Nil])]),
+    Some(FOREIGN_KEY_VIOLATION),
+)]
+#[case::assignment_needs_a_steward_of_the_campus(
+    onboarded_then(vec![stmt(INSERT_ASSIGNMENT, &[Bind::ForeignCampus, Bind::Fresh, Bind::Room])]),
+    Some(FOREIGN_KEY_VIOLATION),
+)]
+#[case::one_lounge_per_campus_scope(
+    vec![stmt(INSERT_LOUNGE, &[Bind::Campus, Bind::Nonce])],
+    Some(UNIQUE_VIOLATION),
+)]
+#[case::one_lounge_per_room(
+    vec![stmt(INSERT_ROOM_LOUNGE, &[Bind::Campus, Bind::Nonce, Bind::Room])],
+    Some(UNIQUE_VIOLATION),
+)]
+#[case::lounge_room_must_share_the_campus(
+    vec![stmt(INSERT_ROOM_LOUNGE, &[Bind::ForeignCampus, Bind::Nonce, Bind::Room])],
+    Some(FOREIGN_KEY_VIOLATION),
+)]
+#[case::lounge_needs_a_campus(
+    vec![stmt(INSERT_LOUNGE, &[Bind::Nil, Bind::Nonce])],
+    Some(FOREIGN_KEY_VIOLATION),
+)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn thread_table_constraints_hold(
+async fn table_constraints_hold(
     #[case] statements: Vec<Statement>,
     #[case] violation: Option<&str>,
 ) {
@@ -867,4 +1020,144 @@ async fn media_vault_shelf_indexes_exist(#[case] name: &str) {
     .await
     .expect("index lookup");
     assert_eq!(found.as_deref(), Some(name));
+}
+
+#[rstest]
+#[case::accounts(
+    "accounts",
+    &[
+        ("account_id", "uuid", "NO"),
+        ("email", "text", "YES"),
+        ("display_name", "text", "NO"),
+        ("password_hash", "text", "YES"),
+        ("created_at", "timestamp with time zone", "NO"),
+        ("kind", "text", "NO"),
+    ]
+)]
+#[case::stewards(
+    "stewards",
+    &[
+        ("campus_id", "uuid", "NO"),
+        ("steward_id", "uuid", "NO"),
+        ("token_hash", "bytea", "NO"),
+        ("credential_revision", "bigint", "NO"),
+        ("work_cursor", "uuid", "YES"),
+        ("revoked_at", "timestamp with time zone", "YES"),
+        ("created_at", "timestamp with time zone", "NO"),
+    ]
+)]
+#[case::steward_rooms(
+    "steward_rooms",
+    &[("campus_id", "uuid", "NO"), ("steward_id", "uuid", "NO"), ("room_id", "uuid", "NO")]
+)]
+#[case::lounges(
+    "lounges",
+    &[
+        ("campus_id", "uuid", "NO"),
+        ("lounge_id", "uuid", "NO"),
+        ("room_id", "uuid", "YES"),
+        ("created_at", "timestamp with time zone", "NO"),
+    ]
+)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn steward_and_lounge_tables_match_contract(
+    #[case] table: &str,
+    #[case] expected: &[Column],
+) {
+    let state = fresh_state().await;
+    let columns = columns_of(&state, table).await;
+    let expected = expected
+        .iter()
+        .map(|(name, kind, nullable)| {
+            (
+                (*name).to_owned(),
+                (*kind).to_owned(),
+                (*nullable).to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(columns, expected);
+}
+
+#[rstest]
+#[case::two_campuses(&[("alpha", 3), ("bravo", 1)])]
+#[case::campus_without_rooms(&[("alpha", 2), ("empty", 0)])]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lounges_are_backfilled_for_existing_campuses_and_rooms(
+    #[case] campuses: &[(&str, usize)],
+) {
+    let state = state_before("create stewards lounges").await;
+    let account_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO accounts (account_id, email, display_name, password_hash) \
+         VALUES ($1, 'old@example.org', 'Old', 'hash')",
+    )
+    .bind(account_id)
+    .execute(&state.db)
+    .await
+    .expect("seed account");
+    let mut seeded = Vec::new();
+    for (slug, room_count) in campuses {
+        let campus_id = Uuid::now_v7();
+        sqlx::query("INSERT INTO campuses (campus_id, slug, display_name) VALUES ($1, $2, $2)")
+            .bind(campus_id)
+            .bind(*slug)
+            .execute(&state.db)
+            .await
+            .expect("seed campus");
+        sqlx::query(
+            "INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, 'owner')",
+        )
+        .bind(campus_id)
+        .bind(account_id)
+        .execute(&state.db)
+        .await
+        .expect("seed membership");
+        let mut rooms = BTreeSet::new();
+        for index in 0..*room_count {
+            let room_id = Uuid::now_v7();
+            sqlx::query("INSERT INTO rooms (campus_id, room_id, slug) VALUES ($1, $2, $3)")
+                .bind(campus_id)
+                .bind(room_id)
+                .bind(format!("room-{index}"))
+                .execute(&state.db)
+                .await
+                .expect("seed room");
+            rooms.insert(room_id);
+        }
+        seeded.push((campus_id, rooms));
+    }
+    MIGRATOR
+        .run(&state.db)
+        .await
+        .expect("apply the remaining migrations");
+    let mut every_lounge = BTreeSet::new();
+    for (campus_id, rooms) in &seeded {
+        let rows = sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
+            "SELECT lounge_id, room_id FROM lounges WHERE campus_id = $1",
+        )
+        .bind(campus_id)
+        .fetch_all(&state.db)
+        .await
+        .expect("lounges");
+        assert_eq!(rows.len(), rooms.len() + 1);
+        assert_eq!(rows.iter().filter(|(_, room)| room.is_none()).count(), 1);
+        let scoped = rows
+            .iter()
+            .filter_map(|(_, room)| *room)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(&scoped, rooms);
+        every_lounge.extend(rows.iter().map(|(lounge_id, _)| *lounge_id));
+    }
+    let expected_total = seeded
+        .iter()
+        .map(|(_, rooms)| rooms.len() + 1)
+        .sum::<usize>();
+    assert_eq!(every_lounge.len(), expected_total);
+    let kind = sqlx::query_scalar::<_, String>("SELECT kind FROM accounts WHERE account_id = $1")
+        .bind(account_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("kind");
+    assert_eq!(kind, "person");
 }

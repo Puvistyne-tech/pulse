@@ -1,10 +1,10 @@
 mod fixtures;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B, Start, chain, chain_message, client_rooms, connect_for,
-    connected_client, created_frame, message_id, room_list, send_frame, signed_in_client,
-    start_events, sync_frame, sync_frame_at, sync_inbox_frame, sync_shelf_frame, synced_frame,
-    token_a, welcome, welcome_for,
+    CAMPUS_A, CAMPUS_B, NONCE_A, NONCE_B, Start, chain, chain_message, client_rooms, connect_burst,
+    connect_burst_at, connect_for, connected_client, created_frame, message_id, room_list,
+    send_frame, signed_in_client, start_events, sync_frame, synced_frame, token_a, welcome,
+    welcome_for,
 };
 use futures::executor::block_on;
 use pulse_core::{
@@ -106,11 +106,7 @@ fn welcome_queues_sync_then_pending_sends(
     });
     assert!(client.drain_outbound().is_empty());
     bring_to(&mut client, Start::Connected);
-    let mut expected = vec![
-        sync_frame(&[(rooms[0], None), (rooms[1], None)]),
-        sync_inbox_frame(),
-        sync_shelf_frame(),
-    ];
+    let mut expected = connect_burst(&rooms);
     expected.extend(
         expected_sends
             .iter()
@@ -130,14 +126,7 @@ fn welcome_frame_connects_and_queues_sync() {
         client.snapshot().network.connection,
         ConnectionPhase::Connected
     );
-    assert_eq!(
-        client.drain_outbound(),
-        vec![
-            sync_frame(&[(rooms[0], None), (rooms[1], None)]),
-            sync_inbox_frame(),
-            sync_shelf_frame()
-        ]
-    );
+    assert_eq!(client.drain_outbound(), connect_burst(&rooms));
 }
 
 #[rstest]
@@ -168,14 +157,10 @@ fn reconnect_cursors_equal_chain_tips(
     });
     assert_eq!(
         client.drain_outbound(),
-        vec![
-            sync_frame_at(&[
-                (rooms[0], Some(message_id(3)), Some(0)),
-                (rooms[1], Some(message_id(1)), None)
-            ]),
-            sync_inbox_frame(),
-            sync_shelf_frame()
-        ]
+        connect_burst_at(&[
+            (rooms[0], Some(message_id(3)), Some(0)),
+            (rooms[1], Some(message_id(1)), None)
+        ])
     );
 }
 
@@ -261,14 +246,7 @@ fn campus_switch_then_reconnect_syncs_only_new_campus_rooms() {
     switch_to_campus_b(&mut client, &mut api);
     let rooms = client_rooms(&client);
     connect_to(&mut client, CAMPUS_B);
-    assert_eq!(
-        client.drain_outbound(),
-        vec![
-            sync_frame(&[(rooms[0], None), (rooms[1], None)]),
-            sync_inbox_frame(),
-            sync_shelf_frame()
-        ]
-    );
+    assert_eq!(client.drain_outbound(), connect_burst(&rooms));
 }
 
 #[test]

@@ -2,10 +2,10 @@ mod fixtures;
 
 use fixtures::{
     ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, EMOJI_A, EMOJI_B, EntryKey, NONCE_A, NONCE_B, ROOM_A, ROOM_B,
-    accepted_frame, chain, chain_message, confirmed_key, created_frame, entry_keys, failed_key,
-    foreign, message_id, nonce, own_message, peer_reply, pending_key, reacted, received,
-    rejected_frame, room_message, send_frame, send_requested, sync_frame, sync_frame_at,
-    sync_inbox_frame, sync_shelf_frame, synced_frame, synced_frame_with, timeline_after,
+    accepted_frame, chain, chain_message, confirmed_key, connect_burst, connect_burst_at,
+    created_frame, entry_keys, failed_key, foreign, message_id, nonce, own_message, peer_reply,
+    pending_key, reacted, received, rejected_frame, room_message, send_frame, send_requested,
+    sync_frame, sync_frame_at, sync_lounges_frame, synced_frame, synced_frame_with, timeline_after,
     timeline_connected, timeline_run, titled, unavailable_frame, updated_frame, with_replies,
 };
 use pulse_core::TimelineEvent;
@@ -35,8 +35,8 @@ fn connected_a() -> TimelineEvent {
     timeline_connected(&[ROOM_A])
 }
 
-fn initial_sync() -> ClientFrame {
-    sync_frame(&[(ROOM_A, None)])
+fn after_burst(tail: Vec<ClientFrame>) -> Vec<ClientFrame> {
+    [connect_burst(&[ROOM_A]), tail].concat()
 }
 
 fn resumed(after: Option<MessageId>) -> ClientFrame {
@@ -55,7 +55,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::pending_while_connected(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "  hi  ")],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "hi")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "hi")]),
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -65,7 +65,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::queued_while_offline_then_sent_on_connect(
     vec![send_requested(ROOM_A, NONCE_A, "hello"), connected_a()],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "hello")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "hello")]),
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -85,7 +85,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::accepted_confirms_pending(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "hi"), settled(), received(accepted_frame(own()))],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "hi")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "hi")]),
         entries: vec![confirmed_key(&own())],
         syncing: false,
         error: None,
@@ -101,7 +101,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(created_frame(own())),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "hi!")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "hi!")]),
         entries: vec![confirmed_key(&own())],
         syncing: false,
         error: None,
@@ -117,7 +117,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(accepted_frame(own())),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "hi?")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "hi?")]),
         entries: vec![confirmed_key(&own())],
         syncing: false,
         error: None,
@@ -135,12 +135,10 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(accepted_frame(own())),
     ],
     Expect {
-        frames: vec![
-            initial_sync(), sync_inbox_frame(), sync_shelf_frame(),
-            send_frame(ROOM_A, NONCE_A, "again"),
-            initial_sync(), sync_inbox_frame(), sync_shelf_frame(),
-            send_frame(ROOM_A, NONCE_A, "again"),
-        ],
+        frames: [
+            after_burst(vec![send_frame(ROOM_A, NONCE_A, "again")]),
+            after_burst(vec![send_frame(ROOM_A, NONCE_A, "again")]),
+        ].concat(),
         entries: vec![confirmed_key(&own())],
         syncing: false,
         error: None,
@@ -156,7 +154,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(created_frame(peer(2))),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), resumed(None)],
+        frames: after_burst(vec![resumed(None)]),
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: true,
         error: None,
@@ -172,7 +170,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(created_frame(peer(4))),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), resumed(Some(message_id(1)))],
+        frames: after_burst(vec![resumed(Some(message_id(1)))]),
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(3)), confirmed_key(&peer(4))],
         syncing: true,
         error: None,
@@ -188,7 +186,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(synced_frame(ROOM_A, vec![peer(2), peer(3)], false)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), resumed(Some(message_id(1)))],
+        frames: after_burst(vec![resumed(Some(message_id(1)))]),
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: false,
         error: None,
@@ -201,7 +199,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(synced_frame(ROOM_A, chain(ROOM_A, 2), true)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), resumed(Some(message_id(2)))],
+        frames: after_burst(vec![resumed(Some(message_id(2)))]),
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2))],
         syncing: true,
         error: None,
@@ -215,7 +213,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(synced_frame(ROOM_A, vec![peer(3)], false)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), resumed(Some(message_id(2)))],
+        frames: after_burst(vec![resumed(Some(message_id(2)))]),
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: false,
         error: None,
@@ -228,7 +226,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(synced_frame(ROOM_A, vec![peer(5), peer(6)], false)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![confirmed_key(&peer(5)), confirmed_key(&peer(6))],
         syncing: false,
         error: None,
@@ -245,7 +243,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(synced_frame(ROOM_A, vec![peer(1)], false)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2)), confirmed_key(&peer(3))],
         syncing: false,
         error: None,
@@ -255,7 +253,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::duplicate_created_is_one_entry(
     vec![connected_a(), settled(), received(created_frame(peer(1))), received(created_frame(peer(1)))],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![confirmed_key(&peer(1))],
         syncing: false,
         error: None,
@@ -265,7 +263,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::foreign_campus_created_dropped(
     vec![connected_a(), settled(), received(created_frame(foreign(peer(1))))],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![],
         syncing: false,
         error: None,
@@ -275,7 +273,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::foreign_campus_sync_page_dropped(
     vec![connected_a(), received(synced_frame(ROOM_A, vec![foreign(peer(1))], false))],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![],
         syncing: false,
         error: None,
@@ -289,7 +287,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(accepted_frame(foreign(own()))),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "kept")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "kept")]),
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -304,7 +302,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(created_frame(room_message(ROOM_A, message_id(1), None, ACCOUNT_B, NONCE_A, "theirs"))),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "mine")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "mine")]),
         entries: vec![
             confirmed_key(&room_message(ROOM_A, message_id(1), None, ACCOUNT_B, NONCE_A, "theirs")),
             pending_key(NONCE_A),
@@ -323,7 +321,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         connected_a(),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "nope"), initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: [after_burst(vec![send_frame(ROOM_A, NONCE_A, "nope")]), connect_burst(&[ROOM_A])].concat(),
         entries: vec![failed_key(NONCE_A, MessageRejection::Forbidden)],
         syncing: true,
         error: None,
@@ -337,7 +335,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         rejected_nonce_a(MessageRejection::UnknownRoom),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "lost")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "lost")]),
         entries: vec![failed_key(NONCE_A, MessageRejection::UnknownRoom)],
         syncing: true,
         error: None,
@@ -347,7 +345,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::rejection_for_unknown_nonce_ignored(
     vec![connected_a(), received(rejected_frame(NONCE_B, MessageRejection::Forbidden))],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![],
         syncing: true,
         error: None,
@@ -362,7 +360,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         TimelineEvent::DiscardRequested { client_nonce: NONCE_A },
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "bye")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "bye")]),
         entries: vec![],
         syncing: true,
         error: None,
@@ -376,7 +374,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         TimelineEvent::DiscardRequested { client_nonce: NONCE_A },
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "stay")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "stay")]),
         entries: vec![pending_key(NONCE_A)],
         syncing: true,
         error: None,
@@ -386,7 +384,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::blank_body_sets_error_and_emits_nothing(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "   ")],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![],
         syncing: true,
         error: Some(ApiError::invalid(InputField::MessageBody)),
@@ -396,7 +394,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::control_body_sets_error(
     vec![connected_a(), send_requested(ROOM_A, NONCE_A, "a\u{7}")],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![],
         syncing: true,
         error: Some(ApiError::invalid(InputField::MessageBody)),
@@ -410,7 +408,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         send_requested(ROOM_A, NONCE_B, "fine"),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_B, "fine")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_B, "fine")]),
         entries: vec![pending_key(NONCE_B)],
         syncing: true,
         error: None,
@@ -420,7 +418,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::unavailable_room_clears_syncing(
     vec![connected_a(), received(unavailable_frame(ROOM_A))],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![],
         syncing: false,
         error: None,
@@ -434,7 +432,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(unavailable_frame(ROOM_A)),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), send_frame(ROOM_A, NONCE_A, "orphan")],
+        frames: after_burst(vec![send_frame(ROOM_A, NONCE_A, "orphan")]),
         entries: vec![failed_key(NONCE_A, MessageRejection::UnknownRoom)],
         syncing: false,
         error: None,
@@ -444,7 +442,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::disconnect_clears_syncing(
     vec![connected_a(), TimelineEvent::Disconnected],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![],
         syncing: false,
         error: None,
@@ -459,7 +457,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         connected_a(),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), resumed(Some(message_id(2))), sync_inbox_frame(), sync_shelf_frame()],
+        frames: [connect_burst(&[ROOM_A]), connect_burst_at(&[(ROOM_A, Some(message_id(2)), Some(0))])].concat(),
         entries: vec![confirmed_key(&peer(1)), confirmed_key(&peer(2))],
         syncing: true,
         error: None,
@@ -474,7 +472,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         received(created_frame(peer(2))),
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[ROOM_A]),
         entries: vec![confirmed_key(&peer(2))],
         syncing: false,
         error: None,
@@ -487,7 +485,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
         TimelineEvent::RoomsChanged { rooms: vec![ROOM_A, ROOM_B] },
     ],
     Expect {
-        frames: vec![initial_sync(), sync_inbox_frame(), sync_shelf_frame(), sync_frame(&[(ROOM_B, None)])],
+        frames: after_burst(vec![sync_frame(&[(ROOM_B, None)])]),
         entries: vec![],
         syncing: true,
         error: None,
@@ -507,7 +505,7 @@ fn rejected_nonce_a(reason: MessageRejection) -> TimelineEvent {
 #[case::connected_without_rooms_only_syncs_inbox(
     vec![timeline_connected(&[])],
     Expect {
-        frames: vec![sync_inbox_frame(), sync_shelf_frame()],
+        frames: connect_burst(&[]),
         entries: vec![],
         syncing: false,
         error: None,
@@ -541,12 +539,15 @@ fn connected_chunks_cursors_by_sync_limit(
         .map(|_| RoomId::generate())
         .collect::<Vec<_>>();
     let (_, frames) = timeline_run(vec![timeline_connected(&rooms)]);
-    assert_eq!(frames.last(), Some(&sync_shelf_frame()));
+    assert_eq!(frames.last(), Some(&sync_lounges_frame()));
     let sizes = frames
         .iter()
         .filter_map(|frame| match frame {
             ClientFrame::SyncRooms(sync) => Some(sync.cursors.len()),
-            ClientFrame::SyncInbox(_) | ClientFrame::SyncShelf(_) => None,
+            ClientFrame::SyncInbox(_)
+            | ClientFrame::SyncShelf(_)
+            | ClientFrame::SyncStewards(_)
+            | ClientFrame::SyncLounges(_) => None,
             other => panic!("unexpected frame {other:?}"),
         })
         .collect::<Vec<_>>();
@@ -643,14 +644,15 @@ fn outbox_survives_reconnect_in_nonce_order() {
         timeline_connected(&[ROOM_A, ROOM_B]),
     ]);
     assert_eq!(
-        frames[frames.len() - 5..],
+        frames[frames.len() - 7..],
         [
-            sync_frame(&[(ROOM_A, None), (ROOM_B, None)]),
-            sync_inbox_frame(),
-            sync_shelf_frame(),
-            send_frame(ROOM_B, NONCE_A, "a"),
-            send_frame(ROOM_A, NONCE_B, "b"),
+            connect_burst(&[ROOM_A, ROOM_B]),
+            vec![
+                send_frame(ROOM_B, NONCE_A, "a"),
+                send_frame(ROOM_A, NONCE_B, "b"),
+            ],
         ]
+        .concat()
     );
 }
 

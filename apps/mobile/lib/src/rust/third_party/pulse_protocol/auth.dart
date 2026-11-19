@@ -30,6 +30,22 @@ class AccountProfile {
           displayName == other.displayName;
 }
 
+class AuthToken {
+  final String field0;
+
+  const AuthToken({required this.field0});
+
+  @override
+  int get hashCode => field0.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AuthToken &&
+          runtimeType == other.runtimeType &&
+          field0 == other.field0;
+}
+
 class SignInRequest {
   final String email;
   final String password;

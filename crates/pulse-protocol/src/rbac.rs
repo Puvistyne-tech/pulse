@@ -10,6 +10,7 @@ pub enum Role {
     Admin,
     Member,
     Guest,
+    Steward,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -24,6 +25,11 @@ pub enum Permission {
     React,
     PinMessage,
     UploadAttachment,
+    ManageStewards,
+    StreamReply,
+    UseStewardTools,
+    JoinLounge,
+    SpeakInLounge,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -31,7 +37,13 @@ pub enum Permission {
 pub struct RoleParseError;
 
 impl Role {
-    pub const ALL: [Role; 4] = [Role::Owner, Role::Admin, Role::Member, Role::Guest];
+    pub const ALL: [Role; 5] = [
+        Role::Owner,
+        Role::Admin,
+        Role::Member,
+        Role::Guest,
+        Role::Steward,
+    ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -39,7 +51,12 @@ impl Role {
             Role::Admin => "admin",
             Role::Member => "member",
             Role::Guest => "guest",
+            Role::Steward => "steward",
         }
+    }
+
+    pub const fn is_steward(self) -> bool {
+        matches!(self, Role::Steward)
     }
 }
 
@@ -55,7 +72,7 @@ impl FromStr for Role {
 }
 
 impl Permission {
-    pub const ALL: [Permission; 9] = [
+    pub const ALL: [Permission; 14] = [
         Permission::ViewCampus,
         Permission::ViewRooms,
         Permission::CreateRoom,
@@ -65,17 +82,27 @@ impl Permission {
         Permission::React,
         Permission::PinMessage,
         Permission::UploadAttachment,
+        Permission::ManageStewards,
+        Permission::StreamReply,
+        Permission::UseStewardTools,
+        Permission::JoinLounge,
+        Permission::SpeakInLounge,
     ];
 }
 
 pub const fn role_permits(role: Role, permission: Permission) -> bool {
     match permission {
         Permission::ViewCampus | Permission::ViewRooms | Permission::React => true,
-        Permission::CreateRoom
-        | Permission::PostMessage
-        | Permission::PinMessage
-        | Permission::UploadAttachment => !matches!(role, Role::Guest),
-        Permission::ManageMembers => matches!(role, Role::Owner | Role::Admin),
+        Permission::PostMessage => !matches!(role, Role::Guest),
+        Permission::CreateRoom | Permission::PinMessage | Permission::UploadAttachment => {
+            matches!(role, Role::Owner | Role::Admin | Role::Member)
+        }
+        Permission::ManageMembers | Permission::ManageStewards => {
+            matches!(role, Role::Owner | Role::Admin)
+        }
         Permission::ManageCampus => matches!(role, Role::Owner),
+        Permission::StreamReply | Permission::UseStewardTools => matches!(role, Role::Steward),
+        Permission::JoinLounge => !matches!(role, Role::Steward),
+        Permission::SpeakInLounge => matches!(role, Role::Owner | Role::Admin | Role::Member),
     }
 }

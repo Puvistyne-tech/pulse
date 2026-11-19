@@ -15,12 +15,16 @@ class RoomView extends StatefulWidget {
     required this.timeline,
     required this.intents,
     this.presets = const [],
+    this.pickerAnchorMs,
+    this.pickerLatestMs,
     super.key,
   });
 
   final TimelineSnapshot timeline;
   final PulseIntents intents;
   final List<ReminderPreset> presets;
+  final BigInt? pickerAnchorMs;
+  final BigInt? pickerLatestMs;
 
   @override
   State<RoomView> createState() => _RoomViewState();
@@ -60,6 +64,8 @@ class _RoomViewState extends State<RoomView> {
           timeline: widget.timeline,
           roomId: roomId,
           presets: widget.presets,
+          pickerAnchorMs: widget.pickerAnchorMs,
+          pickerLatestMs: widget.pickerLatestMs,
           actions: EntryActions(
             react: intents.react,
             discardMessage: intents.discardMessage,

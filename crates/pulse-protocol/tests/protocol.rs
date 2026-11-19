@@ -10,21 +10,21 @@ use pulse_protocol::{
     CampusCreated, CampusId, CampusList, CampusSummary, ClientFrame, ClientNonce, ClientSnapshot,
     ConnectionPhase, ConnectionSnapshot, CreateCampusRequest, CreateRoomRequest, DeliveryState,
     HandshakeRejected, HandshakeRejection, Hello, INBOX_SYNC_LIMIT, IdParseError, InboxItem,
-    InboxItemKind, InboxSnapshot, InboxStep, InboxSynced, InputField, MESSAGE_BODY_MAX_CHARS,
-    MESSAGE_MENTIONS_MAX, MarkThreadRead, MentionRef, MessageAccepted, MessageCreated, MessageId,
-    MessageRejected, MessageRejection, MessageUpdated, Permission, Ping, Pong, ProtocolVersion,
-    REACTION_EMOJI_MAX_CHARS, REACTION_KINDS_MAX, REACTION_PALETTE, React, ReactionAction,
-    ReactionRejected, ReactionRejection, ReactionSummary, ReactionTally, ReplyPreview, Role, Room,
-    RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced, RoomUnavailable, SYNC_MAX_ROOMS,
-    SYNC_PAGE_LIMIT, SearchSnapshot, SegmentKind, SendMessage, ServerFrame, SessionId,
-    SessionSnapshot, SetThreadSubscription, SetTopicTitle, ShelfSnapshot, SignInRequest,
-    SignUpRequest, SubscriptionOrigin, SubscriptionState, SyncInbox, SyncRooms, SyncThread,
-    TOPIC_TITLE_MAX_CHARS, ThreadChanged, ThreadPreview, ThreadRejected, ThreadRejection,
-    ThreadSnapshot, ThreadSummary, ThreadSynced, TimelineEntry, TimelineSnapshot, Validate,
-    VaultSnapshot, VersionMismatch, Welcome, api_path, body_segments, close_code, extract_mentions,
-    mention_token, normalize_display_name, normalize_email, normalize_message_body,
-    normalize_reaction_emoji, normalize_topic_title, role_permits, validate_display_name,
-    validate_password, validate_slug,
+    InboxItemKind, InboxSnapshot, InboxStep, InboxSynced, InputField, LoungeSnapshot,
+    MESSAGE_BODY_MAX_CHARS, MESSAGE_MENTIONS_MAX, MarkThreadRead, MentionRef, MessageAccepted,
+    MessageCreated, MessageId, MessageRejected, MessageRejection, MessageUpdated, Permission, Ping,
+    Pong, ProtocolVersion, REACTION_EMOJI_MAX_CHARS, REACTION_KINDS_MAX, REACTION_PALETTE, React,
+    ReactionAction, ReactionRejected, ReactionRejection, ReactionSummary, ReactionTally,
+    ReplyPreview, Role, Room, RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced,
+    RoomUnavailable, SYNC_MAX_ROOMS, SYNC_PAGE_LIMIT, SearchSnapshot, SegmentKind, SendMessage,
+    ServerFrame, SessionId, SessionSnapshot, SetThreadSubscription, SetTopicTitle, ShelfSnapshot,
+    SignInRequest, SignUpRequest, StewardSnapshot, SubscriptionOrigin, SubscriptionState,
+    SyncInbox, SyncRooms, SyncThread, TOPIC_TITLE_MAX_CHARS, ThreadChanged, ThreadPreview,
+    ThreadRejected, ThreadRejection, ThreadSnapshot, ThreadSummary, ThreadSynced, TimelineEntry,
+    TimelineSnapshot, Validate, VaultSnapshot, VersionMismatch, Welcome, api_path, body_segments,
+    close_code, extract_mentions, mention_token, normalize_display_name, normalize_email,
+    normalize_message_body, normalize_reaction_emoji, normalize_topic_title, role_permits,
+    validate_display_name, validate_password, validate_slug,
 };
 use rstest::rstest;
 use serde::Serialize;
@@ -111,6 +111,7 @@ fn empty_timeline() -> TimelineSnapshot {
         focus_message_id: None,
         can_pin: false,
         can_upload: false,
+        mentionable_stewards: Vec::new(),
     }
 }
 
@@ -133,6 +134,8 @@ fn timeline_entry(delivery: DeliveryState, rejection: Option<MessageRejection>) 
         pending_drafts: Vec::new(),
         pinned: false,
         shelved: false,
+        author_is_steward: false,
+        stream: None,
     }
 }
 
@@ -168,6 +171,8 @@ fn timeline_entry_json(
         "pending_drafts": [],
         "pinned": false,
         "shelved": false,
+        "author_is_steward": false,
+        "stream": null,
     })
 }
 
@@ -203,6 +208,32 @@ fn shelf_default_json() -> Value {
         "due_count": 0,
         "latest_reminder": null,
         "presets": [],
+        "picker_anchor_ms": null,
+        "picker_latest_ms": null,
+        "error": null,
+    })
+}
+
+fn lounges_default_json() -> Value {
+    json!({
+        "lounges": [],
+        "joined_lounge_id": null,
+        "joining": false,
+        "ticket": null,
+        "media": "idle",
+        "can_join": false,
+        "can_speak": false,
+        "error": null,
+    })
+}
+
+fn stewards_default_json() -> Value {
+    json!({
+        "open": false,
+        "stewards": [],
+        "can_manage": false,
+        "issued": null,
+        "pending": false,
         "error": null,
     })
 }
@@ -373,7 +404,7 @@ fn disconnected_network() -> ConnectionSnapshot {
     }),
     json!({
         "type": "hello",
-        "protocol_version": 4,
+        "protocol_version": 5,
         "campus_id": campus_text(),
         "auth_token": "fixture-token-a",
     }),
@@ -527,7 +558,7 @@ fn client_frames_match_wire_format(#[case] frame: ClientFrame, #[case] expected:
     }),
     json!({
         "type": "welcome",
-        "protocol_version": 4,
+        "protocol_version": 5,
         "campus_id": CAMPUS_A.to_string(),
         "session_id": SESSION_A.to_string(),
         "account_id": ACCOUNT_A.to_string(),
@@ -540,7 +571,7 @@ fn client_frames_match_wire_format(#[case] frame: ClientFrame, #[case] expected:
         supported: ProtocolVersion::CURRENT,
         received: ProtocolVersion(99),
     }),
-    json!({"type": "version_mismatch", "supported": 4, "received": 99}),
+    json!({"type": "version_mismatch", "supported": 5, "received": 99}),
 )]
 #[case::handshake_rejected_campus(
     ServerFrame::HandshakeRejected(HandshakeRejected { reason: HandshakeRejection::CampusUnavailable }),
@@ -846,11 +877,13 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
         search: SearchSnapshot::default(),
         vault: VaultSnapshot::default(),
         shelf: ShelfSnapshot::default(),
+        lounges: LoungeSnapshot::default(),
+        stewards: StewardSnapshot::default(),
     },
     json!({
         "sequence": 0,
         "network": {
-            "protocol_version": 4,
+            "protocol_version": 5,
             "connection": "disconnected",
             "retry_in_ms": null,
             "campus_id": null,
@@ -879,6 +912,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "focus_message_id": null,
             "can_pin": false,
             "can_upload": false,
+            "mentionable_stewards": [],
         },
         "thread": {
             "room_id": null,
@@ -888,6 +922,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "topic_title": null,
             "subscription": null,
             "syncing": false,
+            "mentionable_stewards": [],
         },
         "inbox": {
             "open": false,
@@ -899,6 +934,8 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
         "search": search_default_json(),
         "vault": vault_default_json(),
         "shelf": shelf_default_json(),
+        "lounges": lounges_default_json(),
+        "stewards": stewards_default_json(),
     }),
 )]
 #[case::signed_in_rejected(
@@ -940,6 +977,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             focus_message_id: Some(MESSAGE_B),
             can_pin: true,
             can_upload: true,
+            mentionable_stewards: Vec::new(),
         },
         thread: ThreadSnapshot {
             room_id: Some(ROOM_A),
@@ -949,6 +987,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             topic_title: Some("Plans".to_owned()),
             subscription: Some(SubscriptionState::Archived),
             syncing: true,
+            mentionable_stewards: Vec::new(),
         },
         inbox: InboxSnapshot {
             open: true,
@@ -960,17 +999,19 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
         search: SearchSnapshot::default(),
         vault: VaultSnapshot::default(),
         shelf: ShelfSnapshot::default(),
+        lounges: LoungeSnapshot::default(),
+        stewards: StewardSnapshot::default(),
     },
     json!({
         "sequence": 42,
         "network": {
-            "protocol_version": 4,
+            "protocol_version": 5,
             "connection": "backoff",
             "retry_in_ms": 1000,
             "campus_id": CAMPUS_A.to_string(),
             "session_id": SESSION_A.to_string(),
             "attempt": 2,
-            "rejection": {"supported": 4, "received": 1},
+            "rejection": {"supported": 5, "received": 1},
             "handshake_rejection": "campus_unavailable",
         },
         "session": {
@@ -996,6 +1037,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "focus_message_id": MESSAGE_B.to_string(),
             "can_pin": true,
             "can_upload": true,
+            "mentionable_stewards": [],
         },
         "thread": {
             "room_id": ROOM_A.to_string(),
@@ -1005,6 +1047,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "topic_title": "Plans",
             "subscription": "archived",
             "syncing": true,
+            "mentionable_stewards": [],
         },
         "inbox": {
             "open": true,
@@ -1016,6 +1059,8 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
         "search": search_default_json(),
         "vault": vault_default_json(),
         "shelf": shelf_default_json(),
+        "lounges": lounges_default_json(),
+        "stewards": stewards_default_json(),
     }),
 )]
 fn client_snapshot_matches_wire_format(#[case] snapshot: ClientSnapshot, #[case] expected: Value) {
@@ -1026,39 +1071,73 @@ fn client_snapshot_matches_wire_format(#[case] snapshot: ClientSnapshot, #[case]
 #[case::owner_view_campus(Role::Owner, Permission::ViewCampus, true)]
 #[case::owner_view_rooms(Role::Owner, Permission::ViewRooms, true)]
 #[case::owner_create_room(Role::Owner, Permission::CreateRoom, true)]
-#[case::owner_post_message(Role::Owner, Permission::PostMessage, true)]
-#[case::owner_react(Role::Owner, Permission::React, true)]
 #[case::owner_manage_members(Role::Owner, Permission::ManageMembers, true)]
 #[case::owner_manage_campus(Role::Owner, Permission::ManageCampus, true)]
+#[case::owner_post_message(Role::Owner, Permission::PostMessage, true)]
+#[case::owner_react(Role::Owner, Permission::React, true)]
+#[case::owner_pin_message(Role::Owner, Permission::PinMessage, true)]
+#[case::owner_upload_attachment(Role::Owner, Permission::UploadAttachment, true)]
+#[case::owner_manage_stewards(Role::Owner, Permission::ManageStewards, true)]
+#[case::owner_stream_reply(Role::Owner, Permission::StreamReply, false)]
+#[case::owner_use_steward_tools(Role::Owner, Permission::UseStewardTools, false)]
+#[case::owner_join_lounge(Role::Owner, Permission::JoinLounge, true)]
+#[case::owner_speak_in_lounge(Role::Owner, Permission::SpeakInLounge, true)]
 #[case::admin_view_campus(Role::Admin, Permission::ViewCampus, true)]
 #[case::admin_view_rooms(Role::Admin, Permission::ViewRooms, true)]
 #[case::admin_create_room(Role::Admin, Permission::CreateRoom, true)]
-#[case::admin_post_message(Role::Admin, Permission::PostMessage, true)]
-#[case::admin_react(Role::Admin, Permission::React, true)]
 #[case::admin_manage_members(Role::Admin, Permission::ManageMembers, true)]
 #[case::admin_manage_campus(Role::Admin, Permission::ManageCampus, false)]
+#[case::admin_post_message(Role::Admin, Permission::PostMessage, true)]
+#[case::admin_react(Role::Admin, Permission::React, true)]
+#[case::admin_pin_message(Role::Admin, Permission::PinMessage, true)]
+#[case::admin_upload_attachment(Role::Admin, Permission::UploadAttachment, true)]
+#[case::admin_manage_stewards(Role::Admin, Permission::ManageStewards, true)]
+#[case::admin_stream_reply(Role::Admin, Permission::StreamReply, false)]
+#[case::admin_use_steward_tools(Role::Admin, Permission::UseStewardTools, false)]
+#[case::admin_join_lounge(Role::Admin, Permission::JoinLounge, true)]
+#[case::admin_speak_in_lounge(Role::Admin, Permission::SpeakInLounge, true)]
 #[case::member_view_campus(Role::Member, Permission::ViewCampus, true)]
 #[case::member_view_rooms(Role::Member, Permission::ViewRooms, true)]
 #[case::member_create_room(Role::Member, Permission::CreateRoom, true)]
-#[case::member_post_message(Role::Member, Permission::PostMessage, true)]
-#[case::member_react(Role::Member, Permission::React, true)]
 #[case::member_manage_members(Role::Member, Permission::ManageMembers, false)]
 #[case::member_manage_campus(Role::Member, Permission::ManageCampus, false)]
+#[case::member_post_message(Role::Member, Permission::PostMessage, true)]
+#[case::member_react(Role::Member, Permission::React, true)]
+#[case::member_pin_message(Role::Member, Permission::PinMessage, true)]
+#[case::member_upload_attachment(Role::Member, Permission::UploadAttachment, true)]
+#[case::member_manage_stewards(Role::Member, Permission::ManageStewards, false)]
+#[case::member_stream_reply(Role::Member, Permission::StreamReply, false)]
+#[case::member_use_steward_tools(Role::Member, Permission::UseStewardTools, false)]
+#[case::member_join_lounge(Role::Member, Permission::JoinLounge, true)]
+#[case::member_speak_in_lounge(Role::Member, Permission::SpeakInLounge, true)]
 #[case::guest_view_campus(Role::Guest, Permission::ViewCampus, true)]
 #[case::guest_view_rooms(Role::Guest, Permission::ViewRooms, true)]
 #[case::guest_create_room(Role::Guest, Permission::CreateRoom, false)]
-#[case::guest_post_message(Role::Guest, Permission::PostMessage, false)]
-#[case::guest_react(Role::Guest, Permission::React, true)]
 #[case::guest_manage_members(Role::Guest, Permission::ManageMembers, false)]
 #[case::guest_manage_campus(Role::Guest, Permission::ManageCampus, false)]
-#[case::owner_pin_message(Role::Owner, Permission::PinMessage, true)]
-#[case::owner_upload_attachment(Role::Owner, Permission::UploadAttachment, true)]
-#[case::admin_pin_message(Role::Admin, Permission::PinMessage, true)]
-#[case::admin_upload_attachment(Role::Admin, Permission::UploadAttachment, true)]
-#[case::member_pin_message(Role::Member, Permission::PinMessage, true)]
-#[case::member_upload_attachment(Role::Member, Permission::UploadAttachment, true)]
+#[case::guest_post_message(Role::Guest, Permission::PostMessage, false)]
+#[case::guest_react(Role::Guest, Permission::React, true)]
 #[case::guest_pin_message(Role::Guest, Permission::PinMessage, false)]
 #[case::guest_upload_attachment(Role::Guest, Permission::UploadAttachment, false)]
+#[case::guest_manage_stewards(Role::Guest, Permission::ManageStewards, false)]
+#[case::guest_stream_reply(Role::Guest, Permission::StreamReply, false)]
+#[case::guest_use_steward_tools(Role::Guest, Permission::UseStewardTools, false)]
+#[case::guest_join_lounge(Role::Guest, Permission::JoinLounge, true)]
+#[case::guest_speak_in_lounge(Role::Guest, Permission::SpeakInLounge, false)]
+#[case::steward_view_campus(Role::Steward, Permission::ViewCampus, true)]
+#[case::steward_view_rooms(Role::Steward, Permission::ViewRooms, true)]
+#[case::steward_create_room(Role::Steward, Permission::CreateRoom, false)]
+#[case::steward_manage_members(Role::Steward, Permission::ManageMembers, false)]
+#[case::steward_manage_campus(Role::Steward, Permission::ManageCampus, false)]
+#[case::steward_post_message(Role::Steward, Permission::PostMessage, true)]
+#[case::steward_react(Role::Steward, Permission::React, true)]
+#[case::steward_pin_message(Role::Steward, Permission::PinMessage, false)]
+#[case::steward_upload_attachment(Role::Steward, Permission::UploadAttachment, false)]
+#[case::steward_manage_stewards(Role::Steward, Permission::ManageStewards, false)]
+#[case::steward_stream_reply(Role::Steward, Permission::StreamReply, true)]
+#[case::steward_use_steward_tools(Role::Steward, Permission::UseStewardTools, true)]
+#[case::steward_join_lounge(Role::Steward, Permission::JoinLounge, false)]
+#[case::steward_speak_in_lounge(Role::Steward, Permission::SpeakInLounge, false)]
 fn role_permission_matrix(
     #[case] role: Role,
     #[case] permission: Permission,
@@ -1069,8 +1148,8 @@ fn role_permission_matrix(
 
 #[test]
 fn role_and_permission_lists_are_complete() {
-    assert_eq!(Role::ALL.len(), 4);
-    assert_eq!(Permission::ALL.len(), 9);
+    assert_eq!(Role::ALL.len(), 5);
+    assert_eq!(Permission::ALL.len(), 14);
 }
 
 #[rstest]
@@ -1353,8 +1432,8 @@ fn invalid_ids_are_rejected(#[case] text: &str) {
 }
 
 #[test]
-fn protocol_version_is_four() {
-    assert_eq!(ProtocolVersion::CURRENT, ProtocolVersion(4));
+fn protocol_version_is_five() {
+    assert_eq!(ProtocolVersion::CURRENT, ProtocolVersion(5));
 }
 
 #[rstest]

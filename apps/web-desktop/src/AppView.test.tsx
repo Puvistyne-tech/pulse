@@ -3,12 +3,17 @@ import type { ClientSnapshot } from "@pulse/protocol";
 import { afterEach, describe, expect, test } from "vitest";
 import { AppView } from "./AppView";
 import {
+  LOUNGE_A,
   MESSAGE_A,
   MESSAGE_B,
+  ROOM_A,
+  STEWARD_A,
   authenticating,
   expectOnlyCalled,
   inboxItemOf,
   inboxOf,
+  loungeEntryOf,
+  loungesOf,
   noopIntents,
   searchHitOf,
   searchOf,
@@ -19,6 +24,10 @@ import {
   signedInWithRooms,
   signedOut,
   signedOutWithError,
+  stewardEntryOf,
+  stewardsOf,
+  streamingEntryOf,
+  timelineOf,
   threadOf,
   vaultEntryOf,
   vaultOf,
@@ -245,5 +254,80 @@ describe("search, vault and shelf wiring", () => {
     fireEvent(window, event);
     expect(event.defaultPrevented).toBe(call !== null);
     expectOnlyCalled(intents, call, args);
+  });
+});
+
+const withLounges = withExtras(signedInWithRooms, {
+  lounges: loungesOf([loungeEntryOf("campus")]),
+});
+const withStewards = withExtras(signedInWithRooms, {
+  stewards: stewardsOf([stewardEntryOf(STEWARD_A, "Scribe")]),
+});
+const withMentionable = {
+  ...withStewards,
+  timeline: timelineOf([], { mentionable_stewards: [stewardEntryOf(STEWARD_A, "Scribe")] }),
+};
+const closedStewards = withExtras(signedInWithRooms, {
+  stewards: stewardsOf([stewardEntryOf(STEWARD_A, "Scribe")], { open: false }),
+});
+
+describe("steward and lounge wiring", () => {
+  test.each<[string, ClientSnapshot, string, boolean]>([
+    ["no lounges hides the lounge panel", signedInWithRooms, "Lounges", false],
+    ["lounges show the lounge panel", withLounges, "Lounges", true],
+    ["a closed stewards panel is hidden", closedStewards, "Stewards", false],
+    ["an open stewards panel is shown", withStewards, "Stewards", true],
+  ])("%s", (_name, snapshot, label, visible) => {
+    render(<AppView snapshot={snapshot} intents={noopIntents()} />);
+    expect(screen.queryByLabelText(label) !== null).toBe(visible);
+  });
+
+  test("the stewards button toggles the panel", () => {
+    const intents = noopIntents();
+    render(<AppView snapshot={signedInWithRooms} intents={intents} />);
+    fireEvent.click(screen.getByRole("button", { name: "Stewards" }));
+    expectOnlyCalled(intents, "toggleStewards");
+  });
+
+  test("joining a lounge reaches the client", () => {
+    const intents = noopIntents();
+    render(<AppView snapshot={withLounges} intents={intents} />);
+    fireEvent.click(screen.getByRole("button", { name: "Join Campus lounge" }));
+    expectOnlyCalled(intents, "joinLounge", [LOUNGE_A]);
+  });
+
+  test("assigned stewards offer a mention in the room composer", () => {
+    render(<AppView snapshot={withMentionable} intents={noopIntents()} />);
+    const group = screen.getAllByRole("group", { name: "Mention a steward" });
+    expect(group.length).toBeGreaterThan(0);
+    fireEvent.click(group[0]!.querySelector("button")!);
+    expect((screen.getByLabelText("Message") as HTMLInputElement).value).toBe(
+      `<@${STEWARD_A}> `,
+    );
+  });
+
+  test("a streaming steward entry renders in the timeline", () => {
+    const snapshot = withExtras(
+      { ...signedInWithRooms, timeline: timelineOf([streamingEntryOf("streaming")]) },
+      {},
+    );
+    render(<AppView snapshot={snapshot} intents={noopIntents()} />);
+    expect(screen.getByText("Streaming")).not.toBeNull();
+    expect(screen.getByText("Steward")).not.toBeNull();
+  });
+
+  test.each<[string, boolean]>([
+    ["with a picker anchor the custom time is offered", true],
+    ["without a picker anchor it is withheld", false],
+  ])("shelf %s", (_name, offered) => {
+    const snapshot = withExtras(signedInWithRooms, {
+      shelf: shelfOf(
+        { due: [shelfEntryOf("due", MESSAGE_A, { room_id: ROOM_A })] },
+        offered ? {} : { picker_anchor_ms: null, picker_latest_ms: null },
+      ),
+    });
+    render(<AppView snapshot={snapshot} intents={noopIntents()} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Shelf" })[0]!);
+    expect(screen.queryByLabelText("Remind at") !== null).toBe(offered);
   });
 });

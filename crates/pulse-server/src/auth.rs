@@ -9,8 +9,9 @@ use axum::http::request::Parts;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use pulse_protocol::{
-    AccountId, AccountProfile, ApiError, ApiErrorCode, AuthSession, AuthToken, InputField,
-    SignInRequest, SignUpRequest, Validate, normalize_display_name, normalize_email,
+    AccountId, AccountProfile, ApiError, ApiErrorCode, AuthSession, AuthToken, CampusId,
+    InputField, STEWARD_TOKEN_PREFIX, SignInRequest, SignUpRequest, Validate,
+    normalize_display_name, normalize_email,
 };
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -65,6 +66,35 @@ pub fn mint_token() -> AuthToken {
 
 pub fn token_digest(token: &AuthToken) -> Vec<u8> {
     Sha256::digest(token.0.as_bytes()).to_vec()
+}
+
+pub fn mint_steward_token() -> AuthToken {
+    AuthToken(format!("{STEWARD_TOKEN_PREFIX}{}", mint_token().0))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StewardCredential {
+    pub steward_id: AccountId,
+    pub credential_revision: u64,
+}
+
+pub async fn resolve_steward_token(
+    db: &PgPool,
+    campus_id: CampusId,
+    token: &AuthToken,
+) -> Result<Option<StewardCredential>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (Uuid, i64)>(
+        "SELECT steward_id, credential_revision FROM stewards \
+         WHERE campus_id = $1 AND token_hash = $2 AND revoked_at IS NULL",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(token_digest(token))
+    .fetch_optional(db)
+    .await?;
+    Ok(row.map(|(steward_id, revision)| StewardCredential {
+        steward_id: AccountId(steward_id),
+        credential_revision: u64::try_from(revision).unwrap_or(0),
+    }))
 }
 
 pub async fn issue_token(db: &PgPool, account_id: AccountId) -> Result<AuthToken, ApiFailure> {
@@ -162,7 +192,8 @@ pub async fn sign_in(
     request.validate()?;
     let email = normalize_email(&request.email).map_err(ApiError::invalid)?;
     let row = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT account_id, display_name, password_hash FROM accounts WHERE email = $1",
+        "SELECT account_id, display_name, password_hash FROM accounts \
+         WHERE email = $1 AND kind = 'person'",
     )
     .bind(&email)
     .fetch_optional(&state.db)

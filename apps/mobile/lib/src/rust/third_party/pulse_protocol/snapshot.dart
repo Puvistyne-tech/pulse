@@ -4,6 +4,7 @@ import 'auth.dart';
 import 'campus.dart';
 import 'frames.dart';
 import 'ids.dart';
+import 'lounge.dart';
 import 'media.dart';
 import 'mention.dart';
 import 'messaging.dart';
@@ -67,6 +68,8 @@ class ClientSnapshot {
   final SearchSnapshot search;
   final VaultSnapshot vault;
   final ShelfSnapshot shelf;
+  final LoungeSnapshot lounges;
+  final StewardSnapshot stewards;
 
   const ClientSnapshot({
     required this.sequence,
@@ -78,6 +81,8 @@ class ClientSnapshot {
     required this.search,
     required this.vault,
     required this.shelf,
+    required this.lounges,
+    required this.stewards,
   });
 
   @override
@@ -90,7 +95,9 @@ class ClientSnapshot {
       inbox.hashCode ^
       search.hashCode ^
       vault.hashCode ^
-      shelf.hashCode;
+      shelf.hashCode ^
+      lounges.hashCode ^
+      stewards.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -105,7 +112,9 @@ class ClientSnapshot {
           inbox == other.inbox &&
           search == other.search &&
           vault == other.vault &&
-          shelf == other.shelf;
+          shelf == other.shelf &&
+          lounges == other.lounges &&
+          stewards == other.stewards;
 }
 
 enum ConnectionPhase {
@@ -326,6 +335,161 @@ class InboxSnapshot {
 }
 
 enum InboxStep { next, previous }
+
+class IssuedStewardToken {
+  final AccountId stewardId;
+  final String displayName;
+  final AuthToken token;
+
+  const IssuedStewardToken({
+    required this.stewardId,
+    required this.displayName,
+    required this.token,
+  });
+
+  @override
+  int get hashCode =>
+      stewardId.hashCode ^ displayName.hashCode ^ token.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is IssuedStewardToken &&
+          runtimeType == other.runtimeType &&
+          stewardId == other.stewardId &&
+          displayName == other.displayName &&
+          token == other.token;
+}
+
+class LoungeEntry {
+  final LoungeId loungeId;
+  final LoungeScope scope;
+  final RoomId? roomId;
+  final String? roomSlug;
+  final List<LoungeParticipantView> participants;
+  final bool joined;
+
+  const LoungeEntry({
+    required this.loungeId,
+    required this.scope,
+    this.roomId,
+    this.roomSlug,
+    required this.participants,
+    required this.joined,
+  });
+
+  @override
+  int get hashCode =>
+      loungeId.hashCode ^
+      scope.hashCode ^
+      roomId.hashCode ^
+      roomSlug.hashCode ^
+      participants.hashCode ^
+      joined.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LoungeEntry &&
+          runtimeType == other.runtimeType &&
+          loungeId == other.loungeId &&
+          scope == other.scope &&
+          roomId == other.roomId &&
+          roomSlug == other.roomSlug &&
+          participants == other.participants &&
+          joined == other.joined;
+}
+
+enum LoungeMediaState {
+  idle,
+  connecting,
+  connected,
+  failed;
+
+  static Future<LoungeMediaState> default_() =>
+      RustLib.instance.api.pulseProtocolSnapshotLoungeMediaStateDefault();
+}
+
+class LoungeParticipantView {
+  final AccountId accountId;
+  final String displayName;
+  final bool fromSelf;
+  final bool canSpeak;
+
+  const LoungeParticipantView({
+    required this.accountId,
+    required this.displayName,
+    required this.fromSelf,
+    required this.canSpeak,
+  });
+
+  @override
+  int get hashCode =>
+      accountId.hashCode ^
+      displayName.hashCode ^
+      fromSelf.hashCode ^
+      canSpeak.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LoungeParticipantView &&
+          runtimeType == other.runtimeType &&
+          accountId == other.accountId &&
+          displayName == other.displayName &&
+          fromSelf == other.fromSelf &&
+          canSpeak == other.canSpeak;
+}
+
+class LoungeSnapshot {
+  final List<LoungeEntry> lounges;
+  final LoungeId? joinedLoungeId;
+  final bool joining;
+  final LoungeTicket? ticket;
+  final LoungeMediaState media;
+  final bool canJoin;
+  final bool canSpeak;
+  final ApiError? error;
+
+  const LoungeSnapshot({
+    required this.lounges,
+    this.joinedLoungeId,
+    required this.joining,
+    this.ticket,
+    required this.media,
+    required this.canJoin,
+    required this.canSpeak,
+    this.error,
+  });
+
+  static Future<LoungeSnapshot> default_() =>
+      RustLib.instance.api.pulseProtocolSnapshotLoungeSnapshotDefault();
+
+  @override
+  int get hashCode =>
+      lounges.hashCode ^
+      joinedLoungeId.hashCode ^
+      joining.hashCode ^
+      ticket.hashCode ^
+      media.hashCode ^
+      canJoin.hashCode ^
+      canSpeak.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LoungeSnapshot &&
+          runtimeType == other.runtimeType &&
+          lounges == other.lounges &&
+          joinedLoungeId == other.joinedLoungeId &&
+          joining == other.joining &&
+          ticket == other.ticket &&
+          media == other.media &&
+          canJoin == other.canJoin &&
+          canSpeak == other.canSpeak &&
+          error == other.error;
+}
 
 class ReactionSummary {
   final String emoji;
@@ -573,6 +737,8 @@ class ShelfSnapshot {
   final int dueCount;
   final ShelfEntry? latestReminder;
   final List<ReminderPreset> presets;
+  final BigInt? pickerAnchorMs;
+  final BigInt? pickerLatestMs;
   final ApiError? error;
 
   const ShelfSnapshot({
@@ -583,6 +749,8 @@ class ShelfSnapshot {
     required this.dueCount,
     this.latestReminder,
     required this.presets,
+    this.pickerAnchorMs,
+    this.pickerLatestMs,
     this.error,
   });
 
@@ -598,6 +766,8 @@ class ShelfSnapshot {
       dueCount.hashCode ^
       latestReminder.hashCode ^
       presets.hashCode ^
+      pickerAnchorMs.hashCode ^
+      pickerLatestMs.hashCode ^
       error.hashCode;
 
   @override
@@ -612,8 +782,93 @@ class ShelfSnapshot {
           dueCount == other.dueCount &&
           latestReminder == other.latestReminder &&
           presets == other.presets &&
+          pickerAnchorMs == other.pickerAnchorMs &&
+          pickerLatestMs == other.pickerLatestMs &&
           error == other.error;
 }
+
+class StewardEntry {
+  final AccountId stewardId;
+  final String displayName;
+  final String mentionToken;
+  final List<RoomId> roomIds;
+  final bool revoked;
+  final bool manageable;
+
+  const StewardEntry({
+    required this.stewardId,
+    required this.displayName,
+    required this.mentionToken,
+    required this.roomIds,
+    required this.revoked,
+    required this.manageable,
+  });
+
+  @override
+  int get hashCode =>
+      stewardId.hashCode ^
+      displayName.hashCode ^
+      mentionToken.hashCode ^
+      roomIds.hashCode ^
+      revoked.hashCode ^
+      manageable.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StewardEntry &&
+          runtimeType == other.runtimeType &&
+          stewardId == other.stewardId &&
+          displayName == other.displayName &&
+          mentionToken == other.mentionToken &&
+          roomIds == other.roomIds &&
+          revoked == other.revoked &&
+          manageable == other.manageable;
+}
+
+class StewardSnapshot {
+  final bool open;
+  final List<StewardEntry> stewards;
+  final bool canManage;
+  final IssuedStewardToken? issued;
+  final bool pending;
+  final ApiError? error;
+
+  const StewardSnapshot({
+    required this.open,
+    required this.stewards,
+    required this.canManage,
+    this.issued,
+    required this.pending,
+    this.error,
+  });
+
+  static Future<StewardSnapshot> default_() =>
+      RustLib.instance.api.pulseProtocolSnapshotStewardSnapshotDefault();
+
+  @override
+  int get hashCode =>
+      open.hashCode ^
+      stewards.hashCode ^
+      canManage.hashCode ^
+      issued.hashCode ^
+      pending.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StewardSnapshot &&
+          runtimeType == other.runtimeType &&
+          open == other.open &&
+          stewards == other.stewards &&
+          canManage == other.canManage &&
+          issued == other.issued &&
+          pending == other.pending &&
+          error == other.error;
+}
+
+enum StreamState { streaming, finalizing }
 
 class ThreadPreview {
   final String? topicTitle;
@@ -662,6 +917,7 @@ class ThreadSnapshot {
   final String? topicTitle;
   final SubscriptionState? subscription;
   final bool syncing;
+  final List<StewardEntry> mentionableStewards;
 
   const ThreadSnapshot({
     this.roomId,
@@ -671,6 +927,7 @@ class ThreadSnapshot {
     this.topicTitle,
     this.subscription,
     required this.syncing,
+    required this.mentionableStewards,
   });
 
   static Future<ThreadSnapshot> default_() =>
@@ -684,7 +941,8 @@ class ThreadSnapshot {
       replies.hashCode ^
       topicTitle.hashCode ^
       subscription.hashCode ^
-      syncing.hashCode;
+      syncing.hashCode ^
+      mentionableStewards.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -697,7 +955,8 @@ class ThreadSnapshot {
           replies == other.replies &&
           topicTitle == other.topicTitle &&
           subscription == other.subscription &&
-          syncing == other.syncing;
+          syncing == other.syncing &&
+          mentionableStewards == other.mentionableStewards;
 }
 
 class TimelineEntry {
@@ -718,6 +977,8 @@ class TimelineEntry {
   final List<DraftAttachmentView> pendingDrafts;
   final bool pinned;
   final bool shelved;
+  final bool authorIsSteward;
+  final StreamState? stream;
 
   const TimelineEntry({
     required this.clientNonce,
@@ -737,6 +998,8 @@ class TimelineEntry {
     required this.pendingDrafts,
     required this.pinned,
     required this.shelved,
+    required this.authorIsSteward,
+    this.stream,
   });
 
   @override
@@ -757,7 +1020,9 @@ class TimelineEntry {
       attachments.hashCode ^
       pendingDrafts.hashCode ^
       pinned.hashCode ^
-      shelved.hashCode;
+      shelved.hashCode ^
+      authorIsSteward.hashCode ^
+      stream.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -780,7 +1045,9 @@ class TimelineEntry {
           attachments == other.attachments &&
           pendingDrafts == other.pendingDrafts &&
           pinned == other.pinned &&
-          shelved == other.shelved;
+          shelved == other.shelved &&
+          authorIsSteward == other.authorIsSteward &&
+          stream == other.stream;
 }
 
 class TimelineSnapshot {
@@ -793,6 +1060,7 @@ class TimelineSnapshot {
   final MessageId? focusMessageId;
   final bool canPin;
   final bool canUpload;
+  final List<StewardEntry> mentionableStewards;
 
   const TimelineSnapshot({
     this.roomId,
@@ -804,6 +1072,7 @@ class TimelineSnapshot {
     this.focusMessageId,
     required this.canPin,
     required this.canUpload,
+    required this.mentionableStewards,
   });
 
   @override
@@ -816,7 +1085,8 @@ class TimelineSnapshot {
       drafts.hashCode ^
       focusMessageId.hashCode ^
       canPin.hashCode ^
-      canUpload.hashCode;
+      canUpload.hashCode ^
+      mentionableStewards.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -831,7 +1101,8 @@ class TimelineSnapshot {
           drafts == other.drafts &&
           focusMessageId == other.focusMessageId &&
           canPin == other.canPin &&
-          canUpload == other.canUpload;
+          canUpload == other.canUpload &&
+          mentionableStewards == other.mentionableStewards;
 }
 
 enum UploadState { uploading, uploaded, failed }

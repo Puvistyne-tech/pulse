@@ -3,6 +3,10 @@ use ts_rs::TS;
 
 use crate::auth::AuthToken;
 use crate::ids::{AccountId, CampusId, SessionId};
+use crate::lounge::{
+    JoinLounge, LeaveLounge, LoungeChanged, LoungeHeartbeat, LoungeJoined, LoungeRejected,
+    LoungesSynced, SyncLounges,
+};
 use crate::media::{PinRejected, SetPin, SyncVault, VaultRejected, VaultSynced};
 use crate::messaging::{
     MessageAccepted, MessageCreated, MessageRejected, MessageUpdated, RoomSynced, RoomUnavailable,
@@ -11,6 +15,11 @@ use crate::messaging::{
 use crate::rbac::Role;
 use crate::reaction::{React, ReactionRejected};
 use crate::shelf::{ShelfChanged, ShelfRejected, ShelfSynced, SyncShelf, UpdateShelf};
+use crate::steward::{
+    AckWork, AgentStreamChunk, CallTool, ListTools, ManageSteward, StewardChanged, StewardIssued,
+    StewardRejected, StewardWorkItem, StewardsSynced, StreamChunk, StreamRejected, SyncStewards,
+    SyncWork, ToolResult, ToolsListed, WorkSynced,
+};
 use crate::thread::{
     InboxSynced, MarkThreadRead, SetThreadSubscription, SetTopicTitle, SyncInbox, SyncThread,
     ThreadChanged, ThreadRejected, ThreadSynced,
@@ -78,6 +87,17 @@ pub enum ClientFrame {
     SyncVault(SyncVault),
     UpdateShelf(UpdateShelf),
     SyncShelf(SyncShelf),
+    StreamChunk(StreamChunk),
+    ListTools(ListTools),
+    CallTool(CallTool),
+    SyncWork(SyncWork),
+    AckWork(AckWork),
+    ManageSteward(ManageSteward),
+    SyncStewards(SyncStewards),
+    SyncLounges(SyncLounges),
+    JoinLounge(JoinLounge),
+    LeaveLounge(LeaveLounge),
+    LoungeHeartbeat(LoungeHeartbeat),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -105,6 +125,20 @@ pub enum ServerFrame {
     ShelfSynced(ShelfSynced),
     ShelfChanged(ShelfChanged),
     ShelfRejected(ShelfRejected),
+    AgentStreamChunk(AgentStreamChunk),
+    StreamRejected(StreamRejected),
+    ToolsListed(ToolsListed),
+    ToolResult(ToolResult),
+    StewardWorkItem(StewardWorkItem),
+    WorkSynced(WorkSynced),
+    StewardIssued(StewardIssued),
+    StewardChanged(StewardChanged),
+    StewardRejected(StewardRejected),
+    StewardsSynced(StewardsSynced),
+    LoungesSynced(LoungesSynced),
+    LoungeJoined(LoungeJoined),
+    LoungeChanged(LoungeChanged),
+    LoungeRejected(LoungeRejected),
 }
 
 pub mod close_code {

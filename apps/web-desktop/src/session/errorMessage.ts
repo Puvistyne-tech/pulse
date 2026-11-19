@@ -13,6 +13,7 @@ const invalidFieldMessages: Record<InputField, string> = {
   byte_size: "That file is empty or too large",
   attachments: "Check the attachments on that message",
   remind_at: "Choose a reminder time that is not too far in the past or future",
+  rooms: "Choose a valid set of rooms for that steward",
 };
 
 const conflictFieldMessages: Record<InputField, string> = {
@@ -28,6 +29,7 @@ const conflictFieldMessages: Record<InputField, string> = {
   byte_size: "That file cannot be used",
   attachments: "Those attachments cannot be used",
   remind_at: "That reminder time cannot be used",
+  rooms: "Those rooms cannot be used",
 };
 
 const codeMessages: Record<ApiErrorCode, string> = {

@@ -19,6 +19,11 @@ const _rejectionLabels = {
   MessageRejection.invalidAttachment: 'Attachment not accepted',
 };
 
+const _streamLabels = {
+  StreamState.streaming: 'Streaming',
+  StreamState.finalizing: 'Finalizing',
+};
+
 class EntryActions {
   const EntryActions({
     required this.react,
@@ -61,6 +66,8 @@ class MessageEntryView extends StatelessWidget {
     required this.palette,
     required this.actions,
     this.presets = const [],
+    this.pickerAnchorMs,
+    this.pickerLatestMs,
     this.focused = false,
     super.key,
   });
@@ -70,6 +77,8 @@ class MessageEntryView extends StatelessWidget {
   final List<String> palette;
   final EntryActions actions;
   final List<ReminderPreset> presets;
+  final BigInt? pickerAnchorMs;
+  final BigInt? pickerLatestMs;
   final bool focused;
 
   Widget _status() {
@@ -108,9 +117,14 @@ class MessageEntryView extends StatelessWidget {
           Row(
             children: [
               Text(entry.fromSelf ? 'You' : entry.authorDisplayName),
+              if (entry.authorIsSteward) ...[
+                const SizedBox(width: 4),
+                const Text('Steward'),
+              ],
               const SizedBox(width: 8),
               Flexible(child: MessageBody(segments: entry.segments)),
               const SizedBox(width: 8),
+              if (entry.stream != null) Text(_streamLabels[entry.stream]!),
               _status(),
             ],
           ),
@@ -167,8 +181,15 @@ class MessageEntryView extends StatelessWidget {
                 ShelfMenu(
                   presets: presets,
                   shelved: entry.shelved,
-                  onUpdate: (action, preset) =>
-                      updateShelf(roomId, messageId, action, preset, null),
+                  pickerAnchorMs: pickerAnchorMs,
+                  pickerLatestMs: pickerLatestMs,
+                  onUpdate: (action, preset, remindAtMs) => updateShelf(
+                    roomId,
+                    messageId,
+                    action,
+                    preset,
+                    remindAtMs,
+                  ),
                 ),
             ],
           ),
@@ -224,6 +245,8 @@ class TimelineView extends StatelessWidget {
     required this.roomId,
     required this.actions,
     this.presets = const [],
+    this.pickerAnchorMs,
+    this.pickerLatestMs,
     super.key,
   });
 
@@ -231,6 +254,8 @@ class TimelineView extends StatelessWidget {
   final RoomId roomId;
   final EntryActions actions;
   final List<ReminderPreset> presets;
+  final BigInt? pickerAnchorMs;
+  final BigInt? pickerLatestMs;
 
   @override
   Widget build(BuildContext context) {
@@ -246,6 +271,8 @@ class TimelineView extends StatelessWidget {
             palette: timeline.reactionPalette,
             actions: actions,
             presets: presets,
+            pickerAnchorMs: pickerAnchorMs,
+            pickerLatestMs: pickerLatestMs,
             focused:
                 entry.messageId != null &&
                 entry.messageId == timeline.focusMessageId,

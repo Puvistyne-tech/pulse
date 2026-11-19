@@ -1,6 +1,10 @@
-import type { ReminderPreset, TimelineSnapshot } from "@pulse/protocol";
+import type {
+  ReminderPreset,
+  TimelineSnapshot,
+} from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
 import { ErrorNotice } from "../session/ErrorNotice";
+import { StewardMentionPicker } from "../steward/StewardMentionPicker";
 import { Composer, useInsertion } from "./Composer";
 import { Timeline } from "./Timeline";
 
@@ -8,9 +12,15 @@ interface RoomViewProps {
   timeline: TimelineSnapshot;
   intents: PulseIntents;
   presets?: ReminderPreset[];
+  customTime?: boolean;
 }
 
-export function RoomView({ timeline, intents, presets = [] }: RoomViewProps) {
+export function RoomView({
+  timeline,
+  intents,
+  presets = [],
+  customTime = true,
+}: RoomViewProps) {
   const [insertion, mention] = useInsertion();
   const roomId = timeline.room_id;
 
@@ -38,10 +48,15 @@ export function RoomView({ timeline, intents, presets = [] }: RoomViewProps) {
           updateShelf: intents.updateShelf,
           canPin: timeline.can_pin,
           presets,
+          customTime,
           mention,
         }}
       />
       <ErrorNotice error={timeline.error} />
+      <StewardMentionPicker
+        stewards={timeline.mentionable_stewards}
+        onPick={mention}
+      />
       <Composer
         insertion={insertion}
         drafts={timeline.drafts}

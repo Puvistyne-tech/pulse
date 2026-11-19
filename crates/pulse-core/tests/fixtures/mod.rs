@@ -21,8 +21,8 @@ use pulse_protocol::{
     ReactionRejection, ReactionTally, Role, Room, RoomCursor, RoomId, RoomList, RoomMessage,
     RoomSynced, RoomUnavailable, SendMessage, ServerFrame, SessionSnapshot, SetThreadSubscription,
     SetTopicTitle, SignInRequest, SignUpRequest, SubscriptionOrigin, SubscriptionState, SyncInbox,
-    SyncRooms, SyncShelf, SyncThread, ThreadChanged, ThreadRejected, ThreadRejection,
-    ThreadSummary, ThreadSynced, TimelineSnapshot, Welcome,
+    SyncLounges, SyncRooms, SyncShelf, SyncStewards, SyncThread, ThreadChanged, ThreadRejected,
+    ThreadRejection, ThreadSummary, ThreadSynced, TimelineSnapshot, Welcome,
 };
 
 pub fn token_a() -> AuthToken {
@@ -376,6 +376,10 @@ pub fn client_rooms(client: &Client) -> Vec<RoomId> {
 #[path = "builders.rs"]
 mod builders;
 pub use builders::{display_name, indexed_id, message_id, nonce, room_message};
+
+pub fn error_of(code: pulse_protocol::ApiErrorCode) -> Option<ApiError> {
+    Some(ApiError::new(code))
+}
 
 pub fn message_ids(indexes: &[u128]) -> Vec<MessageId> {
     indexes.iter().copied().map(message_id).collect()
@@ -755,6 +759,36 @@ pub fn sync_inbox_frame() -> ClientFrame {
 
 pub fn sync_shelf_frame() -> ClientFrame {
     ClientFrame::SyncShelf(SyncShelf {})
+}
+
+pub fn sync_stewards_frame() -> ClientFrame {
+    ClientFrame::SyncStewards(SyncStewards {})
+}
+
+pub fn sync_lounges_frame() -> ClientFrame {
+    ClientFrame::SyncLounges(SyncLounges {})
+}
+
+pub fn connect_burst(rooms: &[RoomId]) -> Vec<ClientFrame> {
+    connect_burst_at(
+        &rooms
+            .iter()
+            .map(|room_id| (*room_id, None, None))
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub fn connect_burst_at(cursors: &[(RoomId, Option<MessageId>, Option<u64>)]) -> Vec<ClientFrame> {
+    let rooms = (!cursors.is_empty()).then(|| sync_frame_at(cursors));
+    rooms
+        .into_iter()
+        .chain([
+            sync_inbox_frame(),
+            sync_shelf_frame(),
+            sync_stewards_frame(),
+            sync_lounges_frame(),
+        ])
+        .collect()
 }
 
 pub fn sync_thread_frame(root_index: u128, after: Option<u128>) -> ClientFrame {
@@ -1191,4 +1225,184 @@ pub fn settled_client() -> Client {
     client.drain_outbound();
     client.take_effects();
     client
+}
+
+pub use pulse_protocol::fixtures::{LOUNGE_A, LOUNGE_B, STEWARD_A, STREAM_A, STREAM_B};
+use pulse_protocol::{
+    AgentStreamChunk, Lounge, LoungeChanged, LoungeId, LoungeJoined, LoungeParticipant,
+    LoungeRejected, LoungeRejection, LoungeScope, LoungeTicket, LoungesSynced, ManageSteward,
+    StewardAction, StewardChanged, StewardIssued, StewardProfile, StewardRejected,
+    StewardRejection, StewardsSynced, StreamAbortReason, StreamId, StreamPhase,
+};
+
+pub const STEWARD_NAME: &str = "Scribe";
+
+pub fn stream_chunk(
+    stream_id: StreamId,
+    phase: StreamPhase,
+    sequence: u32,
+    text: &str,
+) -> AgentStreamChunk {
+    AgentStreamChunk {
+        campus_id: CAMPUS_A,
+        stream_id,
+        room_id: ROOM_A,
+        thread_root_id: None,
+        steward_id: STEWARD_A,
+        steward_display_name: STEWARD_NAME.to_owned(),
+        phase,
+        sequence,
+        text: text.to_owned(),
+        message_id: None,
+        abort_reason: None,
+    }
+}
+
+pub fn chunk_event(chunk: AgentStreamChunk) -> TimelineEvent {
+    received(ServerFrame::AgentStreamChunk(chunk))
+}
+
+pub fn stream_event(
+    stream_id: StreamId,
+    phase: StreamPhase,
+    sequence: u32,
+    text: &str,
+) -> TimelineEvent {
+    chunk_event(stream_chunk(stream_id, phase, sequence, text))
+}
+
+pub fn abort_event(stream_id: StreamId, sequence: u32, reason: StreamAbortReason) -> TimelineEvent {
+    chunk_event(AgentStreamChunk {
+        abort_reason: Some(reason),
+        ..stream_chunk(stream_id, StreamPhase::Abort, sequence, "")
+    })
+}
+
+pub fn steward_message(
+    room_id: RoomId,
+    index: u128,
+    stream_id: StreamId,
+    body: &str,
+) -> RoomMessage {
+    room_message(
+        room_id,
+        message_id(index),
+        None,
+        STEWARD_A,
+        stream_id.client_nonce(),
+        body,
+    )
+}
+
+pub fn lounge_with(
+    lounge_id: LoungeId,
+    revision: u64,
+    participants: &[(AccountId, u64)],
+) -> Lounge {
+    Lounge {
+        lounge_id,
+        campus_id: CAMPUS_A,
+        scope: if lounge_id == LOUNGE_A {
+            LoungeScope::Campus
+        } else {
+            LoungeScope::Room
+        },
+        room_id: (lounge_id != LOUNGE_A).then_some(ROOM_A),
+        participants: participants
+            .iter()
+            .map(|(account_id, present_until_ms)| LoungeParticipant {
+                account_id: *account_id,
+                display_name: display_name(*account_id).to_owned(),
+                can_speak: true,
+                present_until_ms: *present_until_ms,
+            })
+            .collect(),
+        revision,
+    }
+}
+
+pub fn lounge_ticket(lounge_id: LoungeId) -> LoungeTicket {
+    LoungeTicket {
+        lounge_id,
+        livekit_url: "ws://127.0.0.1:7880".to_owned(),
+        room_name: format!("pulse-{CAMPUS_A}-{lounge_id}"),
+        token: "ticket-token".to_owned(),
+        expires_at_ms: 600_000,
+    }
+}
+
+pub fn lounges_synced_frame(lounges: Vec<Lounge>) -> ServerFrame {
+    ServerFrame::LoungesSynced(LoungesSynced { lounges })
+}
+
+pub fn lounge_changed_frame(lounge: Lounge) -> ServerFrame {
+    ServerFrame::LoungeChanged(LoungeChanged { lounge })
+}
+
+pub fn lounge_joined_frame(lounge: Lounge) -> ServerFrame {
+    let ticket = lounge_ticket(lounge.lounge_id);
+    ServerFrame::LoungeJoined(LoungeJoined { lounge, ticket })
+}
+
+pub fn lounge_rejected_frame(lounge_id: LoungeId, reason: LoungeRejection) -> ServerFrame {
+    ServerFrame::LoungeRejected(LoungeRejected { lounge_id, reason })
+}
+
+pub fn steward_profile(
+    steward_id: AccountId,
+    name: &str,
+    room_ids: &[RoomId],
+    revoked: bool,
+) -> StewardProfile {
+    StewardProfile {
+        steward_id,
+        display_name: name.to_owned(),
+        room_ids: room_ids.to_vec(),
+        revoked,
+        credential_revision: 1,
+    }
+}
+
+pub fn stewards_synced_frame(stewards: Vec<StewardProfile>) -> ServerFrame {
+    ServerFrame::StewardsSynced(StewardsSynced { stewards })
+}
+
+pub fn steward_changed_frame(steward: StewardProfile) -> ServerFrame {
+    ServerFrame::StewardChanged(StewardChanged { steward })
+}
+
+pub fn steward_issued_frame(request_nonce: ClientNonce, steward: StewardProfile) -> ServerFrame {
+    ServerFrame::StewardIssued(StewardIssued {
+        request_nonce,
+        steward,
+        token: auth_token("pst_issued-token"),
+    })
+}
+
+pub fn steward_rejected_frame(
+    request_nonce: ClientNonce,
+    action: StewardAction,
+    reason: StewardRejection,
+) -> ServerFrame {
+    ServerFrame::StewardRejected(StewardRejected {
+        request_nonce,
+        action,
+        reason,
+    })
+}
+
+pub fn manage_frame(
+    request_nonce: ClientNonce,
+    action: StewardAction,
+    steward_id: Option<AccountId>,
+    display_name: Option<&str>,
+    room_ids: &[RoomId],
+) -> ClientFrame {
+    ClientFrame::ManageSteward(ManageSteward {
+        request_nonce,
+        action,
+        steward_id,
+        display_name: display_name.map(str::to_owned),
+        room_ids: room_ids.to_vec(),
+    })
 }

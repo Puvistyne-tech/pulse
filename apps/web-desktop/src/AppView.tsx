@@ -3,10 +3,12 @@ import { CampusPicker } from "./campus/CampusPicker";
 import { CreateCampusForm } from "./campus/CreateCampusForm";
 import { RoomList } from "./campus/RoomList";
 import type { PulseIntents } from "./client/usePulseClient";
+import { LoungePanel } from "./lounge/LoungePanel";
 import { InboxView } from "./inbox/InboxView";
 import { useInboxKeys } from "./inbox/useInboxKeys";
 import { SearchPalette } from "./search/SearchPalette";
 import { useSearchKeys } from "./search/useSearchKeys";
+import { StewardsPanel } from "./steward/StewardsPanel";
 import { ReminderNotice } from "./shelf/ReminderNotice";
 import { ShelfView } from "./shelf/ShelfView";
 import { VaultPanel } from "./vault/VaultPanel";
@@ -22,7 +24,18 @@ interface AppViewProps {
 }
 
 export function AppView({ snapshot, intents }: AppViewProps) {
-  const { session, network, timeline, thread, inbox, search, vault, shelf } = snapshot;
+  const {
+    session,
+    network,
+    timeline,
+    thread,
+    inbox,
+    search,
+    vault,
+    shelf,
+    lounges,
+    stewards,
+  } = snapshot;
   useInboxKeys(inbox, intents);
   useSearchKeys(search, intents);
 
@@ -61,6 +74,13 @@ export function AppView({ snapshot, intents }: AppViewProps) {
         >
           Shelf <span aria-label="Due reminders">{shelf.due_count}</span>
         </button>
+        <button
+          className="underline"
+          type="button"
+          onClick={() => void intents.toggleStewards()}
+        >
+          Stewards
+        </button>
       </nav>
       {shelf.latest_reminder !== null && (
         <ReminderNotice
@@ -71,6 +91,14 @@ export function AppView({ snapshot, intents }: AppViewProps) {
       {search.open && <SearchPalette search={search} intents={intents} />}
       {shelf.open && <ShelfView shelf={shelf} intents={intents} />}
       {vault.open && <VaultPanel vault={vault} intents={intents} />}
+      {stewards.open && (
+        <StewardsPanel
+          stewards={stewards}
+          rooms={session.rooms}
+          intents={intents}
+        />
+      )}
+      <LoungePanel lounges={lounges} intents={intents} />
       <ErrorNotice error={session.error} />
       <CampusPicker
         campuses={session.campuses}
@@ -90,6 +118,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
         timeline={timeline}
         intents={intents}
         presets={shelf.presets}
+        customTime={shelf.picker_anchor_ms !== null}
       />
       {thread.root_message_id !== null && (
         <ThreadPanel

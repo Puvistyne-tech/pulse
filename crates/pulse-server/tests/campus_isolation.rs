@@ -16,10 +16,10 @@ use common::{
 use pulse_protocol::fixtures::{CAMPUS_A, CAMPUS_B, EMOJI_A, NONCE_A, NONCE_B};
 use pulse_protocol::{
     AuthToken, CampusCreated, CampusId, ClientNonce, DEFAULT_ROOM_SLUGS, HandshakeRejected,
-    HandshakeRejection, MessageRejected, MessageRejection, PinRejection, ReactionAction,
-    ReactionRejection, Role, RoomUnavailable, ServerFrame, ShelfAction, ShelfRejection,
-    SubscriptionOrigin, SubscriptionState, ThreadRejection, VaultRejection, VaultTab, api_path,
-    mention_token,
+    HandshakeRejection, MessageRejected, MessageRejection, PinRejection, PostMessageArguments,
+    ReactionAction, ReactionRejection, ReadRoomHistoryArguments, ReadThreadArguments, Role,
+    RoomUnavailable, ServerFrame, ShelfAction, ShelfRejection, StewardTool, SubscriptionOrigin,
+    SubscriptionState, ThreadRejection, VaultRejection, VaultTab, api_path, mention_token,
 };
 use pulse_server::fanout::campus_channel;
 use rstest::rstest;
@@ -828,6 +828,220 @@ async fn media_vault_and_shelf_requests_never_cross_a_campus(#[case] probe: Medi
         assert_eq!(near_shape(&state).await, before);
         assert_eq!(count_rows(&state, "shelf_items", far.id).await, 0);
         assert_eq!(count_rows(&state, "message_pins", far.id).await, 0);
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+struct Twin {
+    state: pulse_server::AppState,
+    addr: std::net::SocketAddr,
+    ours: common::Campus,
+    theirs: common::Campus,
+}
+
+async fn twin_campuses() -> Twin {
+    let state = fresh_state().await;
+    let ours = campus_with_owner(&state, "ours@example.org", "north-quad").await;
+    let theirs = campus_with_owner(&state, "theirs@example.org", "south-quad").await;
+    let addr = spawn_server_with(state.clone()).await;
+    Twin {
+        state,
+        addr,
+        ours,
+        theirs,
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ForeignCall {
+    History,
+    Thread,
+    Post,
+    Subscribe,
+}
+
+#[rstest]
+#[case::history(ForeignCall::History)]
+#[case::thread(ForeignCall::Thread)]
+#[case::post(ForeignCall::Post)]
+#[case::subscribe(ForeignCall::Subscribe)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_steward_cannot_reach_rooms_of_another_campus(#[case] call: ForeignCall) {
+    timeout(SCENARIO_DEADLINE, async {
+        let twin = twin_campuses().await;
+        let foreign_room = twin.theirs.rooms[0];
+        let mut theirs = subscribed_socket(
+            twin.addr,
+            twin.theirs.id,
+            &twin.theirs.owner.token,
+            &[foreign_room],
+        )
+        .await;
+        let root = posted(
+            &mut theirs,
+            foreign_room,
+            ClientNonce::generate(),
+            "private",
+        )
+        .await;
+        let (_, token) = common::issue_steward(
+            &twin.state,
+            twin.ours.id,
+            twin.ours.owner.account.account_id,
+            "Scribe",
+            &twin.ours.rooms,
+        )
+        .await;
+        let mut steward =
+            common::steward::StewardClient::connect(twin.addr, twin.ours.id, &token).await;
+        let before = count_rows(&twin.state, "room_messages", twin.theirs.id).await;
+        let call_id = pulse_protocol::ToolCallId::generate();
+        match call {
+            ForeignCall::History => {
+                let result = steward
+                    .call_tool(
+                        call_id,
+                        StewardTool::ReadRoomHistory.name(),
+                        &ReadRoomHistoryArguments {
+                            room_id: foreign_room,
+                            before: None,
+                            limit: None,
+                        },
+                    )
+                    .await;
+                assert!(result.is_error);
+                assert_eq!(result.content[0].text, "unknown_room");
+            }
+            ForeignCall::Thread => {
+                let result = steward
+                    .call_tool(
+                        call_id,
+                        StewardTool::ReadThread.name(),
+                        &ReadThreadArguments {
+                            room_id: foreign_room,
+                            root_message_id: root.message_id,
+                        },
+                    )
+                    .await;
+                assert!(result.is_error);
+                assert_eq!(result.content[0].text, "unknown_room");
+            }
+            ForeignCall::Post => {
+                let result = steward
+                    .call_tool(
+                        call_id,
+                        StewardTool::PostMessage.name(),
+                        &PostMessageArguments {
+                            room_id: foreign_room,
+                            client_nonce: ClientNonce::generate(),
+                            body: "intrude".to_owned(),
+                            thread_root_id: None,
+                        },
+                    )
+                    .await;
+                assert!(result.is_error);
+                assert_eq!(result.content[0].text, "unknown_room");
+            }
+            ForeignCall::Subscribe => {
+                send(&mut steward.socket, &sync_rooms(&[(foreign_room, None)])).await;
+                let frame = expect_frame(&mut steward.socket).await;
+                assert_eq!(
+                    frame,
+                    ServerFrame::RoomUnavailable(RoomUnavailable {
+                        room_id: foreign_room
+                    })
+                );
+            }
+        }
+        assert_eq!(
+            count_rows(&twin.state, "room_messages", twin.theirs.id).await,
+            before
+        );
+        let leaked = frames_until_pong(&mut theirs, 4).await;
+        assert!(leaked.iter().all(|frame| !matches!(
+            frame,
+            ServerFrame::MessageCreated(created) if created.message.message_id != root.message_id
+        )));
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stream_lounge_steward_and_work_frames_stay_inside_their_campus() {
+    timeout(SCENARIO_DEADLINE, async {
+        let twin = twin_campuses().await;
+        let our_room = twin.ours.rooms[0];
+        let mut outsider = common::joined_socket(twin.addr, twin.theirs.id, &twin.theirs.owner.token)
+            .await
+            .0;
+        send(&mut outsider, &sync_rooms(&[(twin.theirs.rooms[0], None)])).await;
+        let mut ours =
+            subscribed_socket(twin.addr, twin.ours.id, &twin.ours.owner.token, &[our_room]).await;
+        let (steward, token) = common::issue_steward(
+            &twin.state,
+            twin.ours.id,
+            twin.ours.owner.account.account_id,
+            "Scribe",
+            &[our_room],
+        )
+        .await;
+        let mut client =
+            common::steward::StewardClient::connect(twin.addr, twin.ours.id, &token).await;
+        let our_lounge = common::campus_lounge(&twin.state, twin.ours.id).await;
+        let their_lounge = common::campus_lounge(&twin.state, twin.theirs.id).await;
+        let stream_id = pulse_protocol::StreamId::generate();
+        client.stream_reply(stream_id, our_room, None, &["hello"]).await;
+        send(&mut ours, &common::join_lounge_frame(our_lounge)).await;
+        send(
+            &mut ours,
+            &common::sync_stewards_frame(),
+        )
+        .await;
+        let mut mention = subscribed_socket(twin.addr, twin.ours.id, &twin.ours.owner.token, &[our_room]).await;
+        posted(
+            &mut mention,
+            our_room,
+            ClientNonce::generate(),
+            &common::mentioning(steward.steward_id, "task"),
+        )
+        .await;
+        client.next_work_item().await;
+        next_of(&mut ours, |frame| match frame {
+            ServerFrame::AgentStreamChunk(chunk) if chunk.phase == pulse_protocol::StreamPhase::End => Some(()),
+            _ => None,
+        })
+        .await;
+        send(&mut outsider, &common::join_lounge_frame(their_lounge)).await;
+        let mut seen = Vec::new();
+        loop {
+            let frame = expect_frame(&mut outsider).await;
+            let own_join = matches!(&frame, ServerFrame::LoungeChanged(changed) if changed.lounge.lounge_id == their_lounge);
+            seen.push(frame);
+            if own_join {
+                break;
+            }
+        }
+        for frame in &seen {
+            match frame {
+                ServerFrame::AgentStreamChunk(_)
+                | ServerFrame::StewardChanged(_)
+                | ServerFrame::StewardWorkItem(_)
+                | ServerFrame::MessageCreated(_) => panic!("leaked across campuses: {frame:?}"),
+                ServerFrame::LoungeChanged(changed) => {
+                    assert_eq!(changed.lounge.campus_id, twin.theirs.id);
+                }
+                _ => {}
+            }
+        }
+        send(&mut outsider, &common::sync_stewards_frame()).await;
+        let listed = next_of(&mut outsider, |frame| match frame {
+            ServerFrame::StewardsSynced(synced) => Some(synced.stewards.clone()),
+            _ => None,
+        })
+        .await;
+        assert!(listed.is_empty());
     })
     .await
     .expect("scenario deadline");

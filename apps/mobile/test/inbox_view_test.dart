@@ -188,7 +188,7 @@ void main() {
 
     testWidgets('close button toggles the inbox', (tester) async {
       final recorded = await pumpInbox(tester, inboxOf([]));
-      await tester.tap(find.text('Close inbox'));
+      await tester.tap(tooltip('Close inbox'));
       expect(recorded.calls, ['toggleInbox']);
     });
 

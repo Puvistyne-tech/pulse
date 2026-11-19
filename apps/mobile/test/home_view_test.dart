@@ -8,6 +8,8 @@ import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
 
 import 'fixtures.dart';
 
+typedef PumpView = Future<void> Function(WidgetTester tester, Widget child);
+
 class HomeCase {
   const HomeCase(this.name, this.snapshot, this.present, this.absent);
 
@@ -18,7 +20,7 @@ class HomeCase {
 }
 
 final homeCases = <HomeCase>[
-  HomeCase('signed out', signedOut, ['Sign in'], ['Sign out', 'Create campus']),
+  HomeCase('signed out', signedOut, ['Sign in'], ['Sign out', 'New campus']),
   HomeCase(
     'signed out with error',
     signedOutWithError,
@@ -28,7 +30,7 @@ final homeCases = <HomeCase>[
   HomeCase(
     'signed in without campus',
     signedInNoCampus,
-    ['Ada', 'Sign out', 'Create campus'],
+    ['Ada', 'Sign out', 'New campus'],
     ['#commons', '#courtyard'],
   ),
   HomeCase('signed in with rooms', signedInWithRooms, [
@@ -57,7 +59,7 @@ final homeCases = <HomeCase>[
   HomeCase(
     'signed in with messages',
     signedInWithMessages,
-    ['Grace', 'welcome', 'You', 'hello', 'Sending', 'Syncing', 'Send'],
+    ['Grace', 'welcome', 'You', 'hello', 'Sending', 'Syncing'],
     ['Discard'],
   ),
 ];
@@ -197,7 +199,7 @@ void main() {
   group('HomeView', () {
     for (final fixture in homeCases) {
       testWidgets(fixture.name, (tester) async {
-        await pumpView(
+        await pumpWide(
           tester,
           HomeView(
             snapshot: fixture.snapshot,
@@ -216,7 +218,7 @@ void main() {
     testWidgets('authenticating shows the auth form with submit disabled', (
       tester,
     ) async {
-      await pumpView(
+      await pumpWide(
         tester,
         HomeView(snapshot: authenticating, intents: RecordedIntents().intents),
       );
@@ -228,7 +230,7 @@ void main() {
     });
 
     testWidgets('rooms render in snapshot order', (tester) async {
-      await pumpView(
+      await pumpWide(
         tester,
         HomeView(
           snapshot: signedInWithRooms,
@@ -242,7 +244,7 @@ void main() {
 
     testWidgets('selecting a campus forwards its campus id', (tester) async {
       final recorded = RecordedIntents();
-      await pumpView(
+      await pumpWide(
         tester,
         HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
       );
@@ -255,7 +257,7 @@ void main() {
         tester,
       ) async {
         final recorded = RecordedIntents();
-        await pumpView(
+        await pumpWide(
           tester,
           HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
         );
@@ -266,7 +268,7 @@ void main() {
 
     for (final (label, bold) in [('#commons', true), ('#courtyard', false)]) {
       testWidgets('active room marking for $label', (tester) async {
-        await pumpView(
+        await pumpWide(
           tester,
           HomeView(
             snapshot: signedInWithRooms,
@@ -280,7 +282,7 @@ void main() {
 
     for (final fixture in panelCases) {
       testWidgets(fixture.name, (tester) async {
-        await pumpView(
+        await pumpWide(
           tester,
           HomeView(
             snapshot: fixture.snapshot,
@@ -299,7 +301,7 @@ void main() {
       ('three unread', 3),
     ]) {
       testWidgets('the inbox button shows $name', (tester) async {
-        await pumpView(
+        await pumpWide(
           tester,
           HomeView(
             snapshot: withExtras(
@@ -309,31 +311,25 @@ void main() {
             intents: RecordedIntents().intents,
           ),
         );
-        expect(find.text('Inbox $unread'), findsOneWidget);
+        expect(
+          badgeCount('Open inbox', unread),
+          unread > 0 ? findsOneWidget : findsNothing,
+        );
       });
     }
 
-    testWidgets('the inbox button toggles the inbox', (tester) async {
-      final recorded = RecordedIntents();
-      await pumpView(
-        tester,
-        HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
-      );
-      await tester.tap(find.text('Inbox 0'));
-      expect(recorded.calls, ['toggleInbox']);
-    });
-
     for (final (label, call) in [
-      ('Search', 'toggleSearch'),
-      ('Shelf 0', 'toggleShelf'),
+      ('Open inbox', 'toggleInbox'),
+      ('Open search', 'toggleSearch'),
+      ('Open shelf', 'toggleShelf'),
     ]) {
       testWidgets('the $label button toggles its panel', (tester) async {
         final recorded = RecordedIntents();
-        await pumpView(
+        await pumpWide(
           tester,
           HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
         );
-        await tester.tap(find.text(label));
+        await tester.tap(tooltip(label));
         expect(recorded.calls, [call]);
       });
     }
@@ -343,7 +339,7 @@ void main() {
       ('two due reminders', 2),
     ]) {
       testWidgets('the shelf button shows $name', (tester) async {
-        await pumpView(
+        await pumpWide(
           tester,
           HomeView(
             snapshot: withExtras(
@@ -359,13 +355,16 @@ void main() {
             intents: RecordedIntents().intents,
           ),
         );
-        expect(find.text('Shelf $due'), findsOneWidget);
+        expect(
+          badgeCount('Open shelf', due),
+          due > 0 ? findsOneWidget : findsNothing,
+        );
       });
     }
 
     testWidgets('dismissing the banner calls its intent', (tester) async {
       final recorded = RecordedIntents();
-      await pumpView(
+      await pumpWide(
         tester,
         HomeView(snapshot: remindedSnapshot, intents: recorded.intents),
       );
@@ -377,7 +376,7 @@ void main() {
       tester,
     ) async {
       final recorded = RecordedIntents();
-      await pumpView(
+      await pumpWide(
         tester,
         HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
       );
@@ -385,6 +384,140 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('sendMessage')));
       expect(recorded.calls, [(roomAId, 'hi')]);
+    });
+  });
+
+  group('HomeView shell', () {
+    final layouts = <(String, PumpView, bool)>[
+      ('phone', pumpView, false),
+      ('wide', pumpWide, true),
+    ];
+
+    Future<void> openNewCampus(WidgetTester tester, bool wide) async {
+      if (!wide) {
+        await tester.tap(tooltip('Open navigation menu'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byKey(const Key('newCampus')));
+      await tester.pumpAndSettle();
+    }
+
+    for (final (name, pump, wide) in layouts) {
+      testWidgets('$name layout shows the sidebar permanently: $wide', (
+        tester,
+      ) async {
+        await pump(
+          tester,
+          HomeView(
+            snapshot: signedInWithRooms,
+            intents: RecordedIntents().intents,
+          ),
+        );
+        expect(
+          find.byKey(const Key('sidebar')),
+          wide ? findsOneWidget : findsNothing,
+        );
+        expect(find.text('# commons'), findsOneWidget);
+      });
+
+      testWidgets('$name layout places open panels', (tester) async {
+        await pump(
+          tester,
+          HomeView(
+            snapshot: openInboxSnapshot,
+            intents: RecordedIntents().intents,
+          ),
+        );
+        expect(find.byKey(const Key('inboxView')), findsOneWidget);
+        expect(
+          find.byKey(const Key('sidePanels')),
+          wide ? findsOneWidget : findsNothing,
+        );
+      });
+
+      testWidgets('$name layout shows the slug error inside the sheet', (
+        tester,
+      ) async {
+        await pump(
+          tester,
+          HomeView(
+            snapshot: signedInWithSlugConflict,
+            intents: RecordedIntents().intents,
+          ),
+        );
+        expect(find.text('That slug is already taken'), findsOneWidget);
+        await openNewCampus(tester, wide);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('createCampusView')),
+            matching: find.text('That slug is already taken'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('unique across the whole server'),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('$name layout closes the sheet when a campus appears', (
+        tester,
+      ) async {
+        final intents = RecordedIntents().intents;
+        await pump(
+          tester,
+          HomeView(snapshot: signedInWithRooms, intents: intents),
+        );
+        await openNewCampus(tester, wide);
+        expect(find.byKey(const Key('createCampusView')), findsOneWidget);
+        await pump(
+          tester,
+          HomeView(snapshot: signedInWithThreeCampuses, intents: intents),
+        );
+        expect(find.byKey(const Key('createCampusView')), findsNothing);
+      });
+
+      testWidgets('$name layout submits the new campus request', (
+        tester,
+      ) async {
+        final recorded = RecordedIntents();
+        await pump(
+          tester,
+          HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
+        );
+        await openNewCampus(tester, wide);
+        await tester.enterText(find.byKey(const Key('campusSlug')), 'gamma');
+        await tester.enterText(
+          find.byKey(const Key('campusName')),
+          'Gamma Campus',
+        );
+        await tester.tap(find.byKey(const Key('createCampus')));
+        expect(recorded.calls, [createCampusRequest]);
+      });
+    }
+
+    testWidgets('the drawer lists campuses and rooms and closes on select', (
+      tester,
+    ) async {
+      final recorded = RecordedIntents();
+      await pumpView(
+        tester,
+        HomeView(snapshot: signedInWithRooms, intents: recorded.intents),
+      );
+      await tester.tap(tooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      for (final text in [
+        'Alpha Campus',
+        'Beta Campus',
+        '#courtyard',
+        'Sign out',
+      ]) {
+        expect(find.text(text), findsOneWidget);
+      }
+      await tester.tap(find.text('#courtyard'));
+      await tester.pumpAndSettle();
+      expect(recorded.calls, [roomBId]);
+      expect(find.byKey(const Key('sidebar')), findsNothing);
     });
   });
 }

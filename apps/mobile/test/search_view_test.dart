@@ -87,7 +87,11 @@ void main() {
         await pumpSearch(tester, search);
         final colors = [
           for (final hit in search.hits)
-            tester.widget<Container>(find.byKey(ValueKey(hit.messageId))).color,
+            (tester
+                        .widget<Container>(find.byKey(ValueKey(hit.messageId)))
+                        .decoration!
+                    as BoxDecoration)
+                .color,
         ];
         expect(colors.map((color) => color != null), [
           for (var index = 0; index < 3; index++) index == selected,
@@ -193,7 +197,7 @@ void main() {
 
     testWidgets('the close button toggles the palette', (tester) async {
       final recorded = await pumpSearch(tester, threeHits);
-      await tester.tap(find.text('Close search'));
+      await tester.tap(tooltip('Close search'));
       expect(recorded.calls, ['toggleSearch']);
     });
 

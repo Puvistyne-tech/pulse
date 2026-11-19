@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import { MessagesSquare } from "lucide-react";
 import type {
   SubscriptionState,
   ThreadSnapshot,
 } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
 import { StewardMentionPicker } from "../steward/StewardMentionPicker";
+import { Panel } from "../ui/Panel";
+import { ui } from "../ui/styles";
 import { Composer, useInsertion } from "./Composer";
 import { MessageEntry } from "./MessageEntry";
 
@@ -46,17 +49,18 @@ export function ThreadPanel({
   const entries = thread.root === null ? thread.replies : [thread.root, ...thread.replies];
 
   return (
-    <aside aria-label="Thread" className="space-y-3 border-l border-slate-200 p-4">
-      <header className="flex items-center justify-between">
-        <h2 className="font-semibold">Thread</h2>
-        <button
-          className="text-sm underline"
-          type="button"
-          onClick={() => void intents.closeThread()}
-        >
-          Close thread
-        </button>
-      </header>
+    <Panel
+      as="aside"
+      label="Thread"
+      title={
+        <>
+          <MessagesSquare size={16} aria-hidden="true" className="text-accent" />
+          Thread
+        </>
+      }
+      closeLabel="Close thread"
+      onClose={() => void intents.closeThread()}
+    >
       <form
         className="flex gap-2"
         onSubmit={(event) => {
@@ -66,22 +70,23 @@ export function ThreadPanel({
       >
         <input
           aria-label="Topic title"
-          className="flex-1 rounded border border-slate-300 px-2 py-1"
+          className={ui.input}
+          placeholder="Add a topic title"
           type="text"
           value={titleDraft}
           onChange={(event) => setTitleDraft(event.target.value)}
         />
-        <button className="rounded border px-2 py-1" type="submit">
+        <button className={`${ui.secondaryButton} shrink-0`} type="submit">
           Save title
         </button>
       </form>
-      <div role="group" aria-label="Subscription" className="flex gap-2">
+      <div role="group" aria-label="Subscription" className="flex gap-1.5">
         {subscriptionStates.map(({ state, label }) => (
           <button
             key={state}
             type="button"
             aria-pressed={thread.subscription === state}
-            className="rounded border px-2 py-1 text-sm aria-pressed:bg-slate-200"
+            className={ui.toggleButton}
             onClick={() =>
               void intents.setThreadSubscription(roomId, rootId, state)
             }
@@ -90,8 +95,8 @@ export function ThreadPanel({
           </button>
         ))}
       </div>
-      {thread.syncing && <p className="text-xs text-slate-500">Syncing</p>}
-      <ul className="space-y-2">
+      {thread.syncing && <p className={ui.muted}>Syncing</p>}
+      <ul className="-mx-4 space-y-1 border-y border-line py-3">
         {entries.map((entry) => (
           <MessageEntry
             key={entry.message_id ?? entry.client_nonce}
@@ -111,6 +116,6 @@ export function ThreadPanel({
         insertion={insertion}
         onSend={(body) => void intents.sendReply(roomId, rootId, body)}
       />
-    </aside>
+    </Panel>
   );
 }

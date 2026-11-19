@@ -331,3 +331,27 @@ describe("steward and lounge wiring", () => {
     expect(screen.queryByLabelText("Remind at") !== null).toBe(offered);
   });
 });
+
+describe("create campus dialog", () => {
+  const slugTaken = {
+    ...signedInNoCampus,
+    session: { ...signedInNoCampus.session, error: { code: "conflict", field: "slug" } },
+  } as ClientSnapshot;
+
+  test("shows a slug conflict inside the dialog", () => {
+    render(<AppView snapshot={slugTaken} intents={noopIntents()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Create campus" }));
+    const dialog = screen.getByRole("dialog", { name: "Create campus" });
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("That slug is already taken");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  test("closes once the created campus arrives", () => {
+    const intents = noopIntents();
+    const { rerender } = render(<AppView snapshot={signedInNoCampus} intents={intents} />);
+    fireEvent.click(screen.getByRole("button", { name: "Create campus" }));
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+    rerender(<AppView snapshot={signedInWithRooms} intents={intents} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

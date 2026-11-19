@@ -5,13 +5,13 @@ export function MessageBody({ segments }: { segments: BodySegment[] }) {
     <span>
       {segments.map((segment, index) =>
         segment.kind === "mention" ? (
-          <strong key={index} className="text-indigo-700">
+          <strong key={index} className="rounded bg-accent-soft px-1 font-semibold text-accent">
             {segment.text}
           </strong>
         ) : segment.kind === "link" && segment.url !== null ? (
           <a
             key={index}
-            className="underline"
+            className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
             href={segment.url}
             rel="noreferrer"
             target="_blank"

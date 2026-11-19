@@ -219,7 +219,7 @@ void main() {
 
     testWidgets('the close button closes the vault', (tester) async {
       final recorded = await pumpVault(tester, vaultOf([]));
-      await tester.tap(find.text('Close vault'));
+      await tester.tap(tooltip('Close vault'));
       expect(recorded.calls, ['closeVault']);
     });
   });

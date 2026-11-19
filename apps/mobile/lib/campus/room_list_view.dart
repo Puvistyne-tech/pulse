@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../shell/sidebar_section.dart';
 import '../src/rust/third_party/pulse_protocol/campus.dart';
 import '../src/rust/third_party/pulse_protocol/ids.dart';
 
@@ -18,17 +19,13 @@ class RoomListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final room in rooms)
-          TextButton(
-            onPressed: () => selectRoom(room.roomId),
-            child: Text(
-              '#${room.slug}',
-              style: room.roomId == activeRoomId
-                  ? const TextStyle(fontWeight: FontWeight.bold)
-                  : null,
-            ),
+          SidebarRow(
+            active: room.roomId == activeRoomId,
+            onTap: () => selectRoom(room.roomId),
+            label: '#${room.slug}',
           ),
       ],
     );

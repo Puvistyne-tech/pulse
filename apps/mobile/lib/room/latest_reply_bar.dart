@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
+import '../theme/pulse_theme.dart';
 
 class LatestReplyBar extends StatefulWidget {
   const LatestReplyBar({
@@ -25,6 +26,7 @@ class _LatestReplyBarState extends State<LatestReplyBar> {
     if (!widget.thread.showLatestReply || latest == null) {
       return const SizedBox.shrink();
     }
+    final tokens = PulseTokens.of(context);
     return Row(
       key: const Key('latestReplyBar'),
       children: [
@@ -33,10 +35,17 @@ class _LatestReplyBarState extends State<LatestReplyBar> {
           child: const Text('Latest reply'),
         ),
         if (!_collapsed) ...[
-          Text(latest.authorDisplayName),
-          const SizedBox(width: 8),
+          Text(
+            latest.authorDisplayName,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(width: PulseSpacing.sm),
           Flexible(
-            child: Text(latest.preview, overflow: TextOverflow.ellipsis),
+            child: Text(
+              latest.preview,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: tokens.textMuted),
+            ),
           ),
           TextButton(
             onPressed: widget.openThread,

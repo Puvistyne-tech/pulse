@@ -4,6 +4,8 @@ import '../client/pulse_intents.dart';
 import '../session/error_notice.dart';
 import '../src/rust/third_party/pulse_protocol/shelf.dart';
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
+import '../shell/panel_card.dart';
+import '../theme/pulse_theme.dart';
 import 'shelf_menu.dart';
 
 class ShelfView extends StatelessWidget {
@@ -14,46 +16,41 @@ class ShelfView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      key: const Key('shelfView'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Shelf ${shelf.dueCount}'),
-            TextButton(
-              onPressed: intents.toggleShelf,
-              child: const Text('Close shelf'),
-            ),
-          ],
-        ),
-        ErrorNotice(error: shelf.error),
-        _Section(
-          label: 'Due',
-          entries: shelf.due,
-          presets: shelf.presets,
-          pickerAnchorMs: shelf.pickerAnchorMs,
-          pickerLatestMs: shelf.pickerLatestMs,
-          intents: intents,
-        ),
-        _Section(
-          label: 'Upcoming',
-          entries: shelf.upcoming,
-          presets: shelf.presets,
-          pickerAnchorMs: shelf.pickerAnchorMs,
-          pickerLatestMs: shelf.pickerLatestMs,
-          intents: intents,
-        ),
-        _Section(
-          label: 'Done',
-          entries: shelf.done,
-          presets: shelf.presets,
-          pickerAnchorMs: shelf.pickerAnchorMs,
-          pickerLatestMs: shelf.pickerLatestMs,
-          intents: intents,
-        ),
-      ],
+    return PanelCard(
+      cardKey: const Key('shelfView'),
+      title: 'Shelf ${shelf.dueCount}',
+      closeLabel: 'Close shelf',
+      onClose: intents.toggleShelf,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ErrorNotice(error: shelf.error),
+          _Section(
+            label: 'Due',
+            entries: shelf.due,
+            presets: shelf.presets,
+            pickerAnchorMs: shelf.pickerAnchorMs,
+            pickerLatestMs: shelf.pickerLatestMs,
+            intents: intents,
+          ),
+          _Section(
+            label: 'Upcoming',
+            entries: shelf.upcoming,
+            presets: shelf.presets,
+            pickerAnchorMs: shelf.pickerAnchorMs,
+            pickerLatestMs: shelf.pickerLatestMs,
+            intents: intents,
+          ),
+          _Section(
+            label: 'Done',
+            entries: shelf.done,
+            presets: shelf.presets,
+            pickerAnchorMs: shelf.pickerAnchorMs,
+            pickerLatestMs: shelf.pickerLatestMs,
+            intents: intents,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -80,10 +77,24 @@ class _Section extends StatelessWidget {
     if (entries.isEmpty) {
       return const SizedBox.shrink();
     }
+    final tokens = PulseTokens.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Padding(
+          padding: const EdgeInsets.only(
+            top: PulseSpacing.sm,
+            bottom: PulseSpacing.xs,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
         for (final entry in entries)
           Row(
             key: ValueKey(entry.messageId),

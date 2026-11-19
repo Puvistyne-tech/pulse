@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import type { ApiError } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
+import { PulseMark } from "../ui/PulseMark";
+import { ui } from "../ui/styles";
 import { ErrorNotice } from "./ErrorNotice";
 
 type Mode = "sign_in" | "sign_up";
@@ -10,8 +12,6 @@ interface AuthFormProps {
   error: ApiError | null;
   intents: Pick<PulseIntents, "signIn" | "signUp">;
 }
-
-const inputClass = "w-full rounded border border-slate-300 px-2 py-1";
 
 export function AuthForm({ busy, error, intents }: AuthFormProps) {
   const [mode, setMode] = useState<Mode>("sign_in");
@@ -30,55 +30,67 @@ export function AuthForm({ busy, error, intents }: AuthFormProps) {
   }
 
   return (
-    <main className="mx-auto max-w-md space-y-4 p-6 text-slate-900">
-      <h1 className="text-2xl font-semibold">Pulse</h1>
-      <h2 className="text-lg">{signingUp ? "Create account" : "Sign in"}</h2>
-      <form className="space-y-3" onSubmit={submit}>
-        <label className="block text-sm">
-          Email
-          <input
-            className={inputClass}
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </label>
-        {signingUp && (
-          <label className="block text-sm">
-            Display name
-            <input
-              className={inputClass}
-              type="text"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-            />
-          </label>
-        )}
-        <label className="block text-sm">
-          Password
-          <input
-            className={inputClass}
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
-        <ErrorNotice error={error} />
-        <button
-          className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-50"
-          type="submit"
-          disabled={busy}
-        >
-          {signingUp ? "Create account" : "Sign in"}
-        </button>
-      </form>
-      <button
-        className="text-sm text-slate-600 underline"
-        type="button"
-        onClick={() => setMode(signingUp ? "sign_in" : "sign_up")}
-      >
-        {signingUp ? "Have an account? Sign in" : "New here? Create account"}
-      </button>
+    <main className="flex min-h-full items-center justify-center bg-muted px-4 py-12">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <PulseMark size={44} />
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">Pulse</h1>
+          <p className="text-sm text-subtle">
+            {signingUp ? "Create your account to join a campus." : "Welcome back. Sign in to your campus."}
+          </p>
+        </div>
+        <div className={`${ui.card} space-y-5 p-6 shadow-panel`}>
+          <h2 className="text-lg font-semibold text-ink">{signingUp ? "Create account" : "Sign in"}</h2>
+          <form className="space-y-4" onSubmit={submit}>
+            <label className={ui.label}>
+              Email
+              <input
+                className={ui.input}
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.org"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+            {signingUp && (
+              <label className={ui.label}>
+                Display name
+                <input
+                  className={ui.input}
+                  type="text"
+                  autoComplete="name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                />
+              </label>
+            )}
+            <label className={ui.label}>
+              Password
+              <input
+                className={ui.input}
+                type="password"
+                autoComplete={signingUp ? "new-password" : "current-password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+            <ErrorNotice error={error} />
+            <button className={`${ui.primaryButton} w-full py-2.5`} type="submit" disabled={busy}>
+              {signingUp ? "Create account" : "Sign in"}
+            </button>
+          </form>
+        </div>
+        <p className="text-center">
+          <button
+            className={ui.linkButton}
+            type="button"
+            onClick={() => setMode(signingUp ? "sign_in" : "sign_up")}
+          >
+            {signingUp ? "Have an account? Sign in" : "New here? Create account"}
+          </button>
+        </p>
+      </div>
     </main>
   );
 }

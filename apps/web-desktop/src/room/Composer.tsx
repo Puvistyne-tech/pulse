@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Paperclip, RotateCw, SendHorizontal, X } from "lucide-react";
 import type { DraftAttachmentView, DraftId } from "@pulse/protocol";
+import { ui } from "../ui/styles";
 
 export interface Insertion {
   text: string;
@@ -20,6 +22,7 @@ export function useInsertion(): [Insertion | null, (text: string) => void] {
 
 interface ComposerProps {
   label?: string;
+  placeholder?: string;
   insertion?: Insertion | null;
   onSend(body: string): void;
   drafts?: DraftAttachmentView[];
@@ -35,8 +38,15 @@ const uploadLabels: Record<DraftAttachmentView["upload"], string> = {
   failed: "Failed",
 };
 
+const uploadTones: Record<DraftAttachmentView["upload"], string> = {
+  uploading: "border-line text-subtle",
+  uploaded: "border-accent/40 text-ink",
+  failed: "border-danger/40 text-danger",
+};
+
 export function Composer({
   label = "Message",
+  placeholder,
   insertion = null,
   onSend,
   drafts = [],
@@ -62,31 +72,37 @@ export function Composer({
   }
 
   return (
-    <form className="space-y-1" onSubmit={submit}>
+    <form
+      className="rounded-xl border border-line bg-surface shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20"
+      onSubmit={submit}
+    >
       {drafts.length > 0 && (
-        <ul aria-label="Drafts" className="flex flex-wrap gap-2 text-xs">
+        <ul aria-label="Drafts" className="flex flex-wrap gap-2 border-b border-line px-3 py-2 text-xs">
           {drafts.map((attachment) => (
             <li
               key={attachment.draft_id}
               data-upload={attachment.upload}
-              className="rounded border border-slate-300 px-2 py-1"
+              className={`inline-flex items-center gap-1.5 rounded-lg border bg-muted px-2 py-1 ${uploadTones[attachment.upload]}`}
             >
+              <Paperclip size={12} aria-hidden="true" />
               {attachment.file_name} {uploadLabels[attachment.upload]}
               {attachment.upload === "failed" && onRetryDraft && (
                 <button
-                  className="ml-2 underline"
+                  className="inline-flex items-center gap-0.5 font-medium hover:underline"
                   type="button"
                   onClick={() => onRetryDraft(attachment.draft_id)}
                 >
+                  <RotateCw size={11} aria-hidden="true" />
                   Retry
                 </button>
               )}
               {onDiscardDraft && (
                 <button
-                  className="ml-2 underline"
+                  className="inline-flex items-center gap-0.5 font-medium text-subtle hover:text-ink"
                   type="button"
                   onClick={() => onDiscardDraft(attachment.draft_id)}
                 >
+                  <X size={11} aria-hidden="true" />
                   Remove
                 </button>
               )}
@@ -94,34 +110,40 @@ export function Composer({
           ))}
         </ul>
       )}
-      <div className="flex gap-2">
-      <input
-        aria-label={label}
-        className="flex-1 rounded border border-slate-300 px-2 py-1"
-        type="text"
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-      />
-      {canUpload && onAttach && (
+      <div className="flex items-center gap-1 p-1.5">
+        {canUpload && onAttach && (
+          <label className={`${ui.iconButton} cursor-pointer`} title="Attach file">
+            <Paperclip size={17} aria-hidden="true" />
+            <input
+              aria-label="Attach file"
+              className="sr-only"
+              type="file"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  onAttach(file);
+                }
+                event.target.value = "";
+              }}
+            />
+          </label>
+        )}
         <input
-          aria-label="Attach file"
-          type="file"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) {
-              onAttach(file);
-            }
-            event.target.value = "";
-          }}
+          aria-label={label}
+          className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-sm text-ink outline-none placeholder:text-subtle"
+          type="text"
+          placeholder={placeholder ?? `Write a ${label.toLowerCase()}`}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
         />
-      )}
-      <button
-        className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-50"
-        type="submit"
-        disabled={draft === "" && drafts.length === 0}
-      >
-        Send
-      </button>
+        <button
+          className={`${ui.primaryButton} px-3 py-1.5`}
+          type="submit"
+          disabled={draft === "" && drafts.length === 0}
+        >
+          <SendHorizontal size={15} aria-hidden="true" />
+          Send
+        </button>
       </div>
     </form>
   );

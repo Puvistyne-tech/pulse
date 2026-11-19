@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Bookmark } from "lucide-react";
 import type { ReminderPreset, ShelfAction } from "@pulse/protocol";
+import { ui } from "../ui/styles";
 
 export const presetLabels: Record<ReminderPreset, string> = {
   in_twenty_minutes: "In twenty minutes",
@@ -22,6 +24,9 @@ interface ShelfMenuProps {
   onUpdate: ShelfUpdate;
 }
 
+const menuItem =
+  "block w-full rounded-md px-2.5 py-1.5 text-left text-sm text-ink hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50";
+
 export function ShelfMenu({
   presets,
   shelved,
@@ -38,23 +43,24 @@ export function ShelfMenu({
   }
 
   return (
-    <span className="relative">
+    <span className="relative inline-flex">
       <button
-        className="underline"
+        className={`${ui.ghostButton} ${shelved ? "text-accent" : ""}`}
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
+        <Bookmark size={14} aria-hidden="true" fill={shelved ? "currentColor" : "none"} />
         Shelf
       </button>
       {open && (
         <div
           role="menu"
-          className="space-y-1 rounded border border-slate-300 p-2"
+          className="absolute right-0 top-full z-30 mt-1 w-56 space-y-0.5 rounded-xl border border-line bg-surface p-1.5 shadow-panel"
         >
           {!shelved && (
             <button
-              className="block underline"
+              className={`${menuItem} font-medium text-accent`}
               type="button"
               onClick={() => choose(() => onUpdate("save", null, null))}
             >
@@ -64,7 +70,7 @@ export function ShelfMenu({
           {presets.map((preset) => (
             <button
               key={preset}
-              className="block underline"
+              className={menuItem}
               type="button"
               onClick={() =>
                 choose(() => onUpdate(scheduleAction, preset, null))
@@ -74,15 +80,16 @@ export function ShelfMenu({
             </button>
           ))}
           {customTime && (
-            <>
+            <div className="space-y-1.5 border-t border-line px-1 pt-2">
               <input
                 aria-label="Remind at"
+                className={`${ui.input} py-1.5 text-xs`}
                 type="datetime-local"
                 value={custom}
                 onChange={(event) => setCustom(event.target.value)}
               />
               <button
-                className="block underline"
+                className={menuItem}
                 type="button"
                 disabled={custom === ""}
                 onClick={() =>
@@ -93,11 +100,11 @@ export function ShelfMenu({
               >
                 Remind at chosen time
               </button>
-            </>
+            </div>
           )}
           {shelved && (
             <button
-              className="block underline"
+              className={`${menuItem} text-danger`}
               type="button"
               onClick={() => choose(() => onUpdate("remove", null, null))}
             >

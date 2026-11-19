@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Bot, KeyRound, ShieldOff } from "lucide-react";
 import type {
   Room,
   RoomId,
@@ -7,6 +8,8 @@ import type {
 } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
 import { ErrorNotice } from "../session/ErrorNotice";
+import { Panel } from "../ui/Panel";
+import { ui } from "../ui/styles";
 
 interface RoomChecklistProps {
   label: string;
@@ -26,13 +29,17 @@ function RoomChecklist({
   return (
     <fieldset
       aria-label={label}
-      className="flex flex-wrap gap-3 text-xs"
+      className="flex flex-wrap gap-1.5 text-xs"
       disabled={disabled}
     >
       {rooms.map((room) => (
-        <label key={room.room_id} className="flex items-center gap-1">
+        <label
+          key={room.room_id}
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-line px-2.5 py-1 font-medium text-subtle transition has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+        >
           <input
             type="checkbox"
+            className="h-3.5 w-3.5 accent-[var(--pulse-accent)]"
             checked={selected.includes(room.room_id)}
             onChange={(event) =>
               onChange(
@@ -64,28 +71,36 @@ function StewardRow({
 }: StewardRowProps) {
   const id = steward.steward_id;
   return (
-    <li data-revoked={steward.revoked} className="space-y-1 text-sm">
-      <div className="flex items-center gap-3">
-        <span className="font-medium">{steward.display_name}</span>
-        {steward.revoked && <span className="text-xs">Revoked</span>}
+    <li
+      data-revoked={steward.revoked}
+      className={`space-y-2.5 rounded-xl border border-line p-3 text-sm ${steward.revoked ? "opacity-60" : ""}`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
+          <Bot size={16} aria-hidden="true" />
+        </span>
+        <span className="flex-1 font-medium text-ink">{steward.display_name}</span>
+        {steward.revoked && <span className={`${ui.pill} bg-danger-soft text-danger`}>Revoked</span>}
         {steward.manageable && (
           <>
             <button
-              className="text-xs underline disabled:opacity-50"
+              className={ui.ghostButton}
               type="button"
               disabled={pending}
               aria-label={`Rotate token for ${steward.display_name}`}
               onClick={() => void intents.rotateStewardToken(id)}
             >
+              <KeyRound size={13} aria-hidden="true" />
               Rotate token
             </button>
             <button
-              className="text-xs underline disabled:opacity-50"
+              className={`${ui.ghostButton} hover:text-danger`}
               type="button"
               disabled={pending}
               aria-label={`Revoke ${steward.display_name}`}
               onClick={() => void intents.revokeSteward(id)}
             >
+              <ShieldOff size={13} aria-hidden="true" />
               Revoke
             </button>
           </>
@@ -100,7 +115,7 @@ function StewardRow({
           onChange={(roomIds) => void intents.assignStewardRooms(id, roomIds)}
         />
       ) : (
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-subtle">
           {rooms
             .filter((room) => steward.room_ids.includes(room.room_id))
             .map((room) => `#${room.slug}`)
@@ -133,10 +148,12 @@ function CreateStewardForm({
   }
 
   return (
-    <form className="space-y-1" onSubmit={submit}>
+    <form className="space-y-3 rounded-xl border border-dashed border-line bg-muted p-3" onSubmit={submit}>
+      <h3 className={ui.sectionTitle}>New steward</h3>
       <input
         aria-label="Steward name"
-        className="w-full rounded border border-slate-300 px-2 py-1"
+        className={ui.input}
+        placeholder="Steward name"
         type="text"
         value={displayName}
         onChange={(event) => setDisplayName(event.target.value)}
@@ -149,7 +166,7 @@ function CreateStewardForm({
         onChange={setRoomIds}
       />
       <button
-        className="rounded border px-2 py-1 text-sm disabled:opacity-50"
+        className={ui.primaryButton}
         type="submit"
         disabled={pending || displayName === ""}
       >
@@ -167,31 +184,33 @@ interface StewardsPanelProps {
 
 export function StewardsPanel({ stewards, rooms, intents }: StewardsPanelProps) {
   return (
-    <section aria-label="Stewards" className="space-y-2">
-      <header className="flex items-center justify-between">
-        <h2 className="font-semibold">Stewards</h2>
-        <button
-          className="text-sm underline"
-          type="button"
-          onClick={() => void intents.toggleStewards()}
-        >
-          Close stewards
-        </button>
-      </header>
+    <Panel
+      label="Stewards"
+      title={
+        <>
+          <Bot size={16} aria-hidden="true" className="text-accent" />
+          Stewards
+        </>
+      }
+      closeLabel="Close stewards"
+      onClose={() => void intents.toggleStewards()}
+    >
       <ErrorNotice error={stewards.error} />
       {stewards.issued !== null && (
         <div
           role="status"
           aria-label="New steward token"
-          className="space-y-1 rounded border border-slate-300 p-2 text-sm"
+          className="space-y-2 rounded-xl border border-warning/40 bg-warning-soft p-3 text-sm"
         >
-          <p>
+          <p className="text-ink">
             Token for {stewards.issued.display_name}. Copy it now; it is shown
             only once.
           </p>
-          <code className="block break-all">{stewards.issued.token}</code>
+          <code className="block break-all rounded-lg bg-surface px-2 py-1.5 font-mono text-xs text-ink">
+            {stewards.issued.token}
+          </code>
           <button
-            className="text-xs underline"
+            className={ui.secondaryButton}
             type="button"
             onClick={() => void intents.dismissStewardToken()}
           >
@@ -217,6 +236,6 @@ export function StewardsPanel({ stewards, rooms, intents }: StewardsPanelProps) 
           createSteward={intents.createSteward}
         />
       )}
-    </section>
+    </Panel>
   );
 }

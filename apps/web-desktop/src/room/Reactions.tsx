@@ -1,3 +1,4 @@
+import { SmilePlus } from "lucide-react";
 import type { MessageId, ReactionSummary, RoomId } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
 
@@ -23,25 +24,30 @@ export function Reactions({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1.5">
       {reactions.map((reaction) => (
         <button
           key={reaction.emoji}
           type="button"
           aria-pressed={reaction.reacted_by_self}
-          className="rounded-full border border-slate-300 px-2 text-xs aria-pressed:bg-slate-200"
+          className="inline-flex h-6 items-center gap-1 rounded-full border border-line bg-surface px-2 text-xs text-ink transition-colors hover:border-subtle aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent"
           onClick={() => toggle(reaction.emoji)}
         >
           {reaction.emoji} {reaction.count}
         </button>
       ))}
-      <span role="group" aria-label="Add reaction" className="flex gap-1">
+      <span
+        role="group"
+        aria-label="Add reaction"
+        className="hidden items-center gap-0.5 focus-within:flex group-focus-within:flex group-hover:flex"
+      >
+        <SmilePlus size={14} aria-hidden="true" className="mr-1 text-subtle" />
         {palette.map((emoji) => (
           <button
             key={emoji}
             type="button"
             aria-label={`React ${emoji}`}
-            className="rounded px-1 text-xs opacity-60 hover:opacity-100"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-sm transition hover:scale-110 hover:bg-muted"
             onClick={() => toggle(emoji)}
           >
             {emoji}

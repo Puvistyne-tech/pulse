@@ -41,7 +41,7 @@ export function CreateCampusForm({ busy, createCampus }: CreateCampusFormProps) 
           />
         </label>
         <p id="campus-slug-hint" className={ui.hint}>
-          Lowercase letters, digits and hyphens. Every campus on this server needs its own slug.
+          Every campus on this server needs its own slug.
         </p>
       </div>
       <div className="flex justify-end">

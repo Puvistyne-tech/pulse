@@ -4,6 +4,9 @@ import type {
   ClientNonce,
   ClientSnapshot,
   CreateCampusRequest,
+  JoinCampusRequest,
+  AddMemberRequest,
+  UpdateMemberRequest,
   DraftId,
   AccountId,
   InboxStep,
@@ -26,7 +29,14 @@ export interface PulseIntents {
   signUp(request: SignUpRequest): Promise<void>;
   signIn(request: SignInRequest): Promise<void>;
   signOut(): Promise<void>;
+  quickSignIn(email: string): Promise<void>;
   createCampus(request: CreateCampusRequest): Promise<void>;
+  joinCampus(request: JoinCampusRequest): Promise<void>;
+  createInvite(): Promise<void>;
+  loadMembers(): Promise<void>;
+  addMember(request: AddMemberRequest): Promise<void>;
+  updateMember(accountId: AccountId, request: UpdateMemberRequest): Promise<void>;
+  removeMember(accountId: AccountId): Promise<void>;
   selectCampus(campusId: CampusId): Promise<void>;
   refreshCampuses(): Promise<void>;
   selectRoom(roomId: RoomId): Promise<void>;
@@ -135,7 +145,15 @@ export function usePulseClient(): {
       signUp: (request) => publish(pulseClient.signUp(request)),
       signIn: (request) => publish(pulseClient.signIn(request)),
       signOut: () => publish(pulseClient.signOut()),
+      quickSignIn: (email) => publish(pulseClient.quickSignIn(email)),
       createCampus: (request) => publish(pulseClient.createCampus(request)),
+      joinCampus: (request) => publish(pulseClient.joinCampus(request)),
+      createInvite: () => publish(pulseClient.createInvite()),
+      loadMembers: () => publish(pulseClient.loadMembers()),
+      addMember: (request) => publish(pulseClient.addMember(request)),
+      updateMember: (accountId, request) =>
+        publish(pulseClient.updateMember(accountId, request)),
+      removeMember: (accountId) => publish(pulseClient.removeMember(accountId)),
       selectCampus: (campusId) => publish(pulseClient.selectCampus(campusId)),
       refreshCampuses: () => publish(pulseClient.refreshCampuses()),
       selectRoom: (roomId) => publish(pulseClient.selectRoom(roomId)),

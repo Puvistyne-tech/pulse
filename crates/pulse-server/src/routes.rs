@@ -1,11 +1,11 @@
 use axum::Router;
 use axum::extract::{State, WebSocketUpgrade};
 use axum::response::Response;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use pulse_protocol::api_path;
 
 use crate::state::AppState;
-use crate::{auth, campus, media, ws};
+use crate::{auth, campus, media, member, ws};
 
 async fn healthz() -> &'static str {
     "ok"
@@ -25,6 +25,16 @@ pub fn router(state: AppState) -> Router {
         .route(
             api_path::CAMPUSES,
             get(campus::list_campuses).post(campus::create_campus),
+        )
+        .route(api_path::CAMPUS_MEMBERSHIPS, post(campus::join_campus))
+        .route(api_path::CAMPUS_INVITES_ROUTE, post(campus::create_invite))
+        .route(
+            api_path::CAMPUS_MEMBERS_ROUTE,
+            get(member::list_members).post(member::add_member),
+        )
+        .route(
+            api_path::CAMPUS_MEMBER_ROUTE,
+            patch(member::update_member).delete(member::remove_member),
         )
         .route(
             api_path::CAMPUS_ROOMS_ROUTE,

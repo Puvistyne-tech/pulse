@@ -47,3 +47,8 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Abort only the streams a failure actually affects; reserve abort-all for lost credentials.
 - Shells never decide who is mentionable or manageable; core puts those lists and flags in the snapshot.
 - Worktree build dirs fill the disk fast (10 GB+ each); remove finished worktrees before starting the next phase.
+- Re-verify every socket's campus role after `fanout.join`, not only stewards; a membership removed between Welcome and join is otherwise never seen.
+- A shared membership insert or account lookup lives in one server helper (`insert_membership`, `account_by_email`); never inline a second copy in another handler or the seed.
+- Never ship two rule functions with identical bodies; make one delegate or delete it.
+- Test revocation fan-out with the revoked socket, a bystander in the same campus, and the revoked account in another campus.
+- Server test suites leave `pulse_test_*` databases behind; drop them when they reach the thousands or Postgres crashes mid-run.

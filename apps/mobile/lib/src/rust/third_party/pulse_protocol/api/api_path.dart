@@ -15,6 +15,24 @@ Future<String> campusRoomUploads({
   roomId: roomId,
 );
 
+Future<String> campusInvites({required CampusId campusId}) => RustLib
+    .instance
+    .api
+    .pulseProtocolApiApiPathCampusInvites(campusId: campusId);
+
+Future<String> campusMembers({required CampusId campusId}) => RustLib
+    .instance
+    .api
+    .pulseProtocolApiApiPathCampusMembers(campusId: campusId);
+
+Future<String> campusMember({
+  required CampusId campusId,
+  required AccountId accountId,
+}) => RustLib.instance.api.pulseProtocolApiApiPathCampusMember(
+  campusId: campusId,
+  accountId: accountId,
+);
+
 Future<String> campusDownloads({required CampusId campusId}) => RustLib
     .instance
     .api

@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
-import type { ApiError } from "@pulse/protocol";
+import type { ApiError, DevAccount } from "@pulse/protocol";
+import { Avatar } from "../ui/Avatar";
+import { roleLabels } from "../ui/roleLabels";
 import type { PulseIntents } from "../client/usePulseClient";
 import { PulseMark } from "../ui/PulseMark";
 import { ui } from "../ui/styles";
@@ -10,10 +12,11 @@ type Mode = "sign_in" | "sign_up";
 interface AuthFormProps {
   busy: boolean;
   error: ApiError | null;
-  intents: Pick<PulseIntents, "signIn" | "signUp">;
+  quickAccounts?: DevAccount[];
+  intents: Pick<PulseIntents, "signIn" | "signUp" | "quickSignIn">;
 }
 
-export function AuthForm({ busy, error, intents }: AuthFormProps) {
+export function AuthForm({ busy, error, quickAccounts = [], intents }: AuthFormProps) {
   const [mode, setMode] = useState<Mode>("sign_in");
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -81,6 +84,30 @@ export function AuthForm({ busy, error, intents }: AuthFormProps) {
             </button>
           </form>
         </div>
+        {quickAccounts.length > 0 && (
+          <section aria-label="Test accounts" className={`${ui.card} space-y-3 p-4`}>
+            <h2 className={ui.sectionTitle}>Test accounts</h2>
+            <ul className="space-y-1">
+              {quickAccounts.map((quick) => (
+                <li key={quick.email}>
+                  <button
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void intents.quickSignIn(quick.email)}
+                  >
+                    <Avatar name={quick.display_name} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-ink">{quick.display_name}</span>
+                      <span className="block truncate text-xs text-subtle">{quick.email}</span>
+                    </span>
+                    <span className={`${ui.pill} bg-muted text-subtle`}>{roleLabels[quick.role]}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <p className="text-center">
           <button
             className={ui.linkButton}

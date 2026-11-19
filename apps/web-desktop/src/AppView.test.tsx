@@ -1,5 +1,5 @@
 import { cleanup, createEvent, fireEvent, render, screen } from "@testing-library/react";
-import type { ClientSnapshot } from "@pulse/protocol";
+import type { ApiError, ClientSnapshot } from "@pulse/protocol";
 import { afterEach, describe, expect, test } from "vitest";
 import { AppView } from "./AppView";
 import {
@@ -332,26 +332,48 @@ describe("steward and lounge wiring", () => {
   });
 });
 
-describe("create campus dialog", () => {
-  const slugTaken = {
-    ...signedInNoCampus,
-    session: { ...signedInNoCampus.session, error: { code: "conflict", field: "slug" } },
-  } as ClientSnapshot;
+describe("campus dialogs", () => {
+  const failing = (error: ApiError) =>
+    ({ ...signedInNoCampus, session: { ...signedInNoCampus.session, error } }) as ClientSnapshot;
 
-  test("shows a slug conflict inside the dialog", () => {
-    render(<AppView snapshot={slugTaken} intents={noopIntents()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Create campus" }));
-    const dialog = screen.getByRole("dialog", { name: "Create campus" });
-    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("That slug is already taken");
+  test.each<[string, string, ApiError, string]>([
+    ["Create campus", "Create campus", { code: "conflict", field: "slug" }, "That slug is already taken"],
+    [
+      "Join with invite code",
+      "Join campus",
+      { code: "invalid_input", field: "invite_code" },
+      "That invite code is not valid or has expired",
+    ],
+  ])("%s shows its error inside the %s dialog", (opener, title, error, message) => {
+    render(<AppView snapshot={failing(error)} intents={noopIntents()} />);
+    fireEvent.click(screen.getByRole("button", { name: opener }));
+    const dialog = screen.getByRole("dialog", { name: title });
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe(message);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 
-  test("closes once the created campus arrives", () => {
+  test.each(["Create campus", "Join with invite code"])("%s closes once the campus arrives", (opener) => {
     const intents = noopIntents();
     const { rerender } = render(<AppView snapshot={signedInNoCampus} intents={intents} />);
-    fireEvent.click(screen.getByRole("button", { name: "Create campus" }));
+    fireEvent.click(screen.getByRole("button", { name: opener }));
     expect(screen.queryByRole("dialog")).not.toBeNull();
     rerender(<AppView snapshot={signedInWithRooms} intents={intents} />);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test.each<[string, boolean, boolean]>([
+    ["an owner", true, true],
+    ["a member", false, false],
+  ])("people dialog for %s offers invites %s", (_who, canInvite, offersInvite) => {
+    const intents = noopIntents();
+    const snapshot = {
+      ...signedInWithRooms,
+      session: { ...signedInWithRooms.session, can_invite: canInvite },
+    } as ClientSnapshot;
+    render(<AppView snapshot={snapshot} intents={intents} />);
+    fireEvent.click(screen.getByRole("button", { name: "People" }));
+    expect(screen.getByRole("dialog", { name: "People" })).not.toBeNull();
+    expect(intents.loadMembers).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Create invite code" }) !== null).toBe(offersInvite);
   });
 });

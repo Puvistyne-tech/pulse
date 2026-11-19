@@ -1,12 +1,16 @@
 use crate::api::{ApiError, InputField};
 use crate::auth::{SignInRequest, SignUpRequest};
-use crate::campus::{CreateCampusRequest, CreateRoomRequest};
-use crate::ids::{AttachmentId, RoomId};
+use crate::campus::{
+    CreateCampusRequest, CreateRoomRequest, INVITE_CODE_SEPARATOR, InviteCode, JoinCampusRequest,
+};
+use crate::ids::{AttachmentId, CampusId, RoomId};
 use crate::media::{
     ATTACHMENT_MAX_BYTES, CONTENT_TYPE_MAX_CHARS, CreateUploadRequest, FILE_NAME_MAX_CHARS,
     MESSAGE_ATTACHMENTS_MAX,
 };
+use crate::member::{ASSIGNABLE_ROLES, AddMemberRequest, UpdateMemberRequest};
 use crate::messaging::SendMessage;
+use crate::rbac::Role;
 use crate::reaction::React;
 use crate::search::{SEARCH_QUERY_MAX_CHARS, SEARCH_TERMS_MAX, search_terms};
 use crate::shelf::{REMIND_AT_HORIZON_MS, REMIND_AT_PAST_TOLERANCE_MS, ShelfAction, UpdateShelf};
@@ -22,6 +26,7 @@ pub const SLUG_MAX_CHARS: usize = 32;
 pub const MESSAGE_BODY_MAX_CHARS: usize = 4000;
 pub const TOPIC_TITLE_MAX_CHARS: usize = 120;
 pub const REACTION_EMOJI_MAX_CHARS: usize = 16;
+pub const INVITE_SECRET_CHARS: usize = 43;
 
 pub fn normalize_email(raw: &str) -> Result<String, InputField> {
     let email = raw.trim().to_lowercase();
@@ -227,6 +232,34 @@ pub fn validate_slug(raw: &str) -> Result<(), InputField> {
     if valid { Ok(()) } else { Err(InputField::Slug) }
 }
 
+pub fn normalize_invite_code(raw: &str) -> Result<InviteCode, InputField> {
+    let (campus, secret) = raw
+        .trim()
+        .split_once(INVITE_CODE_SEPARATOR)
+        .ok_or(InputField::InviteCode)?;
+    let campus_id: CampusId = campus.parse().map_err(|_| InputField::InviteCode)?;
+    let secret_valid = secret.len() == INVITE_SECRET_CHARS
+        && secret
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'));
+    if secret_valid {
+        Ok(InviteCode {
+            campus_id,
+            secret: secret.to_owned(),
+        })
+    } else {
+        Err(InputField::InviteCode)
+    }
+}
+
+pub fn validate_assignable_role(role: Role) -> Result<(), InputField> {
+    if ASSIGNABLE_ROLES.contains(&role) {
+        Ok(())
+    } else {
+        Err(InputField::Role)
+    }
+}
+
 pub trait Validate {
     fn validate(&self) -> Result<(), ApiError>;
 }
@@ -258,6 +291,27 @@ impl Validate for CreateCampusRequest {
     fn validate(&self) -> Result<(), ApiError> {
         validate_slug(&self.slug).map_err(invalid)?;
         validate_display_name(&self.display_name).map_err(invalid)
+    }
+}
+
+impl Validate for JoinCampusRequest {
+    fn validate(&self) -> Result<(), ApiError> {
+        normalize_invite_code(&self.code)
+            .map(|_| ())
+            .map_err(invalid)
+    }
+}
+
+impl Validate for AddMemberRequest {
+    fn validate(&self) -> Result<(), ApiError> {
+        normalize_email(&self.email).map_err(invalid)?;
+        validate_assignable_role(self.role).map_err(invalid)
+    }
+}
+
+impl Validate for UpdateMemberRequest {
+    fn validate(&self) -> Result<(), ApiError> {
+        validate_assignable_role(self.role).map_err(invalid)
     }
 }
 

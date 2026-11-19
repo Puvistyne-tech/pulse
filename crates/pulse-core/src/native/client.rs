@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use pulse_protocol::{
-    AccountId, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep,
-    LoungeId, LoungeMediaState, MessageId, ReactionAction, ReminderPreset, RoomId, ShelfAction,
-    SignInRequest, SignUpRequest, SubscriptionState, VaultTab,
+    AccountId, AddMemberRequest, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest,
+    DraftId, InboxStep, JoinCampusRequest, LoungeId, LoungeMediaState, MessageId, ReactionAction,
+    ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest, SubscriptionState,
+    UpdateMemberRequest, VaultTab,
 };
 use tokio::runtime::{Builder, Runtime};
 
@@ -19,7 +20,7 @@ use crate::shelf::ShelfIntent;
 use crate::steward_view::StewardIntent;
 use crate::timeline::ThreadIntent;
 
-use super::http::server_url_from_env;
+use super::http::{quick_sign_in_from_env, server_url_from_env};
 use super::search_index::{NativeSearchIndex, SqliteSearchIndex};
 use super::socket::Shared;
 
@@ -81,7 +82,7 @@ impl NativeClient {
         };
         Ok(Self {
             runtime: Some(runtime),
-            shared: Arc::new(Shared::new(server_url, index)),
+            shared: Arc::new(Shared::new(server_url, index, quick_sign_in_from_env())),
         })
     }
 
@@ -178,6 +179,11 @@ impl NativeClient {
             .await
     }
 
+    pub async fn quick_sign_in(&self, email: String) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::QuickSignInRequested(email)))
+            .await
+    }
+
     pub async fn sign_out(&self) -> ClientSnapshot {
         self.run(Intent::Session(SessionEvent::SignOutRequested))
             .await
@@ -191,6 +197,45 @@ impl NativeClient {
     pub async fn create_campus(&self, request: CreateCampusRequest) -> ClientSnapshot {
         self.run(Intent::Session(SessionEvent::CreateCampusRequested(
             request,
+        )))
+        .await
+    }
+
+    pub async fn join_campus(&self, request: JoinCampusRequest) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::JoinCampusRequested(request)))
+            .await
+    }
+
+    pub async fn create_invite(&self) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::InviteRequested))
+            .await
+    }
+
+    pub async fn load_members(&self) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::MembersRequested))
+            .await
+    }
+
+    pub async fn add_member(&self, request: AddMemberRequest) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::AddMemberRequested(request)))
+            .await
+    }
+
+    pub async fn update_member(
+        &self,
+        account_id: AccountId,
+        request: UpdateMemberRequest,
+    ) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::UpdateMemberRequested {
+            account_id,
+            request,
+        }))
+        .await
+    }
+
+    pub async fn remove_member(&self, account_id: AccountId) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::RemoveMemberRequested(
+            account_id,
         )))
         .await
     }

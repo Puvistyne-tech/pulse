@@ -2,22 +2,24 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use pulse_protocol::{
-    AccountId, ApiError, ApiErrorCode, CampusCreated, CampusId, CampusList, CampusSummary,
-    CreateCampusRequest, CreateRoomRequest, DEFAULT_ROOM_SLUGS, InputField, LoungeId, Permission,
-    Role, RoleParseError, Room, RoomId, RoomList, Validate, normalize_display_name, role_permits,
+    AccountId, ApiError, ApiErrorCode, CampusCreated, CampusId, CampusInvite, CampusList,
+    CampusSummary, CreateCampusRequest, CreateRoomRequest, DEFAULT_ROOM_SLUGS, INVITE_TTL_DAYS,
+    InputField, InviteCode, JoinCampusRequest, LoungeId, Permission, Role, RoleParseError, Room,
+    RoomId, RoomList, Validate, normalize_display_name, normalize_invite_code, role_permits,
 };
+use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
-use crate::auth::Authenticated;
+use crate::auth::{Authenticated, mint_token};
 use crate::error::{ApiFailure, ApiJson, is_unique_violation};
 use crate::state::AppState;
 
-fn not_found() -> ApiFailure {
+pub(crate) fn not_found() -> ApiFailure {
     ApiFailure(ApiError::new(ApiErrorCode::NotFound))
 }
 
-fn parse_campus_id(raw: &str) -> Result<CampusId, ApiFailure> {
+pub(crate) fn parse_campus_id(raw: &str) -> Result<CampusId, ApiFailure> {
     raw.parse().map_err(|_| not_found())
 }
 
@@ -123,6 +125,34 @@ async fn insert_room(
     })
 }
 
+async fn campus_rooms(
+    executor: impl sqlx::PgExecutor<'_>,
+    campus_id: CampusId,
+) -> Result<Vec<Room>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT room_id, slug FROM rooms WHERE campus_id = $1 ORDER BY slug",
+    )
+    .bind(campus_id.as_uuid())
+    .fetch_all(executor)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(room_id, slug)| Room {
+            room_id: RoomId(room_id),
+            campus_id,
+            slug,
+        })
+        .collect())
+}
+
+fn invite_digest(code: &InviteCode) -> Vec<u8> {
+    Sha256::digest(code.secret.as_bytes()).to_vec()
+}
+
+fn rejected_invite() -> ApiFailure {
+    ApiFailure(ApiError::invalid(InputField::InviteCode))
+}
+
 pub async fn list_campuses(
     State(state): State<AppState>,
     authenticated: Authenticated,
@@ -150,6 +180,44 @@ pub async fn list_campuses(
     Ok(Json(CampusList { campuses }))
 }
 
+pub async fn insert_membership(
+    executor: impl sqlx::PgExecutor<'_>,
+    campus_id: CampusId,
+    account_id: AccountId,
+    role: Role,
+) -> Result<bool, sqlx::Error> {
+    let affected = sqlx::query(
+        "INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3) \
+         ON CONFLICT (campus_id, account_id) DO NOTHING",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(account_id.as_uuid())
+    .bind(role.as_str())
+    .execute(executor)
+    .await?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn furnish_campus(
+    connection: &mut PgConnection,
+    campus_id: CampusId,
+    owner: AccountId,
+) -> Result<Vec<Room>, sqlx::Error> {
+    sqlx::query("INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3)")
+        .bind(campus_id.as_uuid())
+        .bind(owner.as_uuid())
+        .bind(Role::Owner.as_str())
+        .execute(&mut *connection)
+        .await?;
+    insert_lounge(connection, campus_id, None).await?;
+    let mut rooms = Vec::with_capacity(DEFAULT_ROOM_SLUGS.len());
+    for slug in DEFAULT_ROOM_SLUGS {
+        rooms.push(insert_room(connection, campus_id, slug).await?);
+    }
+    Ok(rooms)
+}
+
 pub async fn create_campus(
     State(state): State<AppState>,
     authenticated: Authenticated,
@@ -166,17 +234,7 @@ pub async fn create_campus(
         .execute(&mut *transaction)
         .await
         .map_err(conflict_on_slug)?;
-    sqlx::query("INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3)")
-        .bind(campus_id.as_uuid())
-        .bind(authenticated.account_id.as_uuid())
-        .bind(Role::Owner.as_str())
-        .execute(&mut *transaction)
-        .await?;
-    insert_lounge(&mut transaction, campus_id, None).await?;
-    let mut rooms = Vec::with_capacity(DEFAULT_ROOM_SLUGS.len());
-    for slug in DEFAULT_ROOM_SLUGS {
-        rooms.push(insert_room(&mut transaction, campus_id, slug).await?);
-    }
+    let rooms = furnish_campus(&mut transaction, campus_id, authenticated.account_id).await?;
     transaction.commit().await?;
     let campus = CampusSummary {
         campus_id,
@@ -200,20 +258,7 @@ pub async fn list_rooms(
         Permission::ViewRooms,
     )
     .await?;
-    let rows = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT room_id, slug FROM rooms WHERE campus_id = $1 ORDER BY slug",
-    )
-    .bind(campus_id.as_uuid())
-    .fetch_all(&state.db)
-    .await?;
-    let rooms = rows
-        .into_iter()
-        .map(|(room_id, slug)| Room {
-            room_id: RoomId(room_id),
-            campus_id,
-            slug,
-        })
-        .collect();
+    let rooms = campus_rooms(&state.db, campus_id).await?;
     Ok(Json(RoomList { campus_id, rooms }))
 }
 
@@ -238,4 +283,86 @@ pub async fn create_room(
         .map_err(conflict_on_slug)?;
     transaction.commit().await?;
     Ok((StatusCode::CREATED, Json(room)))
+}
+
+pub async fn create_invite(
+    State(state): State<AppState>,
+    authenticated: Authenticated,
+    Path(raw_campus_id): Path<String>,
+) -> Result<(StatusCode, Json<CampusInvite>), ApiFailure> {
+    let campus_id = parse_campus_id(&raw_campus_id)?;
+    require_permission(
+        &state.db,
+        campus_id,
+        authenticated.account_id,
+        Permission::ManageMembers,
+    )
+    .await?;
+    let code = InviteCode {
+        campus_id,
+        secret: mint_token().0,
+    };
+    let expires_at_ms = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO campus_invites (campus_id, secret_hash, created_by, expires_at) \
+         VALUES ($1, $2, $3, now() + make_interval(days => $4)) \
+         RETURNING (EXTRACT(EPOCH FROM expires_at) * 1000)::bigint",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(invite_digest(&code))
+    .bind(authenticated.account_id.as_uuid())
+    .bind(INVITE_TTL_DAYS)
+    .fetch_one(&state.db)
+    .await?;
+    let invite = CampusInvite {
+        campus_id,
+        code: code.render(),
+        expires_at_ms: u64::try_from(expires_at_ms).unwrap_or(0),
+    };
+    Ok((StatusCode::CREATED, Json(invite)))
+}
+
+pub async fn join_campus(
+    State(state): State<AppState>,
+    authenticated: Authenticated,
+    ApiJson(request): ApiJson<JoinCampusRequest>,
+) -> Result<Json<CampusCreated>, ApiFailure> {
+    let code = normalize_invite_code(&request.code).map_err(ApiError::invalid)?;
+    let campus_id = code.campus_id;
+    let mut transaction = state.db.begin().await?;
+    let live = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM campus_invites \
+         WHERE campus_id = $1 AND secret_hash = $2 AND expires_at > now())",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(invite_digest(&code))
+    .fetch_one(&mut *transaction)
+    .await?;
+    if !live {
+        return Err(rejected_invite());
+    }
+    insert_membership(
+        &mut *transaction,
+        campus_id,
+        authenticated.account_id,
+        Role::Member,
+    )
+    .await?;
+    let role = campus_role(&mut *transaction, campus_id, authenticated.account_id)
+        .await?
+        .ok_or_else(rejected_invite)?;
+    let (slug, display_name) = sqlx::query_as::<_, (String, String)>(
+        "SELECT slug, display_name FROM campuses WHERE campus_id = $1",
+    )
+    .bind(campus_id.as_uuid())
+    .fetch_one(&mut *transaction)
+    .await?;
+    let rooms = campus_rooms(&mut *transaction, campus_id).await?;
+    transaction.commit().await?;
+    let campus = CampusSummary {
+        campus_id,
+        slug,
+        display_name,
+        role,
+    };
+    Ok(Json(CampusCreated { campus, rooms }))
 }

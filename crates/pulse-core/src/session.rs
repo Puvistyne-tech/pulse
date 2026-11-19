@@ -1,7 +1,9 @@
 use pulse_protocol::{
-    AccountProfile, ApiError, ApiErrorCode, AuthPhase, AuthSession, AuthToken, CampusCreated,
-    CampusId, CampusList, CampusSummary, CreateCampusRequest, Room, RoomId, RoomList,
-    SessionSnapshot, SignInRequest, SignUpRequest, Validate,
+    AccountId, AccountProfile, AddMemberRequest, ApiError, ApiErrorCode, AuthPhase, AuthSession,
+    AuthToken, CampusCreated, CampusId, CampusInvite, CampusList, CampusMember, CampusSummary,
+    CreateCampusRequest, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, JoinCampusRequest, MemberEntry,
+    MemberList, Permission, Room, RoomId, RoomList, SessionSnapshot, SignInRequest, SignUpRequest,
+    UpdateMemberRequest, Validate, assignable_roles, dev_accounts, member_manageable, role_permits,
 };
 
 use crate::api::ApiTransport;
@@ -15,11 +17,28 @@ pub enum SessionEvent {
     CampusesLoaded(CampusList),
     CreateCampusRequested(CreateCampusRequest),
     CampusCreated(CampusCreated),
+    JoinCampusRequested(JoinCampusRequest),
+    InviteRequested,
+    InviteCreated(CampusInvite),
+    MembersRequested,
+    MembersLoaded(MemberList),
+    AddMemberRequested(AddMemberRequest),
+    UpdateMemberRequested {
+        account_id: AccountId,
+        request: UpdateMemberRequest,
+    },
+    RemoveMemberRequested(AccountId),
+    MemberSaved(CampusMember),
+    MemberRemoved {
+        campus_id: CampusId,
+        account_id: AccountId,
+    },
     CampusSelected(CampusId),
     RoomsLoaded(RoomList),
     RoomSelected(RoomId),
     RequestFailed(ApiError),
     SignOutRequested,
+    QuickSignInRequested(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +55,34 @@ pub enum SessionCommand {
         token: AuthToken,
         campus_id: CampusId,
     },
+    JoinCampus {
+        token: AuthToken,
+        request: JoinCampusRequest,
+    },
+    CreateInvite {
+        token: AuthToken,
+        campus_id: CampusId,
+    },
+    LoadMembers {
+        token: AuthToken,
+        campus_id: CampusId,
+    },
+    AddMember {
+        token: AuthToken,
+        campus_id: CampusId,
+        request: AddMemberRequest,
+    },
+    UpdateMember {
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+        request: UpdateMemberRequest,
+    },
+    RemoveMember {
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +94,9 @@ pub struct SessionMachine {
     active_campus_id: Option<CampusId>,
     rooms: Vec<Room>,
     active_room_id: Option<RoomId>,
+    invite: Option<CampusInvite>,
+    members: Vec<CampusMember>,
+    quick_sign_in: bool,
     busy: bool,
     error: Option<ApiError>,
 }
@@ -61,6 +111,9 @@ impl Default for SessionMachine {
             active_campus_id: None,
             rooms: Vec::new(),
             active_room_id: None,
+            invite: None,
+            members: Vec::new(),
+            quick_sign_in: false,
             busy: false,
             error: None,
         }
@@ -70,6 +123,28 @@ impl Default for SessionMachine {
 impl SessionMachine {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_quick_sign_in(mut self, enabled: bool) -> Self {
+        self.quick_sign_in = enabled;
+        self
+    }
+
+    fn reset(&self) -> Self {
+        Self::new().with_quick_sign_in(self.quick_sign_in)
+    }
+
+    fn quick_sign_in_request(&self, email: &str) -> Option<SignInRequest> {
+        if !self.quick_sign_in {
+            return None;
+        }
+        DEV_SEED_PEOPLE
+            .iter()
+            .find(|(seeded, _, _)| *seeded == email)
+            .map(|(seeded, _, _)| SignInRequest {
+                email: (*seeded).to_owned(),
+                password: DEV_SEED_PASSWORD.to_owned(),
+            })
     }
 
     pub fn token(&self) -> Option<&AuthToken> {
@@ -82,6 +157,12 @@ impl SessionMachine {
 
     pub fn active_campus_id(&self) -> Option<CampusId> {
         self.active_campus_id
+    }
+
+    fn active_campus(&self) -> Option<&CampusSummary> {
+        self.campuses
+            .iter()
+            .find(|campus| Some(campus.campus_id) == self.active_campus_id)
     }
 
     fn settle_active_room(&mut self) {
@@ -101,8 +182,69 @@ impl SessionMachine {
             active_campus_id: self.active_campus_id,
             rooms: self.rooms.clone(),
             active_room_id: self.active_room_id,
+            invite: self
+                .invite
+                .clone()
+                .filter(|invite| Some(invite.campus_id) == self.active_campus_id),
+            can_invite: self
+                .active_campus()
+                .is_some_and(|campus| role_permits(campus.role, Permission::ManageMembers)),
+            members: self.member_entries(),
+            assignable_roles: self
+                .active_campus()
+                .map(|campus| assignable_roles(campus.role))
+                .unwrap_or_default(),
+            quick_accounts: if self.quick_sign_in && self.auth == AuthPhase::SignedOut {
+                dev_accounts()
+            } else {
+                Vec::new()
+            },
             busy: self.busy,
             error: self.error,
+        }
+    }
+
+    fn member_entries(&self) -> Vec<MemberEntry> {
+        let actor = self.active_campus().map(|campus| campus.role);
+        let self_id = self.account.as_ref().map(|account| account.account_id);
+        self.members
+            .iter()
+            .filter(|member| Some(member.campus_id) == self.active_campus_id)
+            .map(|member| MemberEntry {
+                account_id: member.account_id,
+                display_name: member.display_name.clone(),
+                email: member.email.clone(),
+                role: member.role,
+                manageable: Some(member.account_id) != self_id
+                    && actor.is_some_and(|actor| member_manageable(actor, member.role)),
+            })
+            .collect()
+    }
+
+    fn active_command(
+        mut self,
+        build: impl FnOnce(AuthToken, CampusId) -> SessionCommand,
+    ) -> (Self, Option<SessionCommand>) {
+        match self.active_campus_id {
+            Some(campus_id) => self.with_token(|token| build(token, campus_id)),
+            None => {
+                self.busy = false;
+                (self, None)
+            }
+        }
+    }
+
+    fn validated_command(
+        mut self,
+        validation: Result<(), ApiError>,
+        build: impl FnOnce(AuthToken, CampusId) -> SessionCommand,
+    ) -> (Self, Option<SessionCommand>) {
+        match validation {
+            Ok(()) => self.active_command(build),
+            Err(error) => {
+                self.error = Some(error);
+                (self, None)
+            }
         }
     }
 
@@ -129,6 +271,7 @@ impl SessionMachine {
         let token = self.token.clone()?;
         self.active_campus_id = Some(campus_id);
         self.rooms.clear();
+        self.members.clear();
         self.active_room_id = None;
         self.busy = true;
         Some(SessionCommand::LoadRooms { token, campus_id })
@@ -176,6 +319,87 @@ impl SessionMachine {
                     (self, None)
                 }
             },
+            SessionEvent::JoinCampusRequested(request) => match request.validate() {
+                Ok(()) => self.with_token(|token| SessionCommand::JoinCampus { token, request }),
+                Err(error) => {
+                    self.error = Some(error);
+                    (self, None)
+                }
+            },
+            SessionEvent::InviteRequested => self.active_command(|token, campus_id| {
+                SessionCommand::CreateInvite { token, campus_id }
+            }),
+            SessionEvent::MembersRequested => self.active_command(|token, campus_id| {
+                SessionCommand::LoadMembers { token, campus_id }
+            }),
+            SessionEvent::MembersLoaded(list) => {
+                if Some(list.campus_id) == self.active_campus_id {
+                    self.members = list.members;
+                }
+                self.busy = false;
+                (self, None)
+            }
+            SessionEvent::AddMemberRequested(request) => {
+                let validation = request.validate();
+                self.validated_command(validation, |token, campus_id| SessionCommand::AddMember {
+                    token,
+                    campus_id,
+                    request,
+                })
+            }
+            SessionEvent::UpdateMemberRequested {
+                account_id,
+                request,
+            } => {
+                let validation = request.validate();
+                self.validated_command(validation, |token, campus_id| {
+                    SessionCommand::UpdateMember {
+                        token,
+                        campus_id,
+                        account_id,
+                        request,
+                    }
+                })
+            }
+            SessionEvent::RemoveMemberRequested(account_id) => {
+                self.active_command(|token, campus_id| SessionCommand::RemoveMember {
+                    token,
+                    campus_id,
+                    account_id,
+                })
+            }
+            SessionEvent::MemberSaved(member) => {
+                self.busy = false;
+                if Some(member.campus_id) == self.active_campus_id {
+                    match self
+                        .members
+                        .iter_mut()
+                        .find(|listed| listed.account_id == member.account_id)
+                    {
+                        Some(listed) => *listed = member,
+                        None => self.members.push(member),
+                    }
+                }
+                (self, None)
+            }
+            SessionEvent::MemberRemoved {
+                campus_id,
+                account_id,
+            } => {
+                self.busy = false;
+                if Some(campus_id) == self.active_campus_id {
+                    self.members
+                        .retain(|member| member.account_id != account_id);
+                }
+                (self, None)
+            }
+            SessionEvent::InviteCreated(invite) => {
+                self.busy = false;
+                if Some(invite.campus_id) == self.active_campus_id {
+                    self.invite = Some(invite);
+                }
+                (self, None)
+            }
             SessionEvent::CampusCreated(created) => {
                 if !self
                     .campuses
@@ -218,7 +442,7 @@ impl SessionMachine {
             }
             SessionEvent::RequestFailed(error) => {
                 if error.code == ApiErrorCode::Unauthenticated {
-                    let mut reset = Self::new();
+                    let mut reset = self.reset();
                     reset.error = Some(error);
                     (reset, None)
                 } else {
@@ -239,13 +463,21 @@ impl SessionMachine {
             };
             return match self.auth {
                 AuthPhase::SignedOut => (self, None),
-                _ => (Self::new(), command),
+                _ => (self.reset(), command),
             };
         }
         match (self.auth, event) {
             (AuthPhase::SignedOut, SessionEvent::SignUpRequested(request)) => {
                 let validation = request.validate();
                 self.begin_authentication(validation, SessionCommand::SignUp(request))
+            }
+            (AuthPhase::SignedOut, SessionEvent::QuickSignInRequested(email)) => {
+                match self.quick_sign_in_request(&email) {
+                    Some(request) => {
+                        self.begin_authentication(Ok(()), SessionCommand::SignIn(request))
+                    }
+                    None => (self, None),
+                }
             }
             (AuthPhase::SignedOut, SessionEvent::SignInRequested(request)) => {
                 let validation = request.validate();
@@ -303,6 +535,48 @@ pub async fn drive_session<A: ApiTransport>(
                 .list_rooms(token, campus_id)
                 .await
                 .map_or_else(SessionEvent::RequestFailed, SessionEvent::RoomsLoaded),
+            SessionCommand::JoinCampus { token, request } => api
+                .join_campus(token, request)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, SessionEvent::CampusCreated),
+            SessionCommand::CreateInvite { token, campus_id } => api
+                .create_invite(token, campus_id)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, SessionEvent::InviteCreated),
+            SessionCommand::LoadMembers { token, campus_id } => api
+                .list_members(token, campus_id)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, SessionEvent::MembersLoaded),
+            SessionCommand::AddMember {
+                token,
+                campus_id,
+                request,
+            } => api
+                .add_member(token, campus_id, request)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, SessionEvent::MemberSaved),
+            SessionCommand::UpdateMember {
+                token,
+                campus_id,
+                account_id,
+                request,
+            } => api
+                .update_member(token, campus_id, account_id, request)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, SessionEvent::MemberSaved),
+            SessionCommand::RemoveMember {
+                token,
+                campus_id,
+                account_id,
+            } => api
+                .remove_member(token, campus_id, account_id)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, |()| {
+                    SessionEvent::MemberRemoved {
+                        campus_id,
+                        account_id,
+                    }
+                }),
         };
         let (next, next_command) = machine.step(next_event);
         machine = next;

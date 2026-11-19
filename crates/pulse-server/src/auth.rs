@@ -97,6 +97,18 @@ pub async fn resolve_steward_token(
     }))
 }
 
+pub async fn account_by_email(
+    executor: impl sqlx::PgExecutor<'_>,
+    email: &str,
+) -> Result<Option<AccountId>, sqlx::Error> {
+    let account_id =
+        sqlx::query_scalar::<_, Uuid>("SELECT account_id FROM accounts WHERE email = $1")
+            .bind(email)
+            .fetch_optional(executor)
+            .await?;
+    Ok(account_id.map(AccountId))
+}
+
 pub async fn issue_token(db: &PgPool, account_id: AccountId) -> Result<AuthToken, ApiFailure> {
     let token = mint_token();
     sqlx::query(

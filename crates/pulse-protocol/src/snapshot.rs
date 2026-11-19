@@ -4,7 +4,8 @@ use ts_rs::TS;
 use crate::api::ApiError;
 use crate::auth::AccountProfile;
 use crate::auth::AuthToken;
-use crate::campus::{CampusSummary, Room};
+use crate::campus::{CampusInvite, CampusSummary, Room};
+use crate::dev_seed::DevAccount;
 use crate::frames::{HandshakeRejection, VersionMismatch};
 use crate::ids::{
     AccountId, AttachmentId, CampusId, ClientNonce, DraftId, LoungeId, MessageId, RoomId,
@@ -14,6 +15,7 @@ use crate::lounge::{LoungeScope, LoungeTicket};
 use crate::media::{AttachmentKind, VaultTab};
 use crate::mention::BodySegment;
 use crate::messaging::MessageRejection;
+use crate::rbac::Role;
 use crate::shelf::{ReminderPreset, ShelfBucket};
 use crate::thread::SubscriptionState;
 use crate::version::ProtocolVersion;
@@ -49,6 +51,15 @@ pub struct ConnectionSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct MemberEntry {
+    pub account_id: AccountId,
+    pub display_name: String,
+    pub email: String,
+    pub role: Role,
+    pub manageable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct SessionSnapshot {
     pub auth: AuthPhase,
     pub account: Option<AccountProfile>,
@@ -56,6 +67,11 @@ pub struct SessionSnapshot {
     pub active_campus_id: Option<CampusId>,
     pub rooms: Vec<Room>,
     pub active_room_id: Option<RoomId>,
+    pub invite: Option<CampusInvite>,
+    pub can_invite: bool,
+    pub members: Vec<MemberEntry>,
+    pub assignable_roles: Vec<Role>,
+    pub quick_accounts: Vec<DevAccount>,
     pub busy: bool,
     pub error: Option<ApiError>,
 }

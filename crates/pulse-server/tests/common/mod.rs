@@ -25,6 +25,7 @@ use pulse_server::config::DEFAULT_DATABASE_URL;
 use pulse_server::{AppState, Config, MIGRATOR, router, state};
 use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::{JoinHandle, JoinSet};
@@ -682,6 +683,20 @@ pub async fn tally_race(
         }
     }
     (created, conflicts)
+}
+
+pub async fn expire_invite(state: &AppState, campus_id: CampusId, secret: &str) {
+    let affected = sqlx::query(
+        "UPDATE campus_invites SET expires_at = now() - interval '1 second' \
+         WHERE campus_id = $1 AND secret_hash = $2",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(Sha256::digest(secret.as_bytes()).to_vec())
+    .execute(&state.db)
+    .await
+    .expect("expire invite")
+    .rows_affected();
+    assert_eq!(affected, 1);
 }
 
 pub async fn directory_counts(state: &AppState) -> (i64, i64, i64) {

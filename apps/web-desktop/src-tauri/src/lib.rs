@@ -1,9 +1,10 @@
 use percent_encoding::percent_decode_str;
 use pulse_core::native::NativeClient;
 use pulse_protocol::{
-    AccountId, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest, DraftId, InboxStep,
-    LoungeId, LoungeMediaState, MessageId, ReactionAction, ReminderPreset, RoomId, ShelfAction,
-    SignInRequest, SignUpRequest, SubscriptionState, VaultTab,
+    AccountId, AddMemberRequest, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest,
+    DraftId, InboxStep, JoinCampusRequest, LoungeId, LoungeMediaState, MessageId, ReactionAction,
+    ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest, SubscriptionState,
+    UpdateMemberRequest, VaultTab,
 };
 use tauri::ipc::InvokeBody;
 use tauri::{Manager, State};
@@ -29,6 +30,11 @@ async fn sign_in(client: State<'_, NativeClient>, request: SignInRequest) -> Com
 }
 
 #[tauri::command]
+async fn quick_sign_in(client: State<'_, NativeClient>, email: String) -> CommandResult {
+    Ok(client.quick_sign_in(email).await)
+}
+
+#[tauri::command]
 async fn sign_out(client: State<'_, NativeClient>) -> CommandResult {
     Ok(client.sign_out().await)
 }
@@ -44,6 +50,40 @@ async fn create_campus(
     request: CreateCampusRequest,
 ) -> CommandResult {
     Ok(client.create_campus(request).await)
+}
+
+#[tauri::command]
+async fn join_campus(client: State<'_, NativeClient>, request: JoinCampusRequest) -> CommandResult {
+    Ok(client.join_campus(request).await)
+}
+
+#[tauri::command]
+async fn create_invite(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.create_invite().await)
+}
+
+#[tauri::command]
+async fn load_members(client: State<'_, NativeClient>) -> CommandResult {
+    Ok(client.load_members().await)
+}
+
+#[tauri::command]
+async fn add_member(client: State<'_, NativeClient>, request: AddMemberRequest) -> CommandResult {
+    Ok(client.add_member(request).await)
+}
+
+#[tauri::command]
+async fn update_member(
+    client: State<'_, NativeClient>,
+    account_id: AccountId,
+    request: UpdateMemberRequest,
+) -> CommandResult {
+    Ok(client.update_member(account_id, request).await)
+}
+
+#[tauri::command]
+async fn remove_member(client: State<'_, NativeClient>, account_id: AccountId) -> CommandResult {
+    Ok(client.remove_member(account_id).await)
 }
 
 #[tauri::command]
@@ -347,9 +387,16 @@ pub fn run() {
             client_snapshot,
             sign_up,
             sign_in,
+            quick_sign_in,
             sign_out,
             refresh_campuses,
             create_campus,
+            join_campus,
+            create_invite,
+            load_members,
+            add_member,
+            update_member,
+            remove_member,
             select_campus,
             select_room,
             send_message,

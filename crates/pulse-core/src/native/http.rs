@@ -1,7 +1,8 @@
 use pulse_protocol::{
-    ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated, CampusId, CampusList,
-    CreateCampusRequest, CreateUploadRequest, DownloadTickets, DownloadTicketsRequest, RoomId,
-    RoomList, SignInRequest, SignUpRequest, UploadTicket, api_path,
+    AccountId, AddMemberRequest, ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated,
+    CampusId, CampusInvite, CampusList, CampusMember, CreateCampusRequest, CreateUploadRequest,
+    DownloadTickets, DownloadTicketsRequest, JoinCampusRequest, MemberList, RoomId, RoomList,
+    SignInRequest, SignUpRequest, UpdateMemberRequest, UploadTicket, api_path,
 };
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Method, RequestBuilder};
@@ -15,9 +16,14 @@ pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8080";
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 const UPLOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 const SERVER_URL_VARIABLE: &str = "PULSE_SERVER_URL";
+const QUICK_SIGN_IN_VARIABLE: &str = "PULSE_QUICK_SIGN_IN";
 
 pub fn server_url_from_env() -> String {
     std::env::var(SERVER_URL_VARIABLE).unwrap_or_else(|_| DEFAULT_SERVER_URL.to_owned())
+}
+
+pub fn quick_sign_in_from_env() -> bool {
+    std::env::var(QUICK_SIGN_IN_VARIABLE).is_ok_and(|value| value == "1")
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +66,15 @@ impl HttpApiTransport {
         decode_api_response(status, &body)
     }
 
+    async fn call_empty(builder: RequestBuilder) -> Result<(), ApiError> {
+        let (status, body) = Self::execute(builder).await?;
+        if (200..300).contains(&status) {
+            Ok(())
+        } else {
+            decode_api_response::<()>(status, &body)
+        }
+    }
+
     async fn call_with_body<B: Serialize, T: DeserializeOwned>(
         builder: RequestBuilder,
         body: &B,
@@ -81,12 +96,7 @@ impl ApiTransport for HttpApiTransport {
 
     async fn sign_out(&mut self, token: AuthToken) -> Result<(), ApiError> {
         let builder = self.request(Method::DELETE, api_path::CURRENT_AUTH_TOKEN, Some(&token));
-        let (status, body) = Self::execute(builder).await?;
-        if (200..300).contains(&status) {
-            Ok(())
-        } else {
-            decode_api_response::<()>(status, &body)
-        }
+        Self::call_empty(builder).await
     }
 
     async fn list_campuses(&mut self, token: AuthToken) -> Result<CampusList, ApiError> {
@@ -109,6 +119,65 @@ impl ApiTransport for HttpApiTransport {
     ) -> Result<RoomList, ApiError> {
         let path = api_path::campus_rooms(campus_id);
         Self::call(self.request(Method::GET, &path, Some(&token))).await
+    }
+
+    async fn join_campus(
+        &mut self,
+        token: AuthToken,
+        request: JoinCampusRequest,
+    ) -> Result<CampusCreated, ApiError> {
+        let builder = self.request(Method::POST, api_path::CAMPUS_MEMBERSHIPS, Some(&token));
+        Self::call_with_body(builder, &request).await
+    }
+
+    async fn create_invite(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> Result<CampusInvite, ApiError> {
+        let path = api_path::campus_invites(campus_id);
+        Self::call(self.request(Method::POST, &path, Some(&token))).await
+    }
+
+    async fn list_members(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> Result<MemberList, ApiError> {
+        let path = api_path::campus_members(campus_id);
+        Self::call(self.request(Method::GET, &path, Some(&token))).await
+    }
+
+    async fn add_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        request: AddMemberRequest,
+    ) -> Result<CampusMember, ApiError> {
+        let path = api_path::campus_members(campus_id);
+        Self::call_with_body(self.request(Method::POST, &path, Some(&token)), &request).await
+    }
+
+    async fn update_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+        request: UpdateMemberRequest,
+    ) -> Result<CampusMember, ApiError> {
+        let path = api_path::campus_member(campus_id, account_id);
+        Self::call_with_body(self.request(Method::PATCH, &path, Some(&token)), &request).await
+    }
+
+    async fn remove_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+    ) -> Result<(), ApiError> {
+        let path = api_path::campus_member(campus_id, account_id);
+        let builder = self.request(Method::DELETE, &path, Some(&token));
+        Self::call_empty(builder).await
     }
 }
 

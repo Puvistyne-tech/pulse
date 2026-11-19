@@ -55,6 +55,8 @@ pub enum InputField {
     Attachments,
     RemindAt,
     Rooms,
+    InviteCode,
+    Role,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -84,7 +86,7 @@ impl ApiError {
 }
 
 pub mod api_path {
-    use crate::ids::{CampusId, RoomId};
+    use crate::ids::{AccountId, CampusId, RoomId};
 
     pub const ACCOUNTS: &str = "/v1/accounts";
     pub const AUTH_TOKENS: &str = "/v1/auth-tokens";
@@ -93,6 +95,10 @@ pub mod api_path {
     pub const CAMPUS_ROOMS_ROUTE: &str = "/v1/campuses/{campus_id}/rooms";
     pub const CAMPUS_ROOM_UPLOADS_ROUTE: &str = "/v1/campuses/{campus_id}/rooms/{room_id}/uploads";
     pub const CAMPUS_DOWNLOADS_ROUTE: &str = "/v1/campuses/{campus_id}/downloads";
+    pub const CAMPUS_INVITES_ROUTE: &str = "/v1/campuses/{campus_id}/invites";
+    pub const CAMPUS_MEMBERSHIPS: &str = "/v1/campus-memberships";
+    pub const CAMPUS_MEMBERS_ROUTE: &str = "/v1/campuses/{campus_id}/members";
+    pub const CAMPUS_MEMBER_ROUTE: &str = "/v1/campuses/{campus_id}/members/{account_id}";
     pub const WEBSOCKET: &str = "/ws";
 
     pub fn campus_rooms(campus_id: CampusId) -> String {
@@ -101,6 +107,18 @@ pub mod api_path {
 
     pub fn campus_room_uploads(campus_id: CampusId, room_id: RoomId) -> String {
         format!("{CAMPUSES}/{campus_id}/rooms/{room_id}/uploads")
+    }
+
+    pub fn campus_invites(campus_id: CampusId) -> String {
+        format!("{CAMPUSES}/{campus_id}/invites")
+    }
+
+    pub fn campus_members(campus_id: CampusId) -> String {
+        format!("{CAMPUSES}/{campus_id}/members")
+    }
+
+    pub fn campus_member(campus_id: CampusId, account_id: AccountId) -> String {
+        format!("{CAMPUSES}/{campus_id}/members/{account_id}")
     }
 
     pub fn campus_downloads(campus_id: CampusId) -> String {

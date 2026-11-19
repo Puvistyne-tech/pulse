@@ -123,6 +123,11 @@ const signedOutSession: SessionSnapshot = {
   active_campus_id: null,
   rooms: [],
   active_room_id: null,
+  invite: null,
+  can_invite: false,
+  members: [],
+  assignable_roles: [],
+  quick_accounts: [],
   busy: false,
   error: null,
 };
@@ -711,6 +716,8 @@ const roomsSession: SessionSnapshot = {
   active_campus_id: CAMPUS_A,
   rooms,
   active_room_id: ROOM_A,
+  can_invite: true,
+  assignable_roles: ["admin", "member", "guest"],
 };
 
 export const signedInWithRooms = snapshotOf(roomsSession, timelineOf([]));
@@ -784,7 +791,14 @@ export function noopIntents() {
     signUp: vi.fn(async () => {}),
     signIn: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}),
+    quickSignIn: vi.fn(async () => {}),
     createCampus: vi.fn(async () => {}),
+    joinCampus: vi.fn(async () => {}),
+    createInvite: vi.fn(async () => {}),
+    loadMembers: vi.fn(async () => {}),
+    addMember: vi.fn(async () => {}),
+    updateMember: vi.fn(async () => {}),
+    removeMember: vi.fn(async () => {}),
     selectCampus: vi.fn(async () => {}),
     refreshCampuses: vi.fn(async () => {}),
     selectRoom: vi.fn(async () => {}),

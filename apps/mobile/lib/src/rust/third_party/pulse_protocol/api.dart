@@ -61,4 +61,6 @@ enum InputField {
   attachments,
   remindAt,
   rooms,
+  inviteCode,
+  role,
 }

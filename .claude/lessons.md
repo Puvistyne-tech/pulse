@@ -42,3 +42,8 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Test-only SQL is campus-scoped too; put it in a common helper filtered by campus_id and the row key.
 - Shared test case tables used by several crates live in one dependency-free module included via `#[path]`, with its own builders, lookup and query helpers.
 - Pin docker images to a pullable tag; `minio/minio` is no longer pullable, use `bitnamilegacy/minio:2025.5.24`.
+- Fan out stream chunks with the room and thread stored at Begin; reject any later chunk whose scope drifts.
+- Re-verify a long-lived credential after joining fan-out; a revoke between handshake and join is otherwise never seen.
+- Abort only the streams a failure actually affects; reserve abort-all for lost credentials.
+- Shells never decide who is mentionable or manageable; core puts those lists and flags in the snapshot.
+- Worktree build dirs fill the disk fast (10 GB+ each); remove finished worktrees before starting the next phase.

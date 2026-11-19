@@ -137,6 +137,7 @@ export const emptyTimeline: TimelineSnapshot = {
   focus_message_id: null,
   can_pin: false,
   can_upload: false,
+  mentionable_stewards: [],
 };
 
 const entryOf = (
@@ -297,6 +298,7 @@ export const emptyThread: ThreadSnapshot = {
   topic_title: null,
   subscription: null,
   syncing: false,
+  mentionable_stewards: [],
 };
 
 export const threadOf = (
@@ -309,6 +311,7 @@ export const threadOf = (
   topic_title: null,
   subscription: "following" as SubscriptionState,
   syncing: false,
+  mentionable_stewards: [],
   ...overrides,
 });
 
@@ -366,6 +369,7 @@ export const timelineOf = (
   focus_message_id: null,
   can_pin: false,
   can_upload: false,
+  mentionable_stewards: [],
   ...overrides,
 });
 
@@ -618,6 +622,7 @@ export const stewardEntryOf = (
   mention_token: mentionToken(steward_id),
   room_ids: [ROOM_A],
   revoked: false,
+  manageable: false,
   ...overrides,
 });
 
@@ -813,6 +818,7 @@ export function noopIntents() {
     dismissReminder: vi.fn(async () => {}),
     joinLounge: vi.fn(async () => {}),
     leaveLounge: vi.fn(async () => {}),
+    reportLoungeMedia: vi.fn(async () => {}),
     toggleStewards: vi.fn(async () => {}),
     createSteward: vi.fn(async () => {}),
     rotateStewardToken: vi.fn(async () => {}),

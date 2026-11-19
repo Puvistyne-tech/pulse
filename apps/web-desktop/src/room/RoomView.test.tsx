@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import type {
   AttachmentKind,
   ReminderPreset,
+  StewardEntry,
   TimelineEntry,
   TimelineSnapshot,
   UploadState,
@@ -650,17 +651,16 @@ describe("steward entries", () => {
 });
 
 describe("steward mention picker", () => {
-  const stewards = [stewardEntryOf(STEWARD_A, "Scribe")];
+  const mentionable = [stewardEntryOf(STEWARD_A, "Scribe")];
 
-  test.each<[string, string, boolean]>([
-    ["assigned room", ROOM_A, true],
-    ["unassigned room", ROOM_B, false],
-  ])("%s", (_name, roomId, offered) => {
+  test.each<[string, StewardEntry[], boolean]>([
+    ["core lists a steward", mentionable, true],
+    ["core lists none", [], false],
+  ])("%s", (_name, entries, offered) => {
     render(
       <RoomView
-        timeline={timelineOf([], { room_id: roomId })}
+        timeline={timelineOf([], { mentionable_stewards: entries })}
         intents={noopIntents()}
-        stewards={stewards}
       />,
     );
     expect(screen.queryByRole("button", { name: "Scribe" }) !== null).toBe(offered);
@@ -668,7 +668,10 @@ describe("steward mention picker", () => {
 
   test("picking appends the mention token to the draft", () => {
     render(
-      <RoomView timeline={timelineOf([])} intents={noopIntents()} stewards={stewards} />,
+      <RoomView
+        timeline={timelineOf([], { mentionable_stewards: mentionable })}
+        intents={noopIntents()}
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Scribe" }));
     expect((screen.getByLabelText("Message") as HTMLInputElement).value).toBe(

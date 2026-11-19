@@ -52,7 +52,6 @@ function RoomChecklist({
 interface StewardRowProps {
   steward: StewardEntry;
   rooms: Room[];
-  canManage: boolean;
   pending: boolean;
   intents: PulseIntents;
 }
@@ -60,18 +59,16 @@ interface StewardRowProps {
 function StewardRow({
   steward,
   rooms,
-  canManage,
   pending,
   intents,
 }: StewardRowProps) {
   const id = steward.steward_id;
-  const manageable = canManage && !steward.revoked;
   return (
     <li data-revoked={steward.revoked} className="space-y-1 text-sm">
       <div className="flex items-center gap-3">
         <span className="font-medium">{steward.display_name}</span>
         {steward.revoked && <span className="text-xs">Revoked</span>}
-        {manageable && (
+        {steward.manageable && (
           <>
             <button
               className="text-xs underline disabled:opacity-50"
@@ -94,7 +91,7 @@ function StewardRow({
           </>
         )}
       </div>
-      {manageable ? (
+      {steward.manageable ? (
         <RoomChecklist
           label={`Rooms for ${steward.display_name}`}
           rooms={rooms}
@@ -208,7 +205,6 @@ export function StewardsPanel({ stewards, rooms, intents }: StewardsPanelProps) 
             key={steward.steward_id}
             steward={steward}
             rooms={rooms}
-            canManage={stewards.can_manage}
             pending={stewards.pending}
             intents={intents}
           />

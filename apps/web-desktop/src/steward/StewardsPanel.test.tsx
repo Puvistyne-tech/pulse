@@ -24,7 +24,7 @@ function renderPanel(stewards: StewardSnapshot) {
   return { ...view, intents };
 }
 
-const scribe = stewardEntryOf(STEWARD_A, "Scribe");
+const scribe = stewardEntryOf(STEWARD_A, "Scribe", { manageable: true });
 const retired = stewardEntryOf(STEWARD_B, "Archivist", { revoked: true, room_ids: [ROOM_B] });
 const roster = stewardsOf([scribe, retired]);
 
@@ -45,7 +45,11 @@ describe("directory", () => {
       roster,
       ["Rotate token for Scribe", "Revoke Scribe"],
     ],
-    ["members get no actions", stewardsOf([scribe, retired], { can_manage: false }), []],
+    [
+      "members get no actions",
+      stewardsOf([{ ...scribe, manageable: false }, retired], { can_manage: false }),
+      [],
+    ],
   ])("%s", (_name, stewards, labels) => {
     renderPanel(stewards);
     const actions = screen
@@ -162,24 +166,19 @@ describe("issued token", () => {
 });
 
 describe("mention picker", () => {
-  const stewards = [
-    scribe,
-    retired,
-    stewardEntryOf("0193a5c0-0000-7000-8000-0000000000c5", "Elsewhere", { room_ids: [ROOM_B] }),
-  ];
+  const stewards = [scribe, stewardEntryOf(STEWARD_B, "Archivist")];
 
-  test.each<[string, string, string[]]>([
-    ["a room with an assigned steward", ROOM_A, ["Scribe"]],
-    ["a room with only a revoked steward", ROOM_B, ["Elsewhere"]],
-    ["a room with none", "0193a5c0-0000-7000-8000-0000000000d9", []],
-  ])("%s", (_name, roomId, names) => {
-    render(<StewardMentionPicker stewards={stewards} roomId={roomId} onPick={vi.fn()} />);
+  test.each<[string, typeof stewards, string[]]>([
+    ["the core-provided list in order", stewards, ["Scribe", "Archivist"]],
+    ["an empty list", [], []],
+  ])("renders %s", (_name, entries, names) => {
+    render(<StewardMentionPicker stewards={entries} onPick={vi.fn()} />);
     expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(names);
   });
 
   test("picking inserts the mention token", () => {
     const onPick = vi.fn();
-    render(<StewardMentionPicker stewards={stewards} roomId={ROOM_A} onPick={onPick} />);
+    render(<StewardMentionPicker stewards={stewards} onPick={onPick} />);
     fireEvent.click(screen.getByRole("button", { name: "Scribe" }));
     expect(onPick).toHaveBeenCalledExactlyOnceWith(scribe.mention_token);
   });

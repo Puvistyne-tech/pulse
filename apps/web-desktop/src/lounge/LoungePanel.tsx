@@ -23,7 +23,7 @@ interface LoungePanelProps {
 }
 
 export function LoungePanel({ lounges, intents }: LoungePanelProps) {
-  useLoungeMedia(lounges.ticket, lounges.can_speak);
+  useLoungeMedia(lounges.ticket, lounges.can_speak, intents.reportLoungeMedia);
 
   if (lounges.lounges.length === 0) {
     return null;

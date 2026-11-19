@@ -71,12 +71,15 @@ impl Client {
             .map_or_else(InboxSnapshot::default, TimelineMachine::inbox_snapshot);
         let session = self.session.snapshot();
         let lounges = self.lounge_snapshot(&session.rooms, role);
+        let can_manage_stewards =
+            role.is_some_and(|role| role_permits(role, Permission::ManageStewards));
         let mut stewards = self
             .timeline
             .as_ref()
-            .map_or_else(StewardSnapshot::default, TimelineMachine::steward_snapshot);
-        stewards.can_manage =
-            role.is_some_and(|role| role_permits(role, Permission::ManageStewards));
+            .map_or_else(StewardSnapshot::default, |machine| {
+                machine.steward_snapshot_managed(can_manage_stewards)
+            });
+        stewards.can_manage = can_manage_stewards;
         ClientSnapshot {
             sequence: self.sequence,
             network: self.connection.snapshot(),

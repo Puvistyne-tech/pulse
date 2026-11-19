@@ -111,6 +111,7 @@ fn empty_timeline() -> TimelineSnapshot {
         focus_message_id: None,
         can_pin: false,
         can_upload: false,
+        mentionable_stewards: Vec::new(),
     }
 }
 
@@ -911,6 +912,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "focus_message_id": null,
             "can_pin": false,
             "can_upload": false,
+            "mentionable_stewards": [],
         },
         "thread": {
             "room_id": null,
@@ -920,6 +922,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "topic_title": null,
             "subscription": null,
             "syncing": false,
+            "mentionable_stewards": [],
         },
         "inbox": {
             "open": false,
@@ -974,6 +977,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             focus_message_id: Some(MESSAGE_B),
             can_pin: true,
             can_upload: true,
+            mentionable_stewards: Vec::new(),
         },
         thread: ThreadSnapshot {
             room_id: Some(ROOM_A),
@@ -983,6 +987,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             topic_title: Some("Plans".to_owned()),
             subscription: Some(SubscriptionState::Archived),
             syncing: true,
+            mentionable_stewards: Vec::new(),
         },
         inbox: InboxSnapshot {
             open: true,
@@ -1032,6 +1037,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "focus_message_id": MESSAGE_B.to_string(),
             "can_pin": true,
             "can_upload": true,
+            "mentionable_stewards": [],
         },
         "thread": {
             "room_id": ROOM_A.to_string(),
@@ -1041,6 +1047,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "topic_title": "Plans",
             "subscription": "archived",
             "syncing": true,
+            "mentionable_stewards": [],
         },
         "inbox": {
             "open": true,

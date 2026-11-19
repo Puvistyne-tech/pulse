@@ -377,6 +377,10 @@ pub fn client_rooms(client: &Client) -> Vec<RoomId> {
 mod builders;
 pub use builders::{display_name, indexed_id, message_id, nonce, room_message};
 
+pub fn error_of(code: pulse_protocol::ApiErrorCode) -> Option<ApiError> {
+    Some(ApiError::new(code))
+}
+
 pub fn message_ids(indexes: &[u128]) -> Vec<MessageId> {
     indexes.iter().copied().map(message_id).collect()
 }

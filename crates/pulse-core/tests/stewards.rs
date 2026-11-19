@@ -2,9 +2,9 @@ mod fixtures;
 
 use fixtures::{
     ACCOUNT_A, ACCOUNT_B, NONCE_A, NONCE_B, ROOM_A, ROOM_B, STEWARD_A, STREAM_A, connected_as,
-    created_frame, manage_frame, received, settled_machine, step_all, steward_changed_frame,
-    steward_issued_frame, steward_message, steward_profile, steward_rejected_frame,
-    stewards_synced_frame, stream_event,
+    created_frame, error_of, manage_frame, received, settled_machine, step_all,
+    steward_changed_frame, steward_issued_frame, steward_message, steward_profile,
+    steward_rejected_frame, stewards_synced_frame, stream_event,
 };
 use pulse_core::{StewardIntent, TimelineEvent, TimelineMachine};
 use pulse_protocol::{
@@ -106,10 +106,6 @@ fn listed(steward_id: AccountId, name: &str, revoked: bool) -> TimelineEvent {
         &[ROOM_A],
         revoked,
     )]))
-}
-
-fn error_of(code: ApiErrorCode) -> Option<ApiError> {
-    Some(ApiError::new(code))
 }
 
 fn too_many_rooms() -> Vec<RoomId> {

@@ -3,15 +3,16 @@ mod common;
 use common::{
     AUTH_DEADLINE, ClientSocket, Observed, Outgoing, SCENARIO_DEADLINE, Stage, ack_work_frame,
     call_tool_frame, create_steward_request, issue_steward, join_lounge_frame, joined_socket,
-    leave_lounge_frame, list_tools_frame, lounge_heartbeat_frame, lounge_rows, manage_frame,
-    mark_read, member_session, observe, pin_frame, ping, posted, react, send, send_message,
-    set_subscription, set_title, shelf_frame, stream_chunk_frame, sync_inbox, sync_lounges_frame,
-    sync_rooms, sync_shelf_frame, sync_stewards_frame, sync_thread, sync_work_frame, vault_frame,
+    leave_lounge_frame, list_tools_frame, lounge_heartbeat_frame, manage_frame, mark_read,
+    member_session, observe, pin_frame, ping, posted, react, send, send_message, set_subscription,
+    set_title, shelf_frame, stream_chunk_frame, sync_inbox, sync_lounges_frame, sync_rooms,
+    sync_shelf_frame, sync_stewards_frame, sync_thread, sync_work_frame, vault_frame,
 };
 use pulse_protocol::{
     AuthToken, ClientNonce, LoungeId, LoungeRejection, MessageId, MessageRejection, ReactionAction,
-    ReactionRejection, Role, RoomId, ServerFrame, StewardRejection, StreamId, StreamRejection,
-    StreamWriter, ThreadRejection, ToolCallId, VaultTab, close_code,
+    ReactionRejection, ReadRoomHistoryArguments, Role, RoomId, ServerFrame, StewardRejection,
+    StewardTool, StreamId, StreamRejection, StreamWriter, ThreadRejection, ToolCallId, VaultTab,
+    close_code,
 };
 use rstest::rstest;
 use tokio::time::timeout;
@@ -159,12 +160,7 @@ impl Arena {
         let root = posted(&mut ada, room, ClientNonce::generate(), "root")
             .await
             .message_id;
-        let campus_lounge = lounge_rows(&stage.state, stage.campus.id)
-            .await
-            .into_iter()
-            .find(|(_, room_id)| room_id.is_none())
-            .map(|(lounge_id, _)| lounge_id)
-            .expect("campus lounge");
+        let campus_lounge = common::campus_lounge(&stage.state, stage.campus.id).await;
         Self {
             admin_token: admin.token,
             stage,
@@ -226,8 +222,13 @@ fn outgoing(probe: Probe, arena: &Arena) -> Outgoing {
         Probe::ListTools => list_tools_frame(),
         Probe::ReadHistory => call_tool_frame(
             ToolCallId::generate(),
-            "read_room_history",
-            &format!("{{\"room_id\":\"{room}\"}}"),
+            StewardTool::ReadRoomHistory.name(),
+            &serde_json::to_string(&ReadRoomHistoryArguments {
+                room_id: room,
+                before: None,
+                limit: None,
+            })
+            .expect("tool arguments"),
         ),
         Probe::SyncWork => sync_work_frame(),
         Probe::AckWork => ack_work_frame(arena.root),

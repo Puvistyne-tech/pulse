@@ -907,6 +907,16 @@ pub async fn count_rows(state: &AppState, table: &'static str, campus_id: Campus
     .expect("row count")
 }
 
+pub async fn active_steward_count(state: &AppState, campus_id: CampusId) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM stewards WHERE campus_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(campus_id.as_uuid())
+    .fetch_one(&state.db)
+    .await
+    .expect("active steward count")
+}
+
 pub async fn reaction_rows(
     state: &AppState,
     campus_id: CampusId,
@@ -1782,6 +1792,32 @@ pub async fn steward_room_rows(
     .into_iter()
     .map(RoomId)
     .collect()
+}
+
+pub async fn campus_lounge(state: &AppState, campus_id: CampusId) -> LoungeId {
+    lounge_rows(state, campus_id)
+        .await
+        .into_iter()
+        .find(|(_, room_id)| room_id.is_none())
+        .map(|(lounge_id, _)| lounge_id)
+        .expect("campus lounge")
+}
+
+pub async fn drop_steward_room(
+    state: &AppState,
+    campus_id: CampusId,
+    steward_id: AccountId,
+    room_id: RoomId,
+) {
+    sqlx::query(
+        "DELETE FROM steward_rooms WHERE campus_id = $1 AND steward_id = $2 AND room_id = $3",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(steward_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .execute(&state.db)
+    .await
+    .expect("drop assignment");
 }
 
 pub async fn lounge_rows(state: &AppState, campus_id: CampusId) -> Vec<(LoungeId, Option<RoomId>)> {

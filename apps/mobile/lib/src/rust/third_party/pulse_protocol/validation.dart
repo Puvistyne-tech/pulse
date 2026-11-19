@@ -1,9 +1,12 @@
 import '../../frb_generated.dart';
 import 'api.dart';
+import 'campus.dart';
 import 'ids.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';
+
+import 'rbac.dart';
 
 Future<String> normalizeEmail({required String raw}) =>
     RustLib.instance.api.pulseProtocolValidationNormalizeEmail(raw: raw);
@@ -71,6 +74,14 @@ Future<void> validatePassword({required String raw}) =>
 
 Future<void> validateSlug({required String raw}) =>
     RustLib.instance.api.pulseProtocolValidationValidateSlug(raw: raw);
+
+Future<InviteCode> normalizeInviteCode({required String raw}) =>
+    RustLib.instance.api.pulseProtocolValidationNormalizeInviteCode(raw: raw);
+
+Future<void> validateAssignableRole({required Role role}) => RustLib
+    .instance
+    .api
+    .pulseProtocolValidationValidateAssignableRole(role: role);
 
 abstract class Validate {
   Future<void> validate();

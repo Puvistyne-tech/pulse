@@ -13,11 +13,13 @@ import 'third_party/pulse_protocol/api.dart';
 import 'third_party/pulse_protocol/api/api_path.dart';
 import 'third_party/pulse_protocol/auth.dart';
 import 'third_party/pulse_protocol/campus.dart';
+import 'third_party/pulse_protocol/dev_seed.dart';
 import 'third_party/pulse_protocol/frames.dart';
 import 'third_party/pulse_protocol/ids.dart';
 import 'third_party/pulse_protocol/link.dart';
 import 'third_party/pulse_protocol/lounge.dart';
 import 'third_party/pulse_protocol/media.dart';
+import 'third_party/pulse_protocol/member.dart';
 import 'third_party/pulse_protocol/mention.dart';
 import 'third_party/pulse_protocol/messaging.dart';
 import 'third_party/pulse_protocol/rbac.dart';
@@ -90,6 +92,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AccountProfile dco_decode_account_profile(dynamic raw);
 
   @protected
+  AddMemberRequest dco_decode_add_member_request(dynamic raw);
+
+  @protected
   ApiError dco_decode_api_error(dynamic raw);
 
   @protected
@@ -123,6 +128,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AccountProfile dco_decode_box_autoadd_account_profile(dynamic raw);
 
   @protected
+  AddMemberRequest dco_decode_box_autoadd_add_member_request(dynamic raw);
+
+  @protected
   ApiError dco_decode_box_autoadd_api_error(dynamic raw);
 
   @protected
@@ -133,6 +141,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CampusId dco_decode_box_autoadd_campus_id(dynamic raw);
+
+  @protected
+  CampusInvite dco_decode_box_autoadd_campus_invite(dynamic raw);
 
   @protected
   ClientNonce dco_decode_box_autoadd_client_nonce(dynamic raw);
@@ -156,7 +167,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField dco_decode_box_autoadd_input_field(dynamic raw);
 
   @protected
+  InviteCode dco_decode_box_autoadd_invite_code(dynamic raw);
+
+  @protected
   IssuedStewardToken dco_decode_box_autoadd_issued_steward_token(dynamic raw);
+
+  @protected
+  JoinCampusRequest dco_decode_box_autoadd_join_campus_request(dynamic raw);
 
   @protected
   LoungeId dco_decode_box_autoadd_lounge_id(dynamic raw);
@@ -231,6 +248,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
   @protected
+  UpdateMemberRequest dco_decode_box_autoadd_update_member_request(dynamic raw);
+
+  @protected
   UpdateShelf dco_decode_box_autoadd_update_shelf(dynamic raw);
 
   @protected
@@ -238,6 +258,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CampusId dco_decode_campus_id(dynamic raw);
+
+  @protected
+  CampusInvite dco_decode_campus_invite(dynamic raw);
 
   @protected
   CampusSummary dco_decode_campus_summary(dynamic raw);
@@ -265,6 +288,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   DeliveryState dco_decode_delivery_state(dynamic raw);
+
+  @protected
+  DevAccount dco_decode_dev_account(dynamic raw);
 
   @protected
   DraftAttachmentView dco_decode_draft_attachment_view(dynamic raw);
@@ -297,7 +323,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField dco_decode_input_field(dynamic raw);
 
   @protected
+  InviteCode dco_decode_invite_code(dynamic raw);
+
+  @protected
   IssuedStewardToken dco_decode_issued_steward_token(dynamic raw);
+
+  @protected
+  JoinCampusRequest dco_decode_join_campus_request(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -318,6 +350,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<CampusSummary> dco_decode_list_campus_summary(dynamic raw);
 
   @protected
+  List<DevAccount> dco_decode_list_dev_account(dynamic raw);
+
+  @protected
   List<DraftAttachmentView> dco_decode_list_draft_attachment_view(dynamic raw);
 
   @protected
@@ -335,6 +370,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<MemberEntry> dco_decode_list_member_entry(dynamic raw);
+
+  @protected
   List<MentionRef> dco_decode_list_mention_ref(dynamic raw);
 
   @protected
@@ -348,6 +386,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<ReminderPreset> dco_decode_list_reminder_preset(dynamic raw);
+
+  @protected
+  List<Role> dco_decode_list_role(dynamic raw);
 
   @protected
   List<Room> dco_decode_list_room(dynamic raw);
@@ -395,6 +436,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LoungeTicket dco_decode_lounge_ticket(dynamic raw);
 
   @protected
+  MemberEntry dco_decode_member_entry(dynamic raw);
+
+  @protected
   MentionRef dco_decode_mention_ref(dynamic raw);
 
   @protected
@@ -420,6 +464,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CampusId? dco_decode_opt_box_autoadd_campus_id(dynamic raw);
+
+  @protected
+  CampusInvite? dco_decode_opt_box_autoadd_campus_invite(dynamic raw);
 
   @protected
   HandshakeRejection? dco_decode_opt_box_autoadd_handshake_rejection(
@@ -626,6 +673,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  UpdateMemberRequest dco_decode_update_member_request(dynamic raw);
+
+  @protected
   UpdateShelf dco_decode_update_shelf(dynamic raw);
 
   @protected
@@ -691,6 +741,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AccountProfile sse_decode_account_profile(SseDeserializer deserializer);
 
   @protected
+  AddMemberRequest sse_decode_add_member_request(SseDeserializer deserializer);
+
+  @protected
   ApiError sse_decode_api_error(SseDeserializer deserializer);
 
   @protected
@@ -726,6 +779,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  AddMemberRequest sse_decode_box_autoadd_add_member_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ApiError sse_decode_box_autoadd_api_error(SseDeserializer deserializer);
 
   @protected
@@ -740,6 +798,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CampusId sse_decode_box_autoadd_campus_id(SseDeserializer deserializer);
+
+  @protected
+  CampusInvite sse_decode_box_autoadd_campus_invite(
+    SseDeserializer deserializer,
+  );
 
   @protected
   ClientNonce sse_decode_box_autoadd_client_nonce(SseDeserializer deserializer);
@@ -771,7 +834,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField sse_decode_box_autoadd_input_field(SseDeserializer deserializer);
 
   @protected
+  InviteCode sse_decode_box_autoadd_invite_code(SseDeserializer deserializer);
+
+  @protected
   IssuedStewardToken sse_decode_box_autoadd_issued_steward_token(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  JoinCampusRequest sse_decode_box_autoadd_join_campus_request(
     SseDeserializer deserializer,
   );
 
@@ -870,6 +941,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
+  UpdateMemberRequest sse_decode_box_autoadd_update_member_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   UpdateShelf sse_decode_box_autoadd_update_shelf(SseDeserializer deserializer);
 
   @protected
@@ -879,6 +955,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CampusId sse_decode_campus_id(SseDeserializer deserializer);
+
+  @protected
+  CampusInvite sse_decode_campus_invite(SseDeserializer deserializer);
 
   @protected
   CampusSummary sse_decode_campus_summary(SseDeserializer deserializer);
@@ -916,6 +995,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DeliveryState sse_decode_delivery_state(SseDeserializer deserializer);
 
   @protected
+  DevAccount sse_decode_dev_account(SseDeserializer deserializer);
+
+  @protected
   DraftAttachmentView sse_decode_draft_attachment_view(
     SseDeserializer deserializer,
   );
@@ -950,7 +1032,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   InputField sse_decode_input_field(SseDeserializer deserializer);
 
   @protected
+  InviteCode sse_decode_invite_code(SseDeserializer deserializer);
+
+  @protected
   IssuedStewardToken sse_decode_issued_steward_token(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  JoinCampusRequest sse_decode_join_campus_request(
     SseDeserializer deserializer,
   );
 
@@ -979,6 +1069,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<DevAccount> sse_decode_list_dev_account(SseDeserializer deserializer);
+
+  @protected
   List<DraftAttachmentView> sse_decode_list_draft_attachment_view(
     SseDeserializer deserializer,
   );
@@ -1000,6 +1093,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<MemberEntry> sse_decode_list_member_entry(SseDeserializer deserializer);
+
+  @protected
   List<MentionRef> sse_decode_list_mention_ref(SseDeserializer deserializer);
 
   @protected
@@ -1017,6 +1113,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<ReminderPreset> sse_decode_list_reminder_preset(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<Role> sse_decode_list_role(SseDeserializer deserializer);
 
   @protected
   List<Room> sse_decode_list_room(SseDeserializer deserializer);
@@ -1072,6 +1171,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LoungeTicket sse_decode_lounge_ticket(SseDeserializer deserializer);
 
   @protected
+  MemberEntry sse_decode_member_entry(SseDeserializer deserializer);
+
+  @protected
   MentionRef sse_decode_mention_ref(SseDeserializer deserializer);
 
   @protected
@@ -1103,6 +1205,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CampusId? sse_decode_opt_box_autoadd_campus_id(SseDeserializer deserializer);
+
+  @protected
+  CampusInvite? sse_decode_opt_box_autoadd_campus_invite(
+    SseDeserializer deserializer,
+  );
 
   @protected
   HandshakeRejection? sse_decode_opt_box_autoadd_handshake_rejection(
@@ -1339,6 +1446,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
+  UpdateMemberRequest sse_decode_update_member_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   UpdateShelf sse_decode_update_shelf(SseDeserializer deserializer);
 
   @protected
@@ -1415,6 +1527,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_add_member_request(
+    AddMemberRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_api_error(ApiError self, SseSerializer serializer);
 
   @protected
@@ -1460,6 +1578,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_add_member_request(
+    AddMemberRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_api_error(
     ApiError self,
     SseSerializer serializer,
@@ -1480,6 +1604,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_campus_id(
     CampusId self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_campus_invite(
+    CampusInvite self,
     SseSerializer serializer,
   );
 
@@ -1523,8 +1653,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_invite_code(
+    InviteCode self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_issued_steward_token(
     IssuedStewardToken self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_join_campus_request(
+    JoinCampusRequest self,
     SseSerializer serializer,
   );
 
@@ -1661,6 +1803,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_update_member_request(
+    UpdateMemberRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_update_shelf(
     UpdateShelf self,
     SseSerializer serializer,
@@ -1674,6 +1822,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_campus_id(CampusId self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_campus_invite(CampusInvite self, SseSerializer serializer);
 
   @protected
   void sse_encode_campus_summary(CampusSummary self, SseSerializer serializer);
@@ -1721,6 +1872,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_delivery_state(DeliveryState self, SseSerializer serializer);
 
   @protected
+  void sse_encode_dev_account(DevAccount self, SseSerializer serializer);
+
+  @protected
   void sse_encode_draft_attachment_view(
     DraftAttachmentView self,
     SseSerializer serializer,
@@ -1757,8 +1911,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_input_field(InputField self, SseSerializer serializer);
 
   @protected
+  void sse_encode_invite_code(InviteCode self, SseSerializer serializer);
+
+  @protected
   void sse_encode_issued_steward_token(
     IssuedStewardToken self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_join_campus_request(
+    JoinCampusRequest self,
     SseSerializer serializer,
   );
 
@@ -1796,6 +1959,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_dev_account(
+    List<DevAccount> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_draft_attachment_view(
     List<DraftAttachmentView> self,
     SseSerializer serializer,
@@ -1826,6 +1995,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_member_entry(
+    List<MemberEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_mention_ref(
     List<MentionRef> self,
     SseSerializer serializer,
@@ -1851,6 +2026,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     List<ReminderPreset> self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_list_role(List<Role> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_room(List<Room> self, SseSerializer serializer);
@@ -1925,6 +2103,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_lounge_ticket(LoungeTicket self, SseSerializer serializer);
 
   @protected
+  void sse_encode_member_entry(MemberEntry self, SseSerializer serializer);
+
+  @protected
   void sse_encode_mention_ref(MentionRef self, SseSerializer serializer);
 
   @protected
@@ -1966,6 +2147,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_campus_id(
     CampusId? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_campus_invite(
+    CampusInvite? self,
     SseSerializer serializer,
   );
 
@@ -2259,6 +2446,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_update_member_request(
+    UpdateMemberRequest self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_update_shelf(UpdateShelf self, SseSerializer serializer);

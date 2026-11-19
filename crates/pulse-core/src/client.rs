@@ -51,6 +51,11 @@ impl Client {
         }
     }
 
+    pub fn with_quick_sign_in(mut self, enabled: bool) -> Self {
+        self.session = self.session.with_quick_sign_in(enabled);
+        self
+    }
+
     pub fn snapshot(&self) -> ClientSnapshot {
         let active_room_id = self.session.snapshot().active_room_id;
         let mut timeline = self.timeline.as_ref().map_or_else(

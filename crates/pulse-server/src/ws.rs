@@ -1411,6 +1411,14 @@ async fn forward_feed(
     let Ok(envelope) = received else {
         return stop_with(socket, close_code::TRY_AGAIN_LATER).await;
     };
+    if let ServerFrame::MembershipRevoked(revoked) = &envelope.frame {
+        if revoked.account_id == active.account_id && revoked.campus_id == active.campus_id {
+            let streams = active.streams.take_all();
+            abort_streams(state, active, streams, StreamAbortReason::Revoked).await;
+            return stop_with(socket, close_code::POLICY_VIOLATION).await;
+        }
+        return Flow::Continue;
+    }
     if !deliverable(active, &envelope) {
         return Flow::Continue;
     }

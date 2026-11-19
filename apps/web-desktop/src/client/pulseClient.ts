@@ -4,6 +4,9 @@ import type {
   ClientNonce,
   ClientSnapshot,
   CreateCampusRequest,
+  JoinCampusRequest,
+  AddMemberRequest,
+  UpdateMemberRequest,
   DraftId,
   AccountId,
   InboxStep,
@@ -27,9 +30,21 @@ export const pulseClient = {
   signIn: (request: SignInRequest) =>
     invoke<ClientSnapshot>("sign_in", { request }),
   signOut: () => invoke<ClientSnapshot>("sign_out"),
+  quickSignIn: (email: string) =>
+    invoke<ClientSnapshot>("quick_sign_in", { email }),
   refreshCampuses: () => invoke<ClientSnapshot>("refresh_campuses"),
   createCampus: (request: CreateCampusRequest) =>
     invoke<ClientSnapshot>("create_campus", { request }),
+  joinCampus: (request: JoinCampusRequest) =>
+    invoke<ClientSnapshot>("join_campus", { request }),
+  createInvite: () => invoke<ClientSnapshot>("create_invite"),
+  loadMembers: () => invoke<ClientSnapshot>("load_members"),
+  addMember: (request: AddMemberRequest) =>
+    invoke<ClientSnapshot>("add_member", { request }),
+  updateMember: (accountId: AccountId, request: UpdateMemberRequest) =>
+    invoke<ClientSnapshot>("update_member", { accountId, request }),
+  removeMember: (accountId: AccountId) =>
+    invoke<ClientSnapshot>("remove_member", { accountId }),
   selectCampus: (campusId: CampusId) =>
     invoke<ClientSnapshot>("select_campus", { campusId }),
   selectRoom: (roomId: RoomId) =>

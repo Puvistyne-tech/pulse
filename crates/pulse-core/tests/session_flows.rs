@@ -3,12 +3,16 @@ mod fixtures;
 use std::collections::VecDeque;
 
 use fixtures::{
-    CAMPUS_A, CAMPUS_B, CAMPUS_C, RecordedCall, ScriptedApi, campus_summary, create_campus_request,
-    room, room_list, sign_in_request, signed_in_api, signed_in_machine, token_a,
+    ACCOUNT_B, CAMPUS_A, CAMPUS_B, CAMPUS_C, RecordedCall, ScriptedApi, campus_invite,
+    campus_member, campus_summary, create_campus_request, invite_code, join_campus_request, room,
+    room_list, sign_in_request, signed_in_api, signed_in_machine, token_a,
 };
 use futures::executor::block_on;
 use pulse_core::{SessionEvent, SessionMachine, drive_session};
-use pulse_protocol::{ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, Role, RoomList};
+use pulse_protocol::{
+    AccountId, AddMemberRequest, ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId, Role,
+    RoomList,
+};
 use rstest::rstest;
 
 struct Expect {
@@ -18,6 +22,8 @@ struct Expect {
     rooms: Vec<&'static str>,
     busy: bool,
     error: Option<ApiError>,
+    invite: Option<CampusId>,
+    members: Vec<AccountId>,
     calls: Vec<RecordedCall>,
 }
 
@@ -46,6 +52,36 @@ fn script_create_campus() -> ScriptedApi {
     ScriptedApi {
         campus_creations: VecDeque::from([Ok(gamma_created())]),
         ..ScriptedApi::default()
+    }
+}
+
+fn script_join_campus() -> ScriptedApi {
+    let mut joined = gamma_created();
+    joined.campus.role = Role::Member;
+    ScriptedApi {
+        joins: VecDeque::from([Ok(joined)]),
+        ..ScriptedApi::default()
+    }
+}
+
+fn script_invite() -> ScriptedApi {
+    ScriptedApi {
+        invites: VecDeque::from([Ok(campus_invite(CAMPUS_A))]),
+        ..ScriptedApi::default()
+    }
+}
+
+fn script_member_added() -> ScriptedApi {
+    ScriptedApi {
+        member_saves: VecDeque::from([Ok(campus_member(CAMPUS_A, ACCOUNT_B, Role::Member))]),
+        ..ScriptedApi::default()
+    }
+}
+
+fn added_grace() -> AddMemberRequest {
+    AddMemberRequest {
+        email: "grace@example.org".to_owned(),
+        role: Role::Member,
     }
 }
 
@@ -78,6 +114,8 @@ fn signed_in_expect() -> Expect {
         rooms: vec!["commons", "courtyard"],
         busy: false,
         error: None,
+        invite: None,
+        members: vec![],
         calls: vec![],
     }
 }
@@ -90,6 +128,8 @@ fn signed_out_expect() -> Expect {
         rooms: vec![],
         busy: false,
         error: None,
+        invite: None,
+        members: vec![],
         calls: vec![],
     }
 }
@@ -127,6 +167,41 @@ fn signed_out_expect() -> Expect {
         campuses: vec![CAMPUS_A, CAMPUS_B, CAMPUS_C],
         rooms: vec!["commons", "courtyard"],
         calls: vec![RecordedCall::CreateCampus(token_a(), create_campus_request())],
+        ..signed_in_expect()
+    },
+)]
+#[case::join_campus_switches_to_joined_campus(
+    signed_in_machine(),
+    script_join_campus(),
+    SessionEvent::JoinCampusRequested(join_campus_request(&invite_code(CAMPUS_C))),
+    Expect {
+        active: Some(CAMPUS_C),
+        campuses: vec![CAMPUS_A, CAMPUS_B, CAMPUS_C],
+        rooms: vec!["commons", "courtyard"],
+        calls: vec![RecordedCall::JoinCampus(
+            token_a(),
+            join_campus_request(&invite_code(CAMPUS_C)),
+        )],
+        ..signed_in_expect()
+    },
+)]
+#[case::invite_requested_publishes_code(
+    signed_in_machine(),
+    script_invite(),
+    SessionEvent::InviteRequested,
+    Expect {
+        invite: Some(CAMPUS_A),
+        calls: vec![RecordedCall::CreateInvite(token_a(), CAMPUS_A)],
+        ..signed_in_expect()
+    },
+)]
+#[case::add_member_lists_new_member(
+    signed_in_machine(),
+    script_member_added(),
+    SessionEvent::AddMemberRequested(added_grace()),
+    Expect {
+        members: vec![ACCOUNT_B],
+        calls: vec![RecordedCall::AddMember(token_a(), CAMPUS_A, added_grace())],
         ..signed_in_expect()
     },
 )]
@@ -198,6 +273,18 @@ fn drive_session_runs_command_chains(
     );
     assert_eq!(snapshot.busy, expect.busy);
     assert_eq!(snapshot.error, expect.error);
+    assert_eq!(
+        snapshot.invite.map(|invite| invite.campus_id),
+        expect.invite
+    );
+    assert_eq!(
+        snapshot
+            .members
+            .iter()
+            .map(|member| member.account_id)
+            .collect::<Vec<_>>(),
+        expect.members
+    );
     assert_eq!(api.calls, expect.calls);
     assert_eq!(
         machine.token().is_some(),

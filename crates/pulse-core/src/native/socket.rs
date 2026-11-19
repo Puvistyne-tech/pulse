@@ -59,8 +59,8 @@ pub(super) struct Shared {
 }
 
 impl Shared {
-    pub(super) fn new(server_url: String, index: NativeSearchIndex) -> Self {
-        let client = Client::default();
+    pub(super) fn new(server_url: String, index: NativeSearchIndex, quick_sign_in: bool) -> Self {
+        let client = Client::default().with_quick_sign_in(quick_sign_in);
         let (snapshots, _) = watch::channel(client.snapshot());
         Self {
             core: Mutex::new((client, HttpApiTransport::new(server_url.clone()))),

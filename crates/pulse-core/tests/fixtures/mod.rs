@@ -13,16 +13,18 @@ pub use pulse_protocol::fixtures::{
     EMOJI_A, EMOJI_B, NONCE_A, NONCE_B, NONCE_C, ROOM_A, ROOM_B, SESSION_A, VALID_PASSWORD,
 };
 use pulse_protocol::{
-    AccountId, AccountProfile, ApiError, AuthSession, AuthToken, CampusCreated, CampusId,
-    CampusList, CampusSummary, ClientFrame, ClientNonce, CreateCampusRequest, DeliveryState,
-    HandshakeRejected, HandshakeRejection, Hello, InboxSnapshot, InboxStep, InboxSynced,
-    MarkThreadRead, MentionRef, MessageAccepted, MessageCreated, MessageId, MessageRejected,
-    MessageRejection, MessageUpdated, ProtocolVersion, React, ReactionAction, ReactionRejected,
-    ReactionRejection, ReactionTally, Role, Room, RoomCursor, RoomId, RoomList, RoomMessage,
-    RoomSynced, RoomUnavailable, SendMessage, ServerFrame, SessionSnapshot, SetThreadSubscription,
-    SetTopicTitle, SignInRequest, SignUpRequest, SubscriptionOrigin, SubscriptionState, SyncInbox,
-    SyncLounges, SyncRooms, SyncShelf, SyncStewards, SyncThread, ThreadChanged, ThreadRejected,
-    ThreadRejection, ThreadSummary, ThreadSynced, TimelineSnapshot, Welcome,
+    AccountId, AccountProfile, AddMemberRequest, ApiError, AuthSession, AuthToken, CampusCreated,
+    CampusId, CampusInvite, CampusList, CampusMember, CampusSummary, ClientFrame, ClientNonce,
+    CreateCampusRequest, DeliveryState, HandshakeRejected, HandshakeRejection, Hello,
+    INVITE_SECRET_CHARS, InboxSnapshot, InboxStep, InboxSynced, InviteCode, JoinCampusRequest,
+    MarkThreadRead, MemberList, MentionRef, MessageAccepted, MessageCreated, MessageId,
+    MessageRejected, MessageRejection, MessageUpdated, ProtocolVersion, React, ReactionAction,
+    ReactionRejected, ReactionRejection, ReactionTally, Role, Room, RoomCursor, RoomId, RoomList,
+    RoomMessage, RoomSynced, RoomUnavailable, SendMessage, ServerFrame, SessionSnapshot,
+    SetThreadSubscription, SetTopicTitle, SignInRequest, SignUpRequest, SubscriptionOrigin,
+    SubscriptionState, SyncInbox, SyncLounges, SyncRooms, SyncShelf, SyncStewards, SyncThread,
+    ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ThreadSynced, TimelineSnapshot,
+    UpdateMemberRequest, Welcome,
 };
 
 pub fn token_a() -> AuthToken {
@@ -138,6 +140,12 @@ pub enum RecordedCall {
     ListCampuses(AuthToken),
     CreateCampus(AuthToken, CreateCampusRequest),
     ListRooms(AuthToken, CampusId),
+    JoinCampus(AuthToken, JoinCampusRequest),
+    CreateInvite(AuthToken, CampusId),
+    ListMembers(AuthToken, CampusId),
+    AddMember(AuthToken, CampusId, AddMemberRequest),
+    UpdateMember(AuthToken, CampusId, AccountId, UpdateMemberRequest),
+    RemoveMember(AuthToken, CampusId, AccountId),
 }
 
 #[derive(Debug, Default)]
@@ -148,6 +156,11 @@ pub struct ScriptedApi {
     pub campus_lists: VecDeque<Result<CampusList, ApiError>>,
     pub campus_creations: VecDeque<Result<CampusCreated, ApiError>>,
     pub room_lists: VecDeque<Result<RoomList, ApiError>>,
+    pub joins: VecDeque<Result<CampusCreated, ApiError>>,
+    pub invites: VecDeque<Result<CampusInvite, ApiError>>,
+    pub member_lists: VecDeque<Result<MemberList, ApiError>>,
+    pub member_saves: VecDeque<Result<CampusMember, ApiError>>,
+    pub member_removals: VecDeque<Result<(), ApiError>>,
     pub calls: Vec<RecordedCall>,
 }
 
@@ -194,6 +207,91 @@ impl ApiTransport for ScriptedApi {
     ) -> Result<RoomList, ApiError> {
         self.calls.push(RecordedCall::ListRooms(token, campus_id));
         self.room_lists.pop_front().unwrap_or(Err(unavailable()))
+    }
+
+    async fn join_campus(
+        &mut self,
+        token: AuthToken,
+        request: JoinCampusRequest,
+    ) -> Result<CampusCreated, ApiError> {
+        self.calls.push(RecordedCall::JoinCampus(token, request));
+        self.joins.pop_front().unwrap_or(Err(unavailable()))
+    }
+
+    async fn create_invite(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> Result<CampusInvite, ApiError> {
+        self.calls
+            .push(RecordedCall::CreateInvite(token, campus_id));
+        self.invites.pop_front().unwrap_or(Err(unavailable()))
+    }
+
+    async fn list_members(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> Result<MemberList, ApiError> {
+        self.calls.push(RecordedCall::ListMembers(token, campus_id));
+        self.member_lists.pop_front().unwrap_or(Err(unavailable()))
+    }
+
+    async fn add_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        request: AddMemberRequest,
+    ) -> Result<CampusMember, ApiError> {
+        self.calls
+            .push(RecordedCall::AddMember(token, campus_id, request));
+        self.member_saves.pop_front().unwrap_or(Err(unavailable()))
+    }
+
+    async fn update_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+        request: UpdateMemberRequest,
+    ) -> Result<CampusMember, ApiError> {
+        self.calls.push(RecordedCall::UpdateMember(
+            token, campus_id, account_id, request,
+        ));
+        self.member_saves.pop_front().unwrap_or(Err(unavailable()))
+    }
+
+    async fn remove_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+    ) -> Result<(), ApiError> {
+        self.calls
+            .push(RecordedCall::RemoveMember(token, campus_id, account_id));
+        self.member_removals
+            .pop_front()
+            .unwrap_or(Err(unavailable()))
+    }
+}
+
+pub fn campus_member(campus_id: CampusId, account_id: AccountId, role: Role) -> CampusMember {
+    CampusMember {
+        campus_id,
+        account_id,
+        display_name: account_id.to_string(),
+        email: format!("{account_id}@example.org"),
+        role,
+    }
+}
+
+pub fn member_list(campus_id: CampusId, members: &[(AccountId, Role)]) -> MemberList {
+    MemberList {
+        campus_id,
+        members: members
+            .iter()
+            .map(|(account_id, role)| campus_member(campus_id, *account_id, *role))
+            .collect(),
     }
 }
 
@@ -263,11 +361,13 @@ pub fn sign_up_request() -> SignUpRequest {
 }
 
 pub fn session_after(events: Vec<SessionEvent>) -> SessionMachine {
+    session_from(SessionMachine::new(), events)
+}
+
+pub fn session_from(start: SessionMachine, events: Vec<SessionEvent>) -> SessionMachine {
     events
         .into_iter()
-        .fold(SessionMachine::new(), |machine, event| {
-            machine.step(event).0
-        })
+        .fold(start, |machine, event| machine.step(event).0)
 }
 
 pub fn signed_in_machine() -> SessionMachine {
@@ -307,6 +407,28 @@ pub fn create_campus_request() -> CreateCampusRequest {
     CreateCampusRequest {
         slug: "gamma".to_owned(),
         display_name: "Gamma".to_owned(),
+    }
+}
+
+pub fn invite_code(campus_id: CampusId) -> String {
+    InviteCode {
+        campus_id,
+        secret: "s".repeat(INVITE_SECRET_CHARS),
+    }
+    .render()
+}
+
+pub fn join_campus_request(code: &str) -> JoinCampusRequest {
+    JoinCampusRequest {
+        code: code.to_owned(),
+    }
+}
+
+pub fn campus_invite(campus_id: CampusId) -> CampusInvite {
+    CampusInvite {
+        campus_id,
+        code: invite_code(campus_id),
+        expires_at_ms: 1,
     }
 }
 

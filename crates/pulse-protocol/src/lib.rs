@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod campus;
+pub mod dev_seed;
 #[cfg(feature = "fixtures")]
 pub mod fixtures;
 pub mod frames;
@@ -8,6 +9,7 @@ pub mod ids;
 pub mod link;
 pub mod lounge;
 pub mod media;
+pub mod member;
 pub mod mention;
 pub mod messaging;
 pub mod rbac;
@@ -23,8 +25,13 @@ pub mod version;
 pub use api::{ApiError, ApiErrorCode, InputField, api_path};
 pub use auth::{AccountProfile, AuthSession, AuthToken, SignInRequest, SignUpRequest};
 pub use campus::{
-    CampusCreated, CampusList, CampusSummary, CreateCampusRequest, CreateRoomRequest,
-    DEFAULT_ROOM_SLUGS, Room, RoomList,
+    CampusCreated, CampusInvite, CampusList, CampusSummary, CreateCampusRequest, CreateRoomRequest,
+    DEFAULT_ROOM_SLUGS, INVITE_CODE_SEPARATOR, INVITE_TTL_DAYS, InviteCode, JoinCampusRequest,
+    Room, RoomList,
+};
+pub use dev_seed::{
+    DEV_SEED_CAMPUS_NAME, DEV_SEED_CAMPUS_SLUG, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, DevAccount,
+    dev_accounts,
 };
 pub use frames::{
     ClientFrame, HandshakeRejected, HandshakeRejection, Hello, Ping, Pong, ServerFrame,
@@ -47,6 +54,10 @@ pub use media::{
     DownloadTickets, DownloadTicketsRequest, FILE_NAME_MAX_CHARS, MESSAGE_ATTACHMENTS_MAX, PinMark,
     PinRejected, PinRejection, ROOM_PINS_MAX, SetPin, SyncVault, UploadTicket, VAULT_PAGE_LIMIT,
     VaultItem, VaultRejected, VaultRejection, VaultSynced, VaultTab, guess_content_type,
+};
+pub use member::{
+    ASSIGNABLE_ROLES, AddMemberRequest, CampusMember, MemberList, MembershipRevoked,
+    UpdateMemberRequest, assignable_roles, member_manageable, role_assignable,
 };
 pub use mention::{
     BodySegment, MESSAGE_MENTIONS_MAX, SegmentKind, body_segments, extract_mentions, mention_token,
@@ -75,9 +86,9 @@ pub use snapshot::{
     AttachmentView, AuthPhase, ClientSnapshot, ConnectionPhase, ConnectionSnapshot, DeliveryState,
     DraftAttachmentView, HighlightSpan, InboxItem, InboxItemKind, InboxSnapshot, InboxStep,
     IssuedStewardToken, LoungeEntry, LoungeMediaState, LoungeParticipantView, LoungeSnapshot,
-    ReactionSummary, ReplyPreview, SearchHit, SearchSnapshot, SessionSnapshot, ShelfEntry,
-    ShelfSnapshot, StewardEntry, StewardSnapshot, StreamState, ThreadPreview, ThreadSnapshot,
-    TimelineEntry, TimelineSnapshot, UploadState, VaultEntry, VaultSnapshot,
+    MemberEntry, ReactionSummary, ReplyPreview, SearchHit, SearchSnapshot, SessionSnapshot,
+    ShelfEntry, ShelfSnapshot, StewardEntry, StewardSnapshot, StreamState, ThreadPreview,
+    ThreadSnapshot, TimelineEntry, TimelineSnapshot, UploadState, VaultEntry, VaultSnapshot,
 };
 pub use steward::{
     AckWork, AgentStreamChunk, CallTool, HistoryRead, ListRoomsArguments, ListTools, ManageSteward,
@@ -96,12 +107,13 @@ pub use thread::{
     ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ThreadSynced,
 };
 pub use validation::{
-    DISPLAY_NAME_MAX_CHARS, EMAIL_MAX_CHARS, MESSAGE_BODY_MAX_CHARS, PASSWORD_MAX_CHARS,
-    PASSWORD_MIN_CHARS, REACTION_EMOJI_MAX_CHARS, SLUG_MAX_CHARS, SLUG_MIN_CHARS,
-    TOPIC_TITLE_MAX_CHARS, Validate, normalize_attachment_ids, normalize_content_type,
-    normalize_display_name, normalize_email, normalize_file_name, normalize_message_body,
-    normalize_message_content, normalize_reaction_emoji, normalize_room_ids,
-    normalize_search_query, normalize_topic_title, validate_byte_size, validate_display_name,
-    validate_password, validate_remind_at, validate_slug,
+    DISPLAY_NAME_MAX_CHARS, EMAIL_MAX_CHARS, INVITE_SECRET_CHARS, MESSAGE_BODY_MAX_CHARS,
+    PASSWORD_MAX_CHARS, PASSWORD_MIN_CHARS, REACTION_EMOJI_MAX_CHARS, SLUG_MAX_CHARS,
+    SLUG_MIN_CHARS, TOPIC_TITLE_MAX_CHARS, Validate, normalize_attachment_ids,
+    normalize_content_type, normalize_display_name, normalize_email, normalize_file_name,
+    normalize_invite_code, normalize_message_body, normalize_message_content,
+    normalize_reaction_emoji, normalize_room_ids, normalize_search_query, normalize_topic_title,
+    validate_byte_size, validate_display_name, validate_password, validate_remind_at,
+    validate_slug,
 };
 pub use version::ProtocolVersion;

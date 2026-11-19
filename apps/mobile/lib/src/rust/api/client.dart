@@ -2,6 +2,7 @@ import '../frb_generated.dart';
 import '../third_party/pulse_protocol/api.dart';
 import '../third_party/pulse_protocol/auth.dart';
 import '../third_party/pulse_protocol/campus.dart';
+import '../third_party/pulse_protocol/dev_seed.dart';
 import '../third_party/pulse_protocol/frames.dart';
 import '../third_party/pulse_protocol/ids.dart';
 import '../third_party/pulse_protocol/lounge.dart';

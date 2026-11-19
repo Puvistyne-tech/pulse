@@ -8,6 +8,7 @@ use crate::lounge::{
     LoungesSynced, SyncLounges,
 };
 use crate::media::{PinRejected, SetPin, SyncVault, VaultRejected, VaultSynced};
+use crate::member::MembershipRevoked;
 use crate::messaging::{
     MessageAccepted, MessageCreated, MessageRejected, MessageUpdated, RoomSynced, RoomUnavailable,
     SendMessage, SyncRooms,
@@ -139,6 +140,7 @@ pub enum ServerFrame {
     LoungeJoined(LoungeJoined),
     LoungeChanged(LoungeChanged),
     LoungeRejected(LoungeRejected),
+    MembershipRevoked(MembershipRevoked),
 }
 
 pub mod close_code {

@@ -1,7 +1,10 @@
+use pulse_server::seed::seed_dev_campus;
 use pulse_server::shelf::spawn_reminder_loop;
 use pulse_server::storage::Storage;
 use pulse_server::{MIGRATOR, StartupError, config, router, state};
 use tracing_subscriber::EnvFilter;
+
+const SEED_ARGUMENT: &str = "--seed-demo";
 
 #[tokio::main]
 async fn main() {
@@ -26,6 +29,12 @@ async fn run() -> Result<(), StartupError> {
         .with_lounge(lounge)
         .with_streams(config::stream_from_env());
     MIGRATOR.run(&app_state.db).await?;
+    if std::env::args().any(|argument| argument == SEED_ARGUMENT) {
+        match seed_dev_campus(&app_state.db).await {
+            Ok(campus_id) => tracing::info!(%campus_id, "seeded demo campus"),
+            Err(failure) => tracing::error!(?failure, "seeding demo campus failed"),
+        }
+    }
     if let Err(error) = app_state.storage.ensure_bucket().await {
         tracing::warn!(%error, "object storage bucket unavailable");
     }

@@ -14,6 +14,8 @@ const invalidFieldMessages: Record<InputField, string> = {
   attachments: "Check the attachments on that message",
   remind_at: "Choose a reminder time that is not too far in the past or future",
   rooms: "Choose a valid set of rooms for that steward",
+  invite_code: "That invite code is not valid or has expired",
+  role: "Choose a role you can assign",
 };
 
 const conflictFieldMessages: Record<InputField, string> = {
@@ -30,6 +32,8 @@ const conflictFieldMessages: Record<InputField, string> = {
   attachments: "Those attachments cannot be used",
   remind_at: "That reminder time cannot be used",
   rooms: "Those rooms cannot be used",
+  invite_code: "That invite code cannot be used",
+  role: "That role cannot be used",
 };
 
 const codeMessages: Record<ApiErrorCode, string> = {
@@ -48,6 +52,9 @@ export function errorMessage(error: ApiError): string {
   }
   if (error.code === "invalid_input") {
     return invalidFieldMessages[error.field];
+  }
+  if (error.code === "not_found" && error.field === "email") {
+    return "No Pulse account uses that email yet";
   }
   if (error.code === "conflict") {
     return conflictFieldMessages[error.field];

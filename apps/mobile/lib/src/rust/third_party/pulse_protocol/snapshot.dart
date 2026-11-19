@@ -2,6 +2,7 @@ import '../../frb_generated.dart';
 import 'api.dart';
 import 'auth.dart';
 import 'campus.dart';
+import 'dev_seed.dart';
 import 'frames.dart';
 import 'ids.dart';
 import 'lounge.dart';
@@ -491,6 +492,41 @@ class LoungeSnapshot {
           error == other.error;
 }
 
+class MemberEntry {
+  final AccountId accountId;
+  final String displayName;
+  final String email;
+  final Role role;
+  final bool manageable;
+
+  const MemberEntry({
+    required this.accountId,
+    required this.displayName,
+    required this.email,
+    required this.role,
+    required this.manageable,
+  });
+
+  @override
+  int get hashCode =>
+      accountId.hashCode ^
+      displayName.hashCode ^
+      email.hashCode ^
+      role.hashCode ^
+      manageable.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MemberEntry &&
+          runtimeType == other.runtimeType &&
+          accountId == other.accountId &&
+          displayName == other.displayName &&
+          email == other.email &&
+          role == other.role &&
+          manageable == other.manageable;
+}
+
 class ReactionSummary {
   final String emoji;
   final int count;
@@ -638,6 +674,11 @@ class SessionSnapshot {
   final CampusId? activeCampusId;
   final List<Room> rooms;
   final RoomId? activeRoomId;
+  final CampusInvite? invite;
+  final bool canInvite;
+  final List<MemberEntry> members;
+  final List<Role> assignableRoles;
+  final List<DevAccount> quickAccounts;
   final bool busy;
   final ApiError? error;
 
@@ -648,6 +689,11 @@ class SessionSnapshot {
     this.activeCampusId,
     required this.rooms,
     this.activeRoomId,
+    this.invite,
+    required this.canInvite,
+    required this.members,
+    required this.assignableRoles,
+    required this.quickAccounts,
     required this.busy,
     this.error,
   });
@@ -660,6 +706,11 @@ class SessionSnapshot {
       activeCampusId.hashCode ^
       rooms.hashCode ^
       activeRoomId.hashCode ^
+      invite.hashCode ^
+      canInvite.hashCode ^
+      members.hashCode ^
+      assignableRoles.hashCode ^
+      quickAccounts.hashCode ^
       busy.hashCode ^
       error.hashCode;
 
@@ -674,6 +725,11 @@ class SessionSnapshot {
           activeCampusId == other.activeCampusId &&
           rooms == other.rooms &&
           activeRoomId == other.activeRoomId &&
+          invite == other.invite &&
+          canInvite == other.canInvite &&
+          members == other.members &&
+          assignableRoles == other.assignableRoles &&
+          quickAccounts == other.quickAccounts &&
           busy == other.busy &&
           error == other.error;
 }

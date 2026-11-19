@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Bookmark, Bot, Hash, Inbox, LogOut, Monitor, Moon, Plus, Search, Sun } from "lucide-react";
+import { Bookmark, Bot, Hash, Inbox, LogIn, LogOut, Monitor, Moon, Plus, Search, Sun, Users } from "lucide-react";
 import type { ClientSnapshot } from "@pulse/protocol";
 import { CampusPicker } from "./campus/CampusPicker";
 import { CreateCampusForm } from "./campus/CreateCampusForm";
+import { InvitePanel } from "./campus/InvitePanel";
+import { JoinCampusForm } from "./campus/JoinCampusForm";
+import { MembersPanel } from "./campus/MembersPanel";
 import { RoomList } from "./campus/RoomList";
 import type { PulseIntents } from "./client/usePulseClient";
 import { LoungePanel } from "./lounge/LoungePanel";
@@ -47,18 +50,20 @@ const navButton =
 
 const countBadge = "ml-auto rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-5 text-on-accent";
 
-function useCampusDialog(campusCount: number): [boolean, (open: boolean) => void] {
-  const [open, setOpen] = useState(false);
+type CampusDialog = "create" | "join" | null;
+
+function useCampusDialog(campusCount: number): [CampusDialog, (dialog: CampusDialog) => void] {
+  const [dialog, setDialog] = useState<CampusDialog>(null);
   const seen = useRef(campusCount);
 
   useEffect(() => {
     if (campusCount > seen.current) {
-      setOpen(false);
+      setDialog(null);
     }
     seen.current = campusCount;
   }, [campusCount]);
 
-  return [open, setOpen];
+  return [dialog, setDialog];
 }
 
 export function AppView({ snapshot, intents }: AppViewProps) {
@@ -77,11 +82,17 @@ export function AppView({ snapshot, intents }: AppViewProps) {
   useInboxKeys(inbox, intents);
   useSearchKeys(search, intents);
   const [theme, setTheme] = useTheme();
-  const [creatingCampus, setCreatingCampus] = useCampusDialog(session.campuses.length);
+  const [campusDialog, setCampusDialog] = useCampusDialog(session.campuses.length);
+  const [peopleOpen, setPeopleOpen] = useState(false);
 
   if (session.auth !== "signed_in") {
     return (
-      <AuthForm busy={session.busy} error={session.error} intents={intents} />
+      <AuthForm
+        busy={session.busy}
+        error={session.error}
+        quickAccounts={session.quick_accounts}
+        intents={intents}
+      />
     );
   }
 
@@ -110,9 +121,18 @@ export function AppView({ snapshot, intents }: AppViewProps) {
           type="button"
           aria-label="New campus"
           title="New campus"
-          onClick={() => setCreatingCampus(true)}
+          onClick={() => setCampusDialog("create")}
         >
           <Plus size={18} aria-hidden="true" />
+        </button>
+        <button
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-white/20 text-side-subtle transition hover:border-accent hover:text-accent"
+          type="button"
+          aria-label="Join campus"
+          title="Join campus"
+          onClick={() => setCampusDialog("join")}
+        >
+          <LogIn size={18} aria-hidden="true" />
         </button>
       </aside>
 
@@ -155,6 +175,20 @@ export function AppView({ snapshot, intents }: AppViewProps) {
               <Bot size={16} aria-hidden="true" />
               Stewards
             </button>
+            {activeCampus && (
+              <button
+                className={navButton}
+                type="button"
+                aria-pressed={peopleOpen}
+                onClick={() => {
+                  setPeopleOpen(true);
+                  void intents.loadMembers();
+                }}
+              >
+                <Users size={16} aria-hidden="true" />
+                People
+              </button>
+            )}
           </nav>
           {session.rooms.length > 0 && (
             <div className="space-y-1">
@@ -199,7 +233,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        {!creatingCampus && session.error !== null && (
+        {campusDialog === null && !peopleOpen && session.error !== null && (
           <div className="shrink-0 px-5 pt-3">
             <ErrorNotice error={session.error} />
           </div>
@@ -209,12 +243,18 @@ export function AppView({ snapshot, intents }: AppViewProps) {
             <PulseMark size={52} />
             <div className="space-y-1">
               <h1 className="text-xl font-semibold text-ink">Welcome to Pulse, {displayName}</h1>
-              <p className="text-sm text-subtle">Create a campus to start talking with your team.</p>
+              <p className="text-sm text-subtle">Create a campus, or join one with an invite code.</p>
             </div>
-            <button className={ui.primaryButton} type="button" onClick={() => setCreatingCampus(true)}>
-              <Plus size={16} aria-hidden="true" />
-              Create campus
-            </button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button className={ui.primaryButton} type="button" onClick={() => setCampusDialog("create")}>
+                <Plus size={16} aria-hidden="true" />
+                Create campus
+              </button>
+              <button className={ui.secondaryButton} type="button" onClick={() => setCampusDialog("join")}>
+                <LogIn size={16} aria-hidden="true" />
+                Join with invite code
+              </button>
+            </div>
           </div>
         ) : timeline.room_id === null ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-subtle">
@@ -261,15 +301,50 @@ export function AppView({ snapshot, intents }: AppViewProps) {
           dismiss={intents.dismissReminder}
         />
       )}
-      {creatingCampus && (
+      {campusDialog === "create" && (
         <Dialog
           title="Create campus"
           description="A campus is a home for your team, with its own rooms, lounges and stewards."
           closeLabel="Close"
-          onClose={() => setCreatingCampus(false)}
+          onClose={() => setCampusDialog(null)}
         >
           <ErrorNotice error={session.error} />
           <CreateCampusForm busy={session.busy} createCampus={intents.createCampus} />
+        </Dialog>
+      )}
+      {campusDialog === "join" && (
+        <Dialog
+          title="Join campus"
+          description="Paste the invite code someone shared with you."
+          closeLabel="Close"
+          onClose={() => setCampusDialog(null)}
+        >
+          <ErrorNotice error={session.error} />
+          <JoinCampusForm busy={session.busy} joinCampus={intents.joinCampus} />
+        </Dialog>
+      )}
+      {peopleOpen && activeCampus && (
+        <Dialog
+          title="People"
+          description={`Everyone in ${activeCampus.display_name}. Other campuses never see them.`}
+          closeLabel="Close"
+          onClose={() => setPeopleOpen(false)}
+        >
+          <ErrorNotice error={session.error} />
+          <MembersPanel
+            members={session.members}
+            assignableRoles={session.assignable_roles}
+            busy={session.busy}
+            addMember={intents.addMember}
+            updateMember={intents.updateMember}
+            removeMember={intents.removeMember}
+          />
+          {session.can_invite && (
+            <section className="space-y-2 border-t border-line pt-4">
+              <h3 className={ui.sectionTitle}>Invite code</h3>
+              <InvitePanel invite={session.invite} busy={session.busy} createInvite={intents.createInvite} />
+            </section>
+          )}
         </Dialog>
       )}
     </div>

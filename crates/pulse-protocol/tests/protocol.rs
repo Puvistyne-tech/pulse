@@ -6,6 +6,10 @@ use pulse_protocol::fixtures::{
     MESSAGE_B, MESSAGE_C, NONCE_A, NONCE_B, ROOM_A, ROOM_B, SESSION_A, VALID_PASSWORD, auth_token,
 };
 use pulse_protocol::{
+    ASSIGNABLE_ROLES, AddMemberRequest, UpdateMemberRequest, assignable_roles, member_manageable,
+    role_assignable,
+};
+use pulse_protocol::{
     AccountId, AccountProfile, ApiError, ApiErrorCode, AuthPhase, AuthSession, BodySegment,
     CampusCreated, CampusId, CampusList, CampusSummary, ClientFrame, ClientNonce, ClientSnapshot,
     ConnectionPhase, ConnectionSnapshot, CreateCampusRequest, CreateRoomRequest, DeliveryState,
@@ -26,6 +30,7 @@ use pulse_protocol::{
     normalize_message_body, normalize_reaction_emoji, normalize_topic_title, role_permits,
     validate_display_name, validate_password, validate_slug,
 };
+use pulse_protocol::{INVITE_SECRET_CHARS, InviteCode, JoinCampusRequest, normalize_invite_code};
 use rstest::rstest;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -95,6 +100,11 @@ fn signed_out_session() -> SessionSnapshot {
         active_campus_id: None,
         rooms: Vec::new(),
         active_room_id: None,
+        invite: None,
+        can_invite: false,
+        members: Vec::new(),
+        assignable_roles: Vec::new(),
+        quick_accounts: Vec::new(),
         busy: false,
         error: None,
     }
@@ -899,6 +909,11 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "active_campus_id": null,
             "rooms": [],
             "active_room_id": null,
+            "invite": null,
+            "can_invite": false,
+            "members": [],
+            "assignable_roles": [],
+            "quick_accounts": [],
             "busy": false,
             "error": null,
         },
@@ -961,6 +976,11 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             active_campus_id: Some(CAMPUS_A),
             rooms: vec![room("commons")],
             active_room_id: Some(ROOM_A),
+            invite: None,
+            can_invite: true,
+            members: Vec::new(),
+            assignable_roles: Vec::new(),
+            quick_accounts: Vec::new(),
             busy: true,
             error: Some(ApiError::invalid(InputField::Slug)),
         },
@@ -1021,6 +1041,11 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "active_campus_id": CAMPUS_A.to_string(),
             "rooms": [room_json("commons")],
             "active_room_id": ROOM_A.to_string(),
+            "invite": null,
+            "can_invite": true,
+            "members": [],
+            "assignable_roles": [],
+            "quick_accounts": [],
             "busy": true,
             "error": {"code": "invalid_input", "field": "slug"},
         },
@@ -1144,6 +1169,57 @@ fn role_permission_matrix(
     #[case] expected: bool,
 ) {
     assert_eq!(role_permits(role, permission), expected);
+}
+
+#[rstest]
+#[case::owner(Role::Owner, [false, true, true, true, false], vec![Role::Admin, Role::Member, Role::Guest])]
+#[case::admin(Role::Admin, [false, false, true, true, false], vec![Role::Member, Role::Guest])]
+#[case::member(Role::Member, [false; 5], vec![])]
+#[case::guest(Role::Guest, [false; 5], vec![])]
+#[case::steward(Role::Steward, [false; 5], vec![])]
+fn member_management_rules(
+    #[case] actor: Role,
+    #[case] manageable: [bool; 5],
+    #[case] assignable: Vec<Role>,
+) {
+    let observed: Vec<bool> = Role::ALL
+        .into_iter()
+        .map(|target| member_manageable(actor, target))
+        .collect();
+    assert_eq!(observed, manageable);
+    assert_eq!(
+        Role::ALL
+            .into_iter()
+            .filter(|role| role_assignable(actor, *role))
+            .collect::<Vec<_>>(),
+        assignable
+    );
+    assert_eq!(assignable_roles(actor), assignable);
+}
+
+#[rstest]
+#[case::owner_role(Role::Owner, false)]
+#[case::steward_role(Role::Steward, false)]
+#[case::admin_role(Role::Admin, true)]
+#[case::member_role(Role::Member, true)]
+#[case::guest_role(Role::Guest, true)]
+fn member_request_validation(#[case] role: Role, #[case] valid: bool) {
+    let role_error = (!valid).then_some(ApiError::invalid(InputField::Role));
+    assert_eq!(UpdateMemberRequest { role }.validate().err(), role_error);
+    let add = AddMemberRequest {
+        email: "ada@example.org".to_owned(),
+        role,
+    };
+    assert_eq!(add.validate().err(), role_error);
+    let bad_email = AddMemberRequest {
+        email: "nope".to_owned(),
+        role,
+    };
+    assert_eq!(
+        bad_email.validate().err(),
+        Some(ApiError::invalid(InputField::Email))
+    );
+    assert_eq!(ASSIGNABLE_ROLES.contains(&role), valid);
 }
 
 #[test]
@@ -1276,6 +1352,43 @@ fn password_rules(#[case] raw: &str, #[case] valid: bool) {
 #[case::empty("", false)]
 fn slug_rules(#[case] raw: &str, #[case] valid: bool) {
     assert_eq!(validate_slug(raw).is_ok(), valid);
+}
+
+fn invite_secret() -> String {
+    "a".repeat(INVITE_SECRET_CHARS)
+}
+
+#[rstest]
+#[case::valid(format!("{CAMPUS_A}.{}", invite_secret()), true)]
+#[case::surrounding_space(format!("  {CAMPUS_A}.{}\n", invite_secret()), true)]
+#[case::url_safe_symbols(format!("{CAMPUS_A}.{}-_", "b".repeat(INVITE_SECRET_CHARS - 2)), true)]
+#[case::short_secret(format!("{CAMPUS_A}.{}", "a".repeat(INVITE_SECRET_CHARS - 1)), false)]
+#[case::long_secret(format!("{CAMPUS_A}.{}", "a".repeat(INVITE_SECRET_CHARS + 1)), false)]
+#[case::bad_symbol(format!("{CAMPUS_A}.{}+", "a".repeat(INVITE_SECRET_CHARS - 1)), false)]
+#[case::bad_campus(format!("campus.{}", invite_secret()), false)]
+#[case::no_separator(invite_secret(), false)]
+#[case::empty(String::new(), false)]
+fn invite_code_rules(#[case] raw: String, #[case] valid: bool) {
+    let parsed = normalize_invite_code(&raw);
+    assert_eq!(parsed.is_ok(), valid);
+    assert_eq!(
+        JoinCampusRequest { code: raw }
+            .validate()
+            .err()
+            .map(|error| error.field),
+        (!valid).then_some(Some(InputField::InviteCode))
+    );
+    if let Ok(code) = parsed {
+        assert_eq!(code.campus_id, CAMPUS_A);
+        assert_eq!(normalize_invite_code(&code.render()), Ok(code.clone()));
+        assert_eq!(
+            code,
+            InviteCode {
+                campus_id: CAMPUS_A,
+                secret: code.secret.clone()
+            }
+        );
+    }
 }
 
 fn sign_up(email: &str, display_name: &str, password: &str) -> SignUpRequest {

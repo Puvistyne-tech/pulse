@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { DevAccount } from "@pulse/protocol";
 import { afterEach, expect, test } from "vitest";
 import { noopIntents } from "../test/fixtures";
 import { AuthForm } from "./AuthForm";
@@ -72,4 +73,23 @@ test.each([
 ])("%s field has input type %s", (label, type) => {
   render(<AuthForm busy={false} error={null} intents={noopIntents()} />);
   expect(screen.getByLabelText(label).getAttribute("type")).toBe(type);
+});
+
+const quickAccounts: DevAccount[] = [
+  { email: "ada@pulse.test", display_name: "Ada Lovelace", role: "owner" },
+  { email: "grace@pulse.test", display_name: "Grace Hopper", role: "admin" },
+];
+
+test.each<[string, DevAccount[], string | null]>([
+  ["offered accounts", quickAccounts, "grace@pulse.test"],
+  ["no accounts", [], null],
+])("test accounts with %s", (_name, offered, picked) => {
+  const intents = noopIntents();
+  render(<AuthForm busy={false} error={null} quickAccounts={offered} intents={intents} />);
+  const section = screen.queryByRole("region", { name: "Test accounts" });
+  expect(section !== null).toBe(picked !== null);
+  if (picked !== null) {
+    fireEvent.click(screen.getByText("Grace Hopper"));
+    expect(intents.quickSignIn).toHaveBeenCalledExactlyOnceWith(picked);
+  }
 });

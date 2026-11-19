@@ -1,8 +1,9 @@
 use core::future::Future;
 
 use pulse_protocol::{
-    ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated, CampusId, CampusList,
-    CreateCampusRequest, RoomList, SignInRequest, SignUpRequest,
+    AccountId, AddMemberRequest, ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated,
+    CampusId, CampusInvite, CampusList, CampusMember, CreateCampusRequest, JoinCampusRequest,
+    MemberList, RoomList, SignInRequest, SignUpRequest, UpdateMemberRequest,
 };
 use serde::de::DeserializeOwned;
 
@@ -30,6 +31,40 @@ pub trait ApiTransport {
         token: AuthToken,
         campus_id: CampusId,
     ) -> impl Future<Output = Result<RoomList, ApiError>>;
+    fn join_campus(
+        &mut self,
+        token: AuthToken,
+        request: JoinCampusRequest,
+    ) -> impl Future<Output = Result<CampusCreated, ApiError>>;
+    fn create_invite(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> impl Future<Output = Result<CampusInvite, ApiError>>;
+    fn list_members(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> impl Future<Output = Result<MemberList, ApiError>>;
+    fn add_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        request: AddMemberRequest,
+    ) -> impl Future<Output = Result<CampusMember, ApiError>>;
+    fn update_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+        request: UpdateMemberRequest,
+    ) -> impl Future<Output = Result<CampusMember, ApiError>>;
+    fn remove_member(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        account_id: AccountId,
+    ) -> impl Future<Output = Result<(), ApiError>>;
 }
 
 pub fn decode_api_response<T: DeserializeOwned>(status: u16, body: &[u8]) -> Result<T, ApiError> {

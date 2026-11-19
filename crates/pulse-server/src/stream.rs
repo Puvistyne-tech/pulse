@@ -95,6 +95,13 @@ impl OpenStreams {
         self.streams.remove(&stream_id);
     }
 
+    pub fn open_rooms(&self) -> Vec<RoomId> {
+        let mut rooms: Vec<RoomId> = self.streams.values().map(|stream| stream.room_id).collect();
+        rooms.sort();
+        rooms.dedup();
+        rooms
+    }
+
     pub fn take_outside(&mut self, rooms: &[RoomId]) -> Vec<(StreamId, OpenStream)> {
         let outside: Vec<StreamId> = self
             .streams

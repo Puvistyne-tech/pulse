@@ -798,24 +798,44 @@ fn abort_reason_for(rejection: StreamRejection) -> StreamAbortReason {
     }
 }
 
+enum Admission {
+    Admitted,
+    CredentialLost,
+    Refused(StreamRejection),
+}
+
 async fn admit_stream(
     state: &AppState,
     active: &Subscriptions,
     room_id: RoomId,
     thread_root_id: Option<MessageId>,
-) -> Result<Option<StreamRejection>, sqlx::Error> {
-    if !permitted(state, active, Permission::StreamReply).await?
-        || !room_open(state, active, room_id).await?
-    {
-        return Ok(Some(StreamRejection::Forbidden));
+) -> Result<Admission, sqlx::Error> {
+    if !permitted(state, active, Permission::StreamReply).await? {
+        return Ok(Admission::CredentialLost);
+    }
+    if !room_open(state, active, room_id).await? {
+        return Ok(Admission::Refused(StreamRejection::Forbidden));
     }
     if let Some(root) = thread_root_id {
         let mut connection = state.db.acquire().await?;
         if !is_top_level(&mut connection, active.campus_id, room_id, root).await? {
-            return Ok(Some(StreamRejection::UnknownThread));
+            return Ok(Admission::Refused(StreamRejection::UnknownThread));
         }
     }
-    Ok(None)
+    Ok(Admission::Admitted)
+}
+
+async fn assigned_open_rooms(
+    state: &AppState,
+    active: &Subscriptions,
+) -> Result<Vec<RoomId>, sqlx::Error> {
+    let mut assigned = Vec::new();
+    for room_id in active.streams.open_rooms() {
+        if room_open(state, active, room_id).await? {
+            assigned.push(room_id);
+        }
+    }
+    Ok(assigned)
 }
 
 async fn finalize_stream(
@@ -905,10 +925,23 @@ async fn handle_stream(
         (_, Some(open)) => Some(admit_stream(state, active, open.room_id, None).await),
     };
     match admission {
-        None | Some(Ok(None)) => {}
-        Some(Ok(Some(reason))) => {
+        None | Some(Ok(Admission::Admitted)) => {}
+        Some(Ok(Admission::CredentialLost)) => {
             let streams = active.streams.take_all();
-            abort_streams(state, active, streams, abort_reason_for(reason)).await;
+            abort_streams(state, active, streams, StreamAbortReason::Revoked).await;
+            return reply_with(socket, &reject(StreamRejection::Forbidden)).await;
+        }
+        Some(Ok(Admission::Refused(reason))) => {
+            if chunk.phase != StreamPhase::Begin {
+                let assigned = match assigned_open_rooms(state, active).await {
+                    Ok(assigned) => assigned,
+                    Err(error) => {
+                        return database_failure(socket, "stream admission", error).await;
+                    }
+                };
+                let lost = active.streams.take_outside(&assigned);
+                abort_streams(state, active, lost, abort_reason_for(reason)).await;
+            }
             return reply_with(socket, &reject(reason)).await;
         }
         Some(Err(error)) => return database_failure(socket, "stream admission", error).await,

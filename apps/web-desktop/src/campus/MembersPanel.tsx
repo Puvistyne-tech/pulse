@@ -13,7 +13,6 @@ interface MembersPanelProps {
   removeMember(accountId: AccountId): Promise<void>;
 }
 
-
 function AddMemberForm({
   assignableRoles,
   busy,

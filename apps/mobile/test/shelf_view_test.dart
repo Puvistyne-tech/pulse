@@ -187,7 +187,7 @@ void main() {
 
     testWidgets('the close button toggles the shelf', (tester) async {
       final recorded = await pumpShelf(tester, fullShelf);
-      await tester.tap(find.text('Close shelf'));
+      await tester.tap(tooltip('Close shelf'));
       expect(recorded.calls, ['toggleShelf']);
     });
   });
@@ -240,7 +240,7 @@ void main() {
           presets: fixture.presets,
           calls: calls,
         );
-        await tester.tap(find.text('Shelf'));
+        await tester.tap(tooltip('Shelf'));
         await tester.pumpAndSettle();
         final items = tester
             .widgetList<PopupMenuItem<(ShelfAction, ReminderPreset?, bool)>>(
@@ -261,7 +261,7 @@ void main() {
           presets: allPresets,
           calls: calls,
         );
-        await tester.tap(find.text('Shelf'));
+        await tester.tap(tooltip('Shelf'));
         await tester.pumpAndSettle();
         await tester.tap(find.text(fixture.label));
         await tester.pumpAndSettle();
@@ -284,7 +284,7 @@ void main() {
           anchorMs: hasAnchor ? pickerAnchor : null,
           latestMs: hasAnchor ? pickerLatest : null,
         );
-        await tester.tap(find.text('Shelf'));
+        await tester.tap(tooltip('Shelf'));
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('shelfCustomTime')),
@@ -307,7 +307,7 @@ void main() {
           anchorMs: pickerAnchor,
           latestMs: pickerLatest,
         );
-        await tester.tap(find.text('Shelf'));
+        await tester.tap(tooltip('Shelf'));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('shelfCustomTime')));
         await tester.pumpAndSettle();
@@ -329,7 +329,7 @@ void main() {
         anchorMs: pickerAnchor,
         latestMs: pickerLatest,
       );
-      await tester.tap(find.text('Shelf'));
+      await tester.tap(tooltip('Shelf'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('shelfCustomTime')));
       await tester.pumpAndSettle();
@@ -349,7 +349,7 @@ void main() {
           pickerLatestMs: pickerLatest,
         ),
       );
-      await tester.tap(find.text('Shelf').last);
+      await tester.tap(tooltip('Shelf').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('shelfCustomTime')));
       await tester.pumpAndSettle();
@@ -376,7 +376,7 @@ void main() {
         tester,
         shelfOf(upcoming: [shelfEntryOf(ShelfBucket.upcoming, messageCId)]),
       );
-      await tester.tap(find.text('Shelf').last);
+      await tester.tap(tooltip('Shelf').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('In three hours'));
       await tester.pumpAndSettle();

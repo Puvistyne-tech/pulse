@@ -75,7 +75,15 @@ class ShelfMenu extends StatelessWidget {
     final latestMs = pickerLatestMs;
     return PopupMenuButton<_Choice>(
       key: const Key('shelfMenu'),
-      child: const Padding(padding: EdgeInsets.all(8), child: Text('Shelf')),
+      tooltip: 'Shelf',
+      iconSize: 18,
+      padding: EdgeInsets.zero,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(32, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: EdgeInsets.zero,
+      ),
+      icon: Icon(shelved ? Icons.bookmark : Icons.bookmark_border),
       onSelected: (choice) {
         if (choice.$3 && anchorMs != null && latestMs != null) {
           _pickCustomTime(context, choice.$1, anchorMs, latestMs);

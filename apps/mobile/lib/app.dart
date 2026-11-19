@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'client/client_provider.dart';
 import 'client/pulse_intents.dart';
 import 'home/home_view.dart';
+import 'theme/pulse_theme.dart';
 
 class PulseApp extends ConsumerWidget {
   const PulseApp({super.key});
@@ -51,15 +52,15 @@ class PulseApp extends ConsumerWidget {
     );
     return MaterialApp(
       title: 'Pulse',
-      home: Scaffold(
-        body: SafeArea(
-          child: snapshot.when(
-            data: (value) => HomeView(snapshot: value, intents: intents),
-            loading: () => const Center(child: Text('Loading Pulse')),
-            error: (error, stackTrace) =>
-                const Center(child: Text('Pulse core unavailable')),
-          ),
-        ),
+      theme: pulseLightTheme(),
+      darkTheme: pulseDarkTheme(),
+      themeMode: ThemeMode.system,
+      home: snapshot.when(
+        data: (value) => HomeView(snapshot: value, intents: intents),
+        loading: () =>
+            const Scaffold(body: Center(child: Text('Loading Pulse'))),
+        error: (error, stackTrace) =>
+            const Scaffold(body: Center(child: Text('Pulse core unavailable'))),
       ),
     );
   }

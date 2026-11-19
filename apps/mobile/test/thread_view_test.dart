@@ -45,7 +45,7 @@ void main() {
       testWidgets('renders nothing for $name', (tester) async {
         await pumpThread(tester, thread);
         expect(find.byKey(const Key('threadView')), findsNothing);
-        expect(find.text('Close thread'), findsNothing);
+        expect(tooltip('Close thread'), findsNothing);
       });
     }
 
@@ -175,7 +175,7 @@ void main() {
   group('actions', () {
     testWidgets('close button closes the thread', (tester) async {
       final recorded = await pumpThread(tester, threadOf());
-      await tester.tap(find.text('Close thread'));
+      await tester.tap(tooltip('Close thread'));
       expect(recorded.calls, ['closeThread']);
     });
 
@@ -203,7 +203,7 @@ void main() {
       tester,
     ) async {
       await pumpThread(tester, threadOf(replies: []));
-      await tester.tap(find.text('Mention'));
+      await tester.tap(tooltip('Mention'));
       await tester.pump();
       final field = tester.widget<TextField>(
         find.byKey(const Key('messageDraft')),

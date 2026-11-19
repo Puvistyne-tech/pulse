@@ -136,14 +136,12 @@ Future<RecordedIntents> pumpRoom(
   final recorded = RecordedIntents();
   await pumpView(
     tester,
-    SingleChildScrollView(
-      child: RoomView(
-        timeline: timeline,
-        intents: recorded.intents,
-        presets: presets,
-        pickerAnchorMs: pickerAnchorMs,
-        pickerLatestMs: pickerLatestMs,
-      ),
+    RoomView(
+      timeline: timeline,
+      intents: recorded.intents,
+      presets: presets,
+      pickerAnchorMs: pickerAnchorMs,
+      pickerLatestMs: pickerLatestMs,
     ),
   );
   return recorded;
@@ -330,10 +328,13 @@ void main() {
       expect(find.text('latest words'), findsOneWidget);
     });
 
-    for (final label in ['Open thread', 'Reply in thread']) {
+    for (final (label, target) in [
+      ('Open thread', find.text('Open thread')),
+      ('Reply in thread', tooltip('Reply in thread')),
+    ]) {
       testWidgets('$label opens the thread of the entry', (tester) async {
         final recorded = await pumpRoom(tester, timelineOf([threadedEntry()]));
-        await tester.tap(find.text(label));
+        await tester.tap(target);
         expect(recorded.calls, [('openThread', roomAId, messageAId)]);
       });
     }
@@ -365,7 +366,7 @@ void main() {
       tester,
     ) async {
       await pumpRoom(tester, timelineOf([confirmedEntry, mentionEntry]));
-      final buttons = find.text('Mention');
+      final buttons = tooltip('Mention');
       await tester.tap(buttons.first);
       await tester.pump();
       expect(draftText(tester), '${mentionToken(graceId)} ');
@@ -377,7 +378,7 @@ void main() {
 
     testWidgets('own entries have no mention button', (tester) async {
       await pumpRoom(tester, timelineOf([confirmedOwnEntry, pendingEntry]));
-      expect(find.text('Mention'), findsNothing);
+      expect(tooltip('Mention'), findsNothing);
     });
   });
 
@@ -412,7 +413,7 @@ void main() {
         await pumpRoom(tester, timelineOf([]));
         await tester.enterText(find.byKey(const Key('messageDraft')), draft);
         await tester.pump();
-        final button = tester.widget<ElevatedButton>(
+        final button = tester.widget<IconButton>(
           find.byKey(const Key('sendMessage')),
         );
         expect(button.onPressed == null, disabled);
@@ -424,7 +425,7 @@ void main() {
     testWidgets('renders nothing without an active room', (tester) async {
       await pumpRoom(tester, emptyTimeline);
       expect(find.byKey(const Key('messageDraft')), findsNothing);
-      expect(find.text('Send'), findsNothing);
+      expect(tooltip('Send'), findsNothing);
     });
 
     for (final (name, error, notice) in [
@@ -631,7 +632,7 @@ void main() {
         tester,
         timelineOf([], drafts: [draftOf(UploadState.uploaded)]),
       );
-      final button = tester.widget<ElevatedButton>(
+      final button = tester.widget<IconButton>(
         find.byKey(const Key('sendMessage')),
       );
       expect(button.onPressed, isNotNull);
@@ -664,12 +665,9 @@ void main() {
     ]) {
       testWidgets('pin button $name', (tester) async {
         await pumpRoom(tester, timelineOf([entry], canPin: canPin));
+        expect(tooltip('Pin'), label == 'Pin' ? findsOneWidget : findsNothing);
         expect(
-          find.text('Pin'),
-          label == 'Pin' ? findsOneWidget : findsNothing,
-        );
-        expect(
-          find.text('Unpin'),
+          tooltip('Unpin'),
           label == 'Unpin' ? findsOneWidget : findsNothing,
         );
       });
@@ -681,7 +679,7 @@ void main() {
           tester,
           timelineOf([gracesEntryWith(pinned: pinned)], canPin: true),
         );
-        await tester.tap(find.text(pinned ? 'Unpin' : 'Pin'));
+        await tester.tap(tooltip(pinned ? 'Unpin' : 'Pin'));
         expect(recorded.calls, [('setPin', roomAId, messageAId, next)]);
       });
     }
@@ -698,7 +696,7 @@ void main() {
           timelineOf([gracesEntryWith(shelved: shelved)]),
           presets: allPresets,
         );
-        await tester.tap(find.text('Shelf'));
+        await tester.tap(tooltip('Shelf'));
         await tester.pumpAndSettle();
         expect(find.text(label), findsOneWidget);
         expect(find.text(absent), findsNothing);
@@ -717,7 +715,7 @@ void main() {
           timelineOf([gracesEntryWith()]),
           presets: allPresets,
         );
-        await tester.tap(find.text('Shelf'));
+        await tester.tap(tooltip('Shelf'));
         await tester.pumpAndSettle();
         await tester.tap(find.text(label));
         await tester.pumpAndSettle();
@@ -737,7 +735,7 @@ void main() {
         pickerAnchorMs: pickerAnchor,
         pickerLatestMs: pickerLatest,
       );
-      await tester.tap(find.text('Shelf'));
+      await tester.tap(tooltip('Shelf'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('shelfCustomTime')));
       await tester.pumpAndSettle();

@@ -15,6 +15,7 @@ import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/shelf.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/snapshot.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/thread.dart';
 import 'package:pulse_mobile/src/rust/third_party/pulse_protocol/version.dart';
+import 'package:pulse_mobile/theme/pulse_theme.dart';
 import 'package:uuid/uuid.dart';
 
 const _version = ProtocolVersion(field0: 4);
@@ -701,6 +702,34 @@ final signedInWithRooms = _snapshot(
   timeline: timelineOf([]),
 );
 
+final campusC = CampusSummary(
+  campusId: CampusId(field0: _uuid('0c')),
+  slug: 'gamma',
+  displayName: 'Gamma Campus',
+  role: Role.owner,
+);
+
+final signedInWithSlugConflict = _snapshot(
+  auth: AuthPhase.signedIn,
+  profile: account,
+  campuses: [campusA, campusB],
+  activeCampusId: campusAId,
+  roomList: rooms,
+  activeRoomId: roomAId,
+  timeline: timelineOf([]),
+  error: const ApiError(code: ApiErrorCode.conflict, field: InputField.slug),
+);
+
+final signedInWithThreeCampuses = _snapshot(
+  auth: AuthPhase.signedIn,
+  profile: account,
+  campuses: [campusA, campusB, campusC],
+  activeCampusId: campusAId,
+  roomList: rooms,
+  activeRoomId: roomAId,
+  timeline: timelineOf([]),
+);
+
 final signedInWithMessages = _snapshot(
   auth: AuthPhase.signedIn,
   profile: account,
@@ -822,8 +851,27 @@ class RecordedIntents {
   late final PulseIntents intents;
 }
 
-Future<void> pumpView(WidgetTester tester, Widget child) =>
-    tester.pumpWidget(MaterialApp(home: Scaffold(body: child)));
+Future<void> pumpView(WidgetTester tester, Widget child) => tester.pumpWidget(
+  MaterialApp(
+    theme: pulseLightTheme(),
+    darkTheme: pulseDarkTheme(),
+    home: Scaffold(body: child),
+  ),
+);
+
+Future<void> pumpWide(WidgetTester tester, Widget child) async {
+  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await pumpView(tester, child);
+}
+
+Finder tooltip(String message) => find.byTooltip(message);
+
+Finder badgeCount(String tooltipMessage, int count) => find.descendant(
+  of: find.byTooltip(tooltipMessage),
+  matching: find.text('$count'),
+);
 
 const signInRequest = SignInRequest(
   email: 'ada@example.test',

@@ -1,3 +1,4 @@
+import { Bookmark, Check, RotateCcw } from "lucide-react";
 import type {
   ReminderPreset,
   ShelfEntry,
@@ -5,6 +6,8 @@ import type {
 } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
 import { ErrorNotice } from "../session/ErrorNotice";
+import { Panel } from "../ui/Panel";
+import { ui } from "../ui/styles";
 import { ShelfMenu } from "./ShelfMenu";
 
 const remindFormat = new Intl.DateTimeFormat(undefined, {
@@ -28,22 +31,23 @@ function ShelfSection({
   intents,
 }: ShelfSectionProps) {
   return (
-    <section aria-label={title} className="space-y-1">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <ul className="space-y-1">
+    <section aria-label={title} className="space-y-2">
+      <h3 className={ui.sectionTitle}>{title}</h3>
+      {entries.length === 0 && <p className="text-xs text-subtle">Nothing here.</p>}
+      <ul className="space-y-2">
         {entries.map((entry) => (
-          <li key={entry.message_id} className="text-sm">
-            <span className="block text-xs text-slate-600">
+          <li key={entry.message_id} className="space-y-1.5 rounded-xl border border-line p-3 text-sm">
+            <span className="block text-xs text-subtle">
               {entry.author_display_name}
               {entry.remind_at_ms !== null &&
                 ` ${remindFormat.format(entry.remind_at_ms)}`}
               {entry.pending && " Saving"}
             </span>
-            <span className="block">{entry.preview}</span>
-            <span className="flex gap-3 text-xs">
+            <span className="block text-ink">{entry.preview}</span>
+            <span className="flex flex-wrap items-center gap-1">
               {entry.bucket === "done" ? (
                 <button
-                  className="underline"
+                  className={ui.ghostButton}
                   type="button"
                   onClick={() =>
                     void intents.updateShelf(
@@ -55,11 +59,12 @@ function ShelfSection({
                     )
                   }
                 >
+                  <RotateCcw size={13} aria-hidden="true" />
                   Reopen
                 </button>
               ) : (
                 <button
-                  className="underline"
+                  className={ui.ghostButton}
                   type="button"
                   onClick={() =>
                     void intents.updateShelf(
@@ -71,6 +76,7 @@ function ShelfSection({
                     )
                   }
                 >
+                  <Check size={13} aria-hidden="true" />
                   Complete
                 </button>
               )}
@@ -102,40 +108,23 @@ interface ShelfViewProps {
 }
 
 export function ShelfView({ shelf, intents }: ShelfViewProps) {
+  const customTime = shelf.picker_anchor_ms !== null;
   return (
-    <section aria-label="Shelf" className="space-y-2">
-      <header className="flex items-center justify-between">
-        <h2 className="font-semibold">Shelf</h2>
-        <button
-          className="text-sm underline"
-          type="button"
-          onClick={() => void intents.toggleShelf()}
-        >
-          Close shelf
-        </button>
-      </header>
+    <Panel
+      label="Shelf"
+      title={
+        <>
+          <Bookmark size={16} aria-hidden="true" className="text-accent" />
+          Shelf
+        </>
+      }
+      closeLabel="Close shelf"
+      onClose={() => void intents.toggleShelf()}
+    >
       <ErrorNotice error={shelf.error} />
-      <ShelfSection
-        title="Due"
-        entries={shelf.due}
-        presets={shelf.presets}
-        customTime={shelf.picker_anchor_ms !== null}
-        intents={intents}
-      />
-      <ShelfSection
-        title="Upcoming"
-        entries={shelf.upcoming}
-        presets={shelf.presets}
-        customTime={shelf.picker_anchor_ms !== null}
-        intents={intents}
-      />
-      <ShelfSection
-        title="Done"
-        entries={shelf.done}
-        presets={shelf.presets}
-        customTime={shelf.picker_anchor_ms !== null}
-        intents={intents}
-      />
-    </section>
+      <ShelfSection title="Due" entries={shelf.due} presets={shelf.presets} customTime={customTime} intents={intents} />
+      <ShelfSection title="Upcoming" entries={shelf.upcoming} presets={shelf.presets} customTime={customTime} intents={intents} />
+      <ShelfSection title="Done" entries={shelf.done} presets={shelf.presets} customTime={customTime} intents={intents} />
+    </Panel>
   );
 }

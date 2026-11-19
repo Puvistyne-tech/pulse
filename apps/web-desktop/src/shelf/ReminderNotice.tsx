@@ -1,4 +1,6 @@
+import { BellRing } from "lucide-react";
 import type { ShelfEntry } from "@pulse/protocol";
+import { ui } from "../ui/styles";
 
 interface ReminderNoticeProps {
   entry: ShelfEntry;
@@ -10,12 +12,15 @@ export function ReminderNotice({ entry, dismiss }: ReminderNoticeProps) {
     <div
       role="status"
       aria-label="Reminder"
-      className="flex items-center justify-between rounded bg-amber-50 p-2 text-sm"
+      className="fixed right-5 top-5 z-50 flex w-80 items-start gap-3 rounded-xl border border-warning/30 bg-surface p-3 text-sm shadow-panel"
     >
-      <span>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning-soft text-warning">
+        <BellRing size={16} aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1 text-ink">
         {entry.author_display_name}: {entry.preview}
       </span>
-      <button className="underline" type="button" onClick={() => void dismiss()}>
+      <button className={ui.ghostButton} type="button" onClick={() => void dismiss()}>
         Dismiss
       </button>
     </div>

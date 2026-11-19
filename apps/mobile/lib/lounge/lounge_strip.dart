@@ -1,7 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../shell/sidebar_section.dart';
 import '../src/rust/third_party/pulse_protocol/lounge.dart';
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
+import '../theme/pulse_theme.dart';
 
 String _loungeLabel(LoungeEntry entry) => entry.scope == LoungeScope.campus
     ? 'Campus lounge'
@@ -17,31 +19,45 @@ class LoungeStrip extends StatelessWidget {
     if (lounges.lounges.isEmpty) {
       return const SizedBox.shrink();
     }
+    final tokens = PulseTokens.of(context);
     return Column(
       key: const Key('loungeStrip'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Lounges', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SidebarHeading(label: 'Lounges'),
         for (final entry in lounges.lounges)
-          Row(
+          Padding(
             key: ValueKey(entry.loungeId),
-            children: [
-              Text(_loungeLabel(entry)),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  entry.participants.isEmpty
-                      ? 'Nobody here'
-                      : entry.participants
-                            .map(
-                              (participant) => participant.fromSelf
-                                  ? 'You'
-                                  : participant.displayName,
-                            )
-                            .join(', '),
+            padding: const EdgeInsets.symmetric(
+              horizontal: PulseSpacing.lg,
+              vertical: PulseSpacing.xs,
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.graphic_eq, size: 16, color: tokens.sidebarMuted),
+                const SizedBox(width: PulseSpacing.sm),
+                Text(
+                  _loungeLabel(entry),
+                  style: TextStyle(color: tokens.sidebarText),
                 ),
-              ),
-            ],
+                const SizedBox(width: PulseSpacing.sm),
+                Flexible(
+                  child: Text(
+                    entry.participants.isEmpty
+                        ? 'Nobody here'
+                        : entry.participants
+                              .map(
+                                (participant) => participant.fromSelf
+                                    ? 'You'
+                                    : participant.displayName,
+                              )
+                              .join(', '),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: tokens.sidebarMuted, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
       ],
     );

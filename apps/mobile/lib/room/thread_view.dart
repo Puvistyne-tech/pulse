@@ -3,6 +3,8 @@ import 'package:material_ui/material_ui.dart';
 import '../client/pulse_intents.dart';
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
 import '../src/rust/third_party/pulse_protocol/thread.dart';
+import '../shell/panel_card.dart';
+import '../theme/pulse_theme.dart';
 import 'composer.dart';
 import 'timeline_view.dart';
 
@@ -69,67 +71,70 @@ class _ThreadViewState extends State<ThreadView> {
       discardMessage: intents.discardMessage,
       mention: (token) => setState(() => _insertion = Insertion(token)),
     );
-    return Column(
-      key: const Key('threadView'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Thread'),
-            TextButton(
-              onPressed: intents.closeThread,
-              child: const Text('Close thread'),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                key: const Key('topicTitleDraft'),
-                controller: _title,
-                decoration: const InputDecoration(labelText: 'Topic title'),
+    final tokens = PulseTokens.of(context);
+    return PanelCard(
+      cardKey: const Key('threadView'),
+      title: 'Thread',
+      closeLabel: 'Close thread',
+      onClose: intents.closeThread,
+      footer: Composer(
+        label: 'Reply',
+        insertion: _insertion,
+        onSend: (body) => intents.sendReply(roomId, rootId, body),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('topicTitleDraft'),
+                  controller: _title,
+                  decoration: const InputDecoration(labelText: 'Topic title'),
+                ),
               ),
-            ),
-            TextButton(
-              onPressed: () =>
-                  intents.setTopicTitle(roomId, rootId, _title.text),
-              child: const Text('Save title'),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            for (final entry in _subscriptionLabels.entries)
+              const SizedBox(width: PulseSpacing.sm),
               TextButton(
-                key: ValueKey('subscription-${entry.key.name}'),
-                style: thread.subscription == entry.key
-                    ? TextButton.styleFrom(
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      )
-                    : null,
                 onPressed: () =>
-                    intents.setThreadSubscription(roomId, rootId, entry.key),
-                child: Text(entry.value),
+                    intents.setTopicTitle(roomId, rootId, _title.text),
+                child: const Text('Save title'),
               ),
-          ],
-        ),
-        if (thread.syncing) const Text('Syncing'),
-        for (final entry in entries)
-          MessageEntryView(
-            key: ValueKey(entry.messageId ?? entry.clientNonce),
-            entry: entry,
-            roomId: roomId,
-            palette: widget.palette,
-            actions: actions,
+            ],
           ),
-        Composer(
-          label: 'Reply',
-          insertion: _insertion,
-          onSend: (body) => intents.sendReply(roomId, rootId, body),
-        ),
-      ],
+          const SizedBox(height: PulseSpacing.sm),
+          Wrap(
+            spacing: PulseSpacing.xs,
+            children: [
+              for (final entry in _subscriptionLabels.entries)
+                TextButton(
+                  key: ValueKey('subscription-${entry.key.name}'),
+                  style: thread.subscription == entry.key
+                      ? TextButton.styleFrom(
+                          backgroundColor: tokens.accentSoft,
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : TextButton.styleFrom(foregroundColor: tokens.textMuted),
+                  onPressed: () =>
+                      intents.setThreadSubscription(roomId, rootId, entry.key),
+                  child: Text(entry.value),
+                ),
+            ],
+          ),
+          if (thread.syncing)
+            Text('Syncing', style: TextStyle(color: tokens.textMuted)),
+          for (final entry in entries)
+            MessageEntryView(
+              key: ValueKey(entry.messageId ?? entry.clientNonce),
+              entry: entry,
+              roomId: roomId,
+              palette: widget.palette,
+              actions: actions,
+            ),
+        ],
+      ),
     );
   }
 }

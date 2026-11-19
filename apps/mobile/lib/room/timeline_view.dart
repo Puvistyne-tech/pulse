@@ -1,11 +1,13 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../src/rust/third_party/pulse_protocol/ids.dart';
 import '../shelf/shelf_menu.dart';
+import '../src/rust/third_party/pulse_protocol/ids.dart';
 import '../src/rust/third_party/pulse_protocol/messaging.dart';
 import '../src/rust/third_party/pulse_protocol/reaction.dart';
 import '../src/rust/third_party/pulse_protocol/shelf.dart';
 import '../src/rust/third_party/pulse_protocol/snapshot.dart';
+import '../theme/pulse_avatar.dart';
+import '../theme/pulse_theme.dart';
 import 'attachment_list.dart';
 import 'latest_reply_bar.dart';
 import 'message_body.dart';
@@ -59,6 +61,59 @@ class EntryActions {
   final bool canPin;
 }
 
+class _ActionIcon extends StatelessWidget {
+  const _ActionIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      iconSize: 18,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      padding: EdgeInsets.zero,
+      icon: Icon(icon),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.label, required this.background, this.color});
+
+  final String label;
+  final Color background;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = PulseTokens.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(PulseRadius.pill),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color ?? tokens.accent,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class MessageEntryView extends StatelessWidget {
   const MessageEntryView({
     required this.entry,
@@ -81,18 +136,27 @@ class MessageEntryView extends StatelessWidget {
   final BigInt? pickerLatestMs;
   final bool focused;
 
-  Widget _status() {
+  Widget _status(PulseTokens tokens) {
     switch (entry.delivery) {
       case DeliveryState.pending:
-        return const Text('Sending');
+        return Text(
+          'Sending',
+          style: TextStyle(color: tokens.textMuted, fontSize: 12),
+        );
       case DeliveryState.failed:
         final rejection = entry.rejection;
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(rejection == null ? 'Failed' : _rejectionLabels[rejection]!),
+            Icon(Icons.error_outline, size: 14, color: tokens.danger),
+            const SizedBox(width: PulseSpacing.xs),
+            Text(
+              rejection == null ? 'Failed' : _rejectionLabels[rejection]!,
+              style: TextStyle(color: tokens.danger, fontSize: 12),
+            ),
             TextButton(
               onPressed: () => actions.discardMessage(entry.clientNonce),
+              style: TextButton.styleFrom(foregroundColor: tokens.danger),
               child: const Text('Discard'),
             ),
           ],
@@ -102,98 +166,188 @@ class MessageEntryView extends StatelessWidget {
     }
   }
 
+  Widget _threadSummary(
+    PulseTokens tokens,
+    ThreadPreview thread,
+    VoidCallback? open,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(top: PulseSpacing.sm),
+      child: Material(
+        color: tokens.surfaceMuted,
+        borderRadius: BorderRadius.circular(PulseRadius.control),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(PulseRadius.control),
+          onTap: open,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: PulseSpacing.md,
+              vertical: PulseSpacing.sm,
+            ),
+            child: Wrap(
+              spacing: PulseSpacing.sm,
+              runSpacing: PulseSpacing.xs,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Icon(Icons.forum_outlined, size: 16, color: tokens.accent),
+                if (thread.topicTitle != null)
+                  Text(
+                    thread.topicTitle!,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                Text(
+                  'Replies ${thread.replyCount}',
+                  style: TextStyle(
+                    color: tokens.accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (thread.subscription != null)
+                  Text(
+                    thread.subscription!.name,
+                    style: TextStyle(color: tokens.textMuted, fontSize: 12),
+                  ),
+                if (thread.unreadReplies > 0)
+                  _Pill(
+                    label: '${thread.unreadReplies}',
+                    background: tokens.accent,
+                    color: tokens.onAccent,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final tokens = PulseTokens.of(context);
     final messageId = entry.messageId;
     final thread = entry.thread;
     final openThread = actions.openThread;
     final setPin = actions.setPin;
     final updateShelf = actions.updateShelf;
+    final pending = entry.delivery == DeliveryState.pending;
+    final failed = entry.delivery == DeliveryState.failed;
+    final bodyColor = pending
+        ? tokens.textMuted
+        : failed
+        ? tokens.danger
+        : tokens.text;
     return _FocusScroll(
       focused: focused,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(entry.fromSelf ? 'You' : entry.authorDisplayName),
-              if (entry.authorIsSteward) ...[
-                const SizedBox(width: 4),
-                const Text('Steward'),
-              ],
-              const SizedBox(width: 8),
-              Flexible(child: MessageBody(segments: entry.segments)),
-              const SizedBox(width: 8),
-              if (entry.stream != null) Text(_streamLabels[entry.stream]!),
-              _status(),
-            ],
-          ),
-          AttachmentList(attachments: entry.attachments),
-          if (thread != null)
-            Row(
-              children: [
-                if (thread.topicTitle != null) Text(thread.topicTitle!),
-                const SizedBox(width: 8),
-                Text('Replies ${thread.replyCount}'),
-                if (thread.subscription != null) ...[
-                  const SizedBox(width: 8),
-                  Text(thread.subscription!.name),
-                ],
-                if (thread.unreadReplies > 0) ...[
-                  const SizedBox(width: 8),
-                  Text('${thread.unreadReplies}'),
-                ],
-              ],
-            ),
-          if (thread != null && messageId != null && openThread != null)
-            LatestReplyBar(
-              thread: thread,
-              openThread: () => openThread(roomId, messageId),
-            ),
-          if (messageId != null)
-            ReactionsView(
-              roomId: roomId,
-              messageId: messageId,
-              reactions: entry.reactions,
-              palette: palette,
-              react: actions.react,
-            ),
-          Row(
-            children: [
-              if (messageId != null &&
-                  openThread != null &&
-                  entry.threadRootId == null)
-                TextButton(
-                  onPressed: () => openThread(roomId, messageId),
-                  child: const Text('Reply in thread'),
-                ),
-              if (!entry.fromSelf)
-                TextButton(
-                  onPressed: () => actions.mention(entry.authorMentionToken),
-                  child: const Text('Mention'),
-                ),
-              if (messageId != null && actions.canPin && setPin != null)
-                TextButton(
-                  onPressed: () => setPin(roomId, messageId, !entry.pinned),
-                  child: Text(entry.pinned ? 'Unpin' : 'Pin'),
-                ),
-              if (messageId != null && updateShelf != null)
-                ShelfMenu(
-                  presets: presets,
-                  shelved: entry.shelved,
-                  pickerAnchorMs: pickerAnchorMs,
-                  pickerLatestMs: pickerLatestMs,
-                  onUpdate: (action, preset, remindAtMs) => updateShelf(
-                    roomId,
-                    messageId,
-                    action,
-                    preset,
-                    remindAtMs,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: PulseSpacing.sm),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PulseAvatar(name: entry.authorDisplayName),
+            const SizedBox(width: PulseSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: PulseSpacing.sm,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        entry.fromSelf ? 'You' : entry.authorDisplayName,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      if (entry.authorIsSteward)
+                        _Pill(label: 'Steward', background: tokens.accentSoft),
+                      if (entry.stream != null)
+                        Text(
+                          _streamLabels[entry.stream]!,
+                          style: TextStyle(
+                            color: tokens.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      _status(tokens),
+                    ],
                   ),
-                ),
-            ],
-          ),
-        ],
+                  const SizedBox(height: PulseSpacing.xs),
+                  DefaultTextStyle.merge(
+                    style: TextStyle(color: bodyColor, height: 1.4),
+                    child: Row(
+                      children: [
+                        Flexible(child: MessageBody(segments: entry.segments)),
+                      ],
+                    ),
+                  ),
+                  AttachmentList(attachments: entry.attachments),
+                  if (thread != null)
+                    _threadSummary(
+                      tokens,
+                      thread,
+                      messageId != null && openThread != null
+                          ? () => openThread(roomId, messageId)
+                          : null,
+                    ),
+                  if (thread != null && messageId != null && openThread != null)
+                    LatestReplyBar(
+                      thread: thread,
+                      openThread: () => openThread(roomId, messageId),
+                    ),
+                  if (messageId != null)
+                    ReactionsView(
+                      roomId: roomId,
+                      messageId: messageId,
+                      reactions: entry.reactions,
+                      palette: palette,
+                      react: actions.react,
+                    ),
+                  Row(
+                    children: [
+                      if (messageId != null &&
+                          openThread != null &&
+                          entry.threadRootId == null)
+                        _ActionIcon(
+                          icon: Icons.forum_outlined,
+                          tooltip: 'Reply in thread',
+                          onPressed: () => openThread(roomId, messageId),
+                        ),
+                      if (messageId != null && actions.canPin && setPin != null)
+                        _ActionIcon(
+                          icon: entry.pinned
+                              ? Icons.push_pin
+                              : Icons.push_pin_outlined,
+                          tooltip: entry.pinned ? 'Unpin' : 'Pin',
+                          onPressed: () =>
+                              setPin(roomId, messageId, !entry.pinned),
+                        ),
+                      if (messageId != null && updateShelf != null)
+                        ShelfMenu(
+                          presets: presets,
+                          shelved: entry.shelved,
+                          pickerAnchorMs: pickerAnchorMs,
+                          pickerLatestMs: pickerLatestMs,
+                          onUpdate: (action, preset, remindAtMs) => updateShelf(
+                            roomId,
+                            messageId,
+                            action,
+                            preset,
+                            remindAtMs,
+                          ),
+                        ),
+                      if (!entry.fromSelf)
+                        _ActionIcon(
+                          icon: Icons.alternate_email,
+                          tooltip: 'Mention',
+                          onPressed: () =>
+                              actions.mention(entry.authorMentionToken),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -259,10 +413,15 @@ class TimelineView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = PulseTokens.of(context);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (timeline.syncing) const Text('Syncing'),
+        if (timeline.syncing)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: PulseSpacing.sm),
+            child: Text('Syncing', style: TextStyle(color: tokens.textMuted)),
+          ),
         for (final entry in timeline.entries)
           MessageEntryView(
             key: ValueKey(entry.messageId ?? entry.clientNonce),

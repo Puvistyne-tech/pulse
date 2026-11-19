@@ -33,6 +33,7 @@ class SnapshotView extends StatelessWidget {
       textDirection: TextDirection.ltr,
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(phaseLabel(network.connection)),
           Text('Protocol version ${network.protocolVersion.field0}'),

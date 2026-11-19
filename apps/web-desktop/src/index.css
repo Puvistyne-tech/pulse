@@ -1,1 +1,99 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-canvas: var(--pulse-canvas);
+  --color-surface: var(--pulse-surface);
+  --color-muted: var(--pulse-muted);
+  --color-line: var(--pulse-line);
+  --color-ink: var(--pulse-ink);
+  --color-subtle: var(--pulse-subtle);
+  --color-accent: var(--pulse-accent);
+  --color-accent-strong: var(--pulse-accent-strong);
+  --color-accent-soft: var(--pulse-accent-soft);
+  --color-on-accent: var(--pulse-on-accent);
+  --color-danger: var(--pulse-danger);
+  --color-danger-soft: var(--pulse-danger-soft);
+  --color-warning: var(--pulse-warning);
+  --color-warning-soft: var(--pulse-warning-soft);
+  --color-success: var(--pulse-success);
+  --color-side: var(--pulse-side);
+  --color-side-ink: var(--pulse-side-ink);
+  --color-side-subtle: var(--pulse-side-subtle);
+  --color-side-hover: var(--pulse-side-hover);
+  --color-rail: var(--pulse-rail);
+  --shadow-panel: 0 1px 2px rgb(16 24 40 / 0.06), 0 12px 32px -12px rgb(16 24 40 / 0.18);
+}
+
+:root {
+  color-scheme: light;
+  --pulse-canvas: #ffffff;
+  --pulse-surface: #ffffff;
+  --pulse-muted: #f6f7f9;
+  --pulse-line: #e4e7ec;
+  --pulse-ink: #101828;
+  --pulse-subtle: #667085;
+  --pulse-accent: #0f9f8f;
+  --pulse-accent-strong: #0b8577;
+  --pulse-accent-soft: #e6f6f4;
+  --pulse-on-accent: #ffffff;
+  --pulse-danger: #d92d20;
+  --pulse-danger-soft: #fef3f2;
+  --pulse-warning: #dc6803;
+  --pulse-warning-soft: #fffaeb;
+  --pulse-success: #079455;
+  --pulse-side: #10162a;
+  --pulse-side-ink: #c8cfdc;
+  --pulse-side-subtle: #7d879c;
+  --pulse-side-hover: rgb(255 255 255 / 0.06);
+  --pulse-rail: #0a0f1e;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --pulse-canvas: #0e1220;
+  --pulse-surface: #141a2b;
+  --pulse-muted: #1b2236;
+  --pulse-line: #263049;
+  --pulse-ink: #e6e9f0;
+  --pulse-subtle: #98a2b3;
+  --pulse-accent: #2bc4b2;
+  --pulse-accent-strong: #4fd6c6;
+  --pulse-accent-soft: rgb(43 196 178 / 0.14);
+  --pulse-on-accent: #04201c;
+  --pulse-danger: #f97066;
+  --pulse-danger-soft: rgb(249 112 102 / 0.12);
+  --pulse-warning: #fdb022;
+  --pulse-warning-soft: rgb(253 176 34 / 0.12);
+  --pulse-success: #47cd89;
+  --pulse-side: #0a0e1a;
+  --pulse-side-ink: #c8cfdc;
+  --pulse-side-subtle: #7d879c;
+  --pulse-side-hover: rgb(255 255 255 / 0.05);
+  --pulse-rail: #070a14;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--pulse-canvas);
+  color: var(--pulse-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pulse-line) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--pulse-accent);
+  outline-offset: 2px;
+}

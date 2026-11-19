@@ -5,6 +5,7 @@ import type {
   ClientSnapshot,
   CreateCampusRequest,
   JoinCampusRequest,
+  StartNoteRequest,
   AddMemberRequest,
   UpdateMemberRequest,
   DraftId,
@@ -39,6 +40,8 @@ export const pulseClient = {
     invoke<ClientSnapshot>("join_campus", { request }),
   createInvite: () => invoke<ClientSnapshot>("create_invite"),
   loadMembers: () => invoke<ClientSnapshot>("load_members"),
+  startNote: (request: StartNoteRequest) =>
+    invoke<ClientSnapshot>("start_note", { request }),
   addMember: (request: AddMemberRequest) =>
     invoke<ClientSnapshot>("add_member", { request }),
   updateMember: (accountId: AccountId, request: UpdateMemberRequest) =>

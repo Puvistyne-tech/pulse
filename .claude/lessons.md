@@ -52,3 +52,5 @@ Imperative rules distilled from guardian rejections, hook blocks, and failed gat
 - Never ship two rule functions with identical bodies; make one delegate or delete it.
 - Test revocation fan-out with the revoked socket, a bystander in the same campus, and the revoked account in another campus.
 - Server test suites leave `pulse_test_*` databases behind; drop them when they reach the thousands or Postgres crashes mid-run.
+- Every room-scoped client frame passes one membership gate in `handle_frame` before its handler; add new room-scoped frames to `closed_room_reply` and to the outsider probe table in `tests/notes.rs`.
+- Private rooms (Notes) never get lounges, never appear in campus room lists, and can never be assigned to stewards; filter with the shared `NOT_A_NOTE` fragment.

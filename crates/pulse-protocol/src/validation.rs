@@ -3,13 +3,14 @@ use crate::auth::{SignInRequest, SignUpRequest};
 use crate::campus::{
     CreateCampusRequest, CreateRoomRequest, INVITE_CODE_SEPARATOR, InviteCode, JoinCampusRequest,
 };
-use crate::ids::{AttachmentId, CampusId, RoomId};
+use crate::ids::{AccountId, AttachmentId, CampusId, RoomId};
 use crate::media::{
     ATTACHMENT_MAX_BYTES, CONTENT_TYPE_MAX_CHARS, CreateUploadRequest, FILE_NAME_MAX_CHARS,
     MESSAGE_ATTACHMENTS_MAX,
 };
 use crate::member::{ASSIGNABLE_ROLES, AddMemberRequest, UpdateMemberRequest};
 use crate::messaging::SendMessage;
+use crate::note::{NOTE_MEMBERS_MAX, NOTE_SLUG_PREFIX};
 use crate::rbac::Role;
 use crate::reaction::React;
 use crate::search::{SEARCH_QUERY_MAX_CHARS, SEARCH_TERMS_MAX, search_terms};
@@ -229,7 +230,11 @@ pub fn validate_slug(raw: &str) -> Result<(), InputField> {
         && raw
             .chars()
             .all(|character| is_alphanumeric(character) || character == '-');
-    if valid { Ok(()) } else { Err(InputField::Slug) }
+    if valid && !raw.starts_with(NOTE_SLUG_PREFIX) {
+        Ok(())
+    } else {
+        Err(InputField::Slug)
+    }
 }
 
 pub fn normalize_invite_code(raw: &str) -> Result<InviteCode, InputField> {
@@ -249,6 +254,24 @@ pub fn normalize_invite_code(raw: &str) -> Result<InviteCode, InputField> {
         })
     } else {
         Err(InputField::InviteCode)
+    }
+}
+
+pub fn normalize_note_members(
+    requested: &[AccountId],
+    starter: AccountId,
+) -> Result<Vec<AccountId>, InputField> {
+    let mut others: Vec<AccountId> = requested
+        .iter()
+        .copied()
+        .filter(|account_id| *account_id != starter)
+        .collect();
+    others.sort_by_key(|account_id| account_id.to_string());
+    others.dedup();
+    if others.is_empty() || others.len() > NOTE_MEMBERS_MAX {
+        Err(InputField::NoteMembers)
+    } else {
+        Ok(others)
     }
 }
 

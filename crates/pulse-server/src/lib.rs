@@ -9,6 +9,7 @@ pub mod media;
 pub mod member;
 pub mod message;
 pub mod migrate;
+pub mod note;
 pub mod pin;
 pub mod publish;
 pub mod reaction;

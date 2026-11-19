@@ -144,6 +144,7 @@ fn signed_out_expect() -> Expect {
             RecordedCall::SignIn(sign_in_request()),
             RecordedCall::ListCampuses(token_a()),
             RecordedCall::ListRooms(token_a(), CAMPUS_A),
+            RecordedCall::ListNotes(token_a(), CAMPUS_A),
         ],
         ..signed_in_expect()
     },

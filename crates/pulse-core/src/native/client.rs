@@ -5,8 +5,8 @@ use std::sync::Arc;
 use pulse_protocol::{
     AccountId, AddMemberRequest, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest,
     DraftId, InboxStep, JoinCampusRequest, LoungeId, LoungeMediaState, MessageId, ReactionAction,
-    ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest, SubscriptionState,
-    UpdateMemberRequest, VaultTab,
+    ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest, StartNoteRequest,
+    SubscriptionState, UpdateMemberRequest, VaultTab,
 };
 use tokio::runtime::{Builder, Runtime};
 
@@ -208,6 +208,11 @@ impl NativeClient {
 
     pub async fn create_invite(&self) -> ClientSnapshot {
         self.run(Intent::Session(SessionEvent::InviteRequested))
+            .await
+    }
+
+    pub async fn start_note(&self, request: StartNoteRequest) -> ClientSnapshot {
+        self.run(Intent::Session(SessionEvent::StartNoteRequested(request)))
             .await
     }
 

@@ -10,6 +10,7 @@ use crate::auth::token_digest;
 pub use crate::auth::{StewardCredential, mint_steward_token, resolve_steward_token};
 use crate::campus::campus_role;
 use crate::message::fetch_messages;
+use crate::note::NOT_A_NOTE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StewardOutcome {
@@ -270,9 +271,10 @@ async fn rooms_exist(
     room_ids: &[RoomId],
 ) -> Result<bool, sqlx::Error> {
     let ids: Vec<Uuid> = room_ids.iter().map(|room_id| room_id.as_uuid()).collect();
-    let found = sqlx::query_scalar::<_, i64>(
-        "SELECT count(*) FROM rooms WHERE campus_id = $1 AND room_id = ANY($2)",
-    )
+    let found = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(format!(
+        "SELECT count(*) FROM rooms r WHERE r.campus_id = $1 AND r.room_id = ANY($2) \
+         AND {NOT_A_NOTE}"
+    )))
     .bind(campus_id.as_uuid())
     .bind(&ids)
     .fetch_one(connection)

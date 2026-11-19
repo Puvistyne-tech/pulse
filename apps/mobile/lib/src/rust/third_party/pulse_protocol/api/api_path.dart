@@ -20,6 +20,9 @@ Future<String> campusInvites({required CampusId campusId}) => RustLib
     .api
     .pulseProtocolApiApiPathCampusInvites(campusId: campusId);
 
+Future<String> campusNotes({required CampusId campusId}) =>
+    RustLib.instance.api.pulseProtocolApiApiPathCampusNotes(campusId: campusId);
+
 Future<String> campusMembers({required CampusId campusId}) => RustLib
     .instance
     .api

@@ -772,7 +772,8 @@ impl TimelineMachine {
             | ServerFrame::ToolResult(_)
             | ServerFrame::StewardWorkItem(_)
             | ServerFrame::WorkSynced(_)
-            | ServerFrame::MembershipRevoked(_) => Vec::new(),
+            | ServerFrame::MembershipRevoked(_)
+            | ServerFrame::NoteStarted(_) => Vec::new(),
             ServerFrame::AgentStreamChunk(chunk) => {
                 if chunk.campus_id == self.campus_id {
                     self.stewards.observe(chunk.steward_id);

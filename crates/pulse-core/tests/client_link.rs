@@ -11,8 +11,9 @@ use pulse_core::{
     Client, ConnectionEvent, LinkTarget, SessionEvent, THREAD_VIEW_FOLLOW_MS, ThreadIntent,
 };
 use pulse_protocol::{
-    CampusId, ClientFrame, ClientNonce, ConnectionPhase, InboxSnapshot, Pong, RoomId, ServerFrame,
-    SetThreadSubscription, SubscriptionOrigin, SubscriptionState, SyncThread, ThreadSnapshot,
+    CampusId, ClientFrame, ClientNonce, ConnectionPhase, InboxSnapshot, NoteStarted, Pong, RoomId,
+    ServerFrame, SetThreadSubscription, SubscriptionOrigin, SubscriptionState, SyncThread,
+    ThreadSnapshot,
 };
 use rstest::rstest;
 
@@ -375,4 +376,40 @@ fn every_mutator_increases_sequence(#[case] mutation: Mutation) {
         }
     }
     assert!(client.snapshot().sequence > before);
+}
+
+#[test]
+fn announced_note_is_listed_and_synced() {
+    let mut client = connected_client();
+    client.drain_outbound();
+    let room_id = RoomId::generate();
+    let note = fixtures::note_with(
+        CAMPUS_A,
+        room_id,
+        &[(fixtures::ACCOUNT_A, "Ada"), (fixtures::ACCOUNT_B, "Grace")],
+    );
+    client.receive_frame(ServerFrame::NoteStarted(NoteStarted { note }));
+    let snapshot = client.snapshot();
+    assert_eq!(
+        snapshot
+            .session
+            .notes
+            .iter()
+            .map(|entry| (entry.room_id, entry.title.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(room_id, "Grace")]
+    );
+    let synced: Vec<RoomId> = client
+        .drain_outbound()
+        .into_iter()
+        .flat_map(|frame| match frame {
+            ClientFrame::SyncRooms(sync) => sync
+                .cursors
+                .into_iter()
+                .map(|cursor| cursor.room_id)
+                .collect(),
+            _ => Vec::new(),
+        })
+        .collect();
+    assert!(synced.contains(&room_id));
 }

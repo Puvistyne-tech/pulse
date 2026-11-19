@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::campus::campus_role;
 use crate::media::{AttachmentRow, attachment_from_row, select_attachments, verify_uploads};
+use crate::note::room_accessible;
 use crate::state::AppState;
 use crate::thread::{advance_read, auto_follow};
 
@@ -414,6 +415,7 @@ async fn record_mentions(
         if campus_role(&mut *connection, campus_id, account_id)
             .await?
             .is_none()
+            || !room_accessible(&mut *connection, campus_id, room_id, account_id).await?
         {
             continue;
         }

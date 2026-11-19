@@ -377,3 +377,19 @@ describe("campus dialogs", () => {
     expect(screen.queryByRole("button", { name: "Create invite code" }) !== null).toBe(offersInvite);
   });
 });
+
+test("an active note shows its title instead of a room slug", () => {
+  const noteRoom = "0193a5c0-0000-7000-8000-0000000000d9";
+  const snapshot = {
+    ...signedInWithRooms,
+    session: {
+      ...signedInWithRooms.session,
+      notes: [{ room_id: noteRoom, title: "Grace Hopper", member_count: 2, group: false }],
+      active_room_id: noteRoom,
+    },
+    timeline: { ...signedInWithRooms.timeline, room_id: noteRoom },
+  } as ClientSnapshot;
+  render(<AppView snapshot={snapshot} intents={noopIntents()} />);
+  expect(screen.getAllByText("Grace Hopper").length).toBe(2);
+  expect(screen.getByPlaceholderText("Message Grace Hopper")).not.toBeNull();
+});

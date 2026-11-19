@@ -22,6 +22,7 @@ import 'third_party/pulse_protocol/media.dart';
 import 'third_party/pulse_protocol/member.dart';
 import 'third_party/pulse_protocol/mention.dart';
 import 'third_party/pulse_protocol/messaging.dart';
+import 'third_party/pulse_protocol/note.dart';
 import 'third_party/pulse_protocol/rbac.dart';
 import 'third_party/pulse_protocol/reaction.dart';
 import 'third_party/pulse_protocol/search.dart';
@@ -186,6 +187,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   MessageRejection dco_decode_box_autoadd_message_rejection(dynamic raw);
+
+  @protected
+  Note dco_decode_box_autoadd_note(dynamic raw);
 
   @protected
   React dco_decode_box_autoadd_react(dynamic raw);
@@ -376,6 +380,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MentionRef> dco_decode_list_mention_ref(dynamic raw);
 
   @protected
+  List<NoteEntry> dco_decode_list_note_entry(dynamic raw);
+
+  @protected
+  List<NoteMember> dco_decode_list_note_member(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
@@ -446,6 +456,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   MessageRejection dco_decode_message_rejection(dynamic raw);
+
+  @protected
+  Note dco_decode_note(dynamic raw);
+
+  @protected
+  NoteEntry dco_decode_note_entry(dynamic raw);
+
+  @protected
+  NoteMember dco_decode_note_member(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -863,6 +882,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  Note sse_decode_box_autoadd_note(SseDeserializer deserializer);
+
+  @protected
   React sse_decode_box_autoadd_react(SseDeserializer deserializer);
 
   @protected
@@ -1099,6 +1121,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MentionRef> sse_decode_list_mention_ref(SseDeserializer deserializer);
 
   @protected
+  List<NoteEntry> sse_decode_list_note_entry(SseDeserializer deserializer);
+
+  @protected
+  List<NoteMember> sse_decode_list_note_member(SseDeserializer deserializer);
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
@@ -1181,6 +1209,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   MessageRejection sse_decode_message_rejection(SseDeserializer deserializer);
+
+  @protected
+  Note sse_decode_note(SseDeserializer deserializer);
+
+  @protected
+  NoteEntry sse_decode_note_entry(SseDeserializer deserializer);
+
+  @protected
+  NoteMember sse_decode_note_member(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -1695,6 +1732,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_note(Note self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_react(React self, SseSerializer serializer);
 
   @protected
@@ -2007,6 +2047,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_note_entry(
+    List<NoteEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_note_member(
+    List<NoteMember> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
@@ -2116,6 +2168,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     MessageRejection self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_note(Note self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_note_entry(NoteEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_note_member(NoteMember self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);

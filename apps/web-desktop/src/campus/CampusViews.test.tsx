@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { JSX } from "react";
-import type { CampusInvite, MemberEntry, Role } from "@pulse/protocol";
+import type { CampusInvite, MemberEntry, NoteEntry, Role } from "@pulse/protocol";
 import { afterEach, expect, test } from "vitest";
 import {
   GRACE_ID,
@@ -20,6 +20,8 @@ import { CreateCampusForm } from "./CreateCampusForm";
 import { InvitePanel } from "./InvitePanel";
 import { JoinCampusForm } from "./JoinCampusForm";
 import { MembersPanel } from "./MembersPanel";
+import { NoteList } from "./NoteList";
+import { StartNoteForm } from "./StartNoteForm";
 import { RoomList } from "./RoomList";
 
 afterEach(cleanup);
@@ -143,8 +145,8 @@ test.each([
 });
 
 const roster: MemberEntry[] = [
-  { account_id: account.account_id, display_name: "Ada", email: "ada@example.org", role: "owner", manageable: false },
-  { account_id: GRACE_ID, display_name: "Grace", email: "grace@example.org", role: "member", manageable: true },
+  { account_id: account.account_id, display_name: "Ada", email: "ada@example.org", role: "owner", manageable: false, is_self: true },
+  { account_id: GRACE_ID, display_name: "Grace", email: "grace@example.org", role: "member", manageable: true, is_self: false },
 ];
 
 function renderMembers(assignableRoles: Role[]) {
@@ -199,4 +201,38 @@ test.each<[string, (intents: ReturnType<typeof noopIntents>) => void, IntentName
   const intents = renderMembers(["admin", "member", "guest"]);
   act(intents);
   expect(intents[intent]).toHaveBeenCalledExactlyOnceWith(...args);
+});
+
+const notes: NoteEntry[] = [
+  { room_id: ROOM_A, title: "Grace", member_count: 2, group: false },
+  { room_id: ROOM_B, title: "Grace, Linus", member_count: 3, group: true },
+];
+
+test.each([
+  ["Grace", ROOM_A],
+  ["Grace, Linus", ROOM_B],
+])("picking note %s selects its room", (title, roomId) => {
+  const intents = noopIntents();
+  render(<NoteList notes={notes} activeRoomId={null} selectRoom={intents.selectRoom} />);
+  fireEvent.click(screen.getByText(title));
+  expect(intents.selectRoom).toHaveBeenCalledExactlyOnceWith(roomId);
+});
+
+test.each<[string, string[], boolean]>([
+  ["nobody picked", [], true],
+  ["Grace picked", ["Grace"], false],
+])("start note with %s", (_name, picks, disabled) => {
+  const intents = noopIntents();
+  render(<StartNoteForm people={roster} busy={false} startNote={intents.startNote} />);
+  for (const name of picks) {
+    fireEvent.click(screen.getByText(name));
+  }
+  const button = screen.getByRole("button", { name: "Start note" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(disabled);
+  fireEvent.click(button);
+  if (disabled) {
+    expect(intents.startNote).not.toHaveBeenCalled();
+  } else {
+    expect(intents.startNote).toHaveBeenCalledExactlyOnceWith({ account_ids: [GRACE_ID] });
+  }
 });

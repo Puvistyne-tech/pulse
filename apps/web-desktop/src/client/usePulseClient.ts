@@ -5,6 +5,7 @@ import type {
   ClientSnapshot,
   CreateCampusRequest,
   JoinCampusRequest,
+  StartNoteRequest,
   AddMemberRequest,
   UpdateMemberRequest,
   DraftId,
@@ -34,6 +35,7 @@ export interface PulseIntents {
   joinCampus(request: JoinCampusRequest): Promise<void>;
   createInvite(): Promise<void>;
   loadMembers(): Promise<void>;
+  startNote(request: StartNoteRequest): Promise<void>;
   addMember(request: AddMemberRequest): Promise<void>;
   updateMember(accountId: AccountId, request: UpdateMemberRequest): Promise<void>;
   removeMember(accountId: AccountId): Promise<void>;
@@ -150,6 +152,7 @@ export function usePulseClient(): {
       joinCampus: (request) => publish(pulseClient.joinCampus(request)),
       createInvite: () => publish(pulseClient.createInvite()),
       loadMembers: () => publish(pulseClient.loadMembers()),
+      startNote: (request) => publish(pulseClient.startNote(request)),
       addMember: (request) => publish(pulseClient.addMember(request)),
       updateMember: (accountId, request) =>
         publish(pulseClient.updateMember(accountId, request)),

@@ -31,6 +31,9 @@ use pulse_protocol::{
     validate_display_name, validate_password, validate_slug,
 };
 use pulse_protocol::{INVITE_SECRET_CHARS, InviteCode, JoinCampusRequest, normalize_invite_code};
+use pulse_protocol::{
+    NOTE_MEMBERS_MAX, Note, NoteMember, normalize_note_members, note_member_key, note_title,
+};
 use rstest::rstest;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -105,6 +108,8 @@ fn signed_out_session() -> SessionSnapshot {
         members: Vec::new(),
         assignable_roles: Vec::new(),
         quick_accounts: Vec::new(),
+        notes: Vec::new(),
+        note_candidates: Vec::new(),
         busy: false,
         error: None,
     }
@@ -914,6 +919,8 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "members": [],
             "assignable_roles": [],
             "quick_accounts": [],
+            "notes": [],
+            "note_candidates": [],
             "busy": false,
             "error": null,
         },
@@ -981,6 +988,8 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             members: Vec::new(),
             assignable_roles: Vec::new(),
             quick_accounts: Vec::new(),
+            notes: Vec::new(),
+            note_candidates: Vec::new(),
             busy: true,
             error: Some(ApiError::invalid(InputField::Slug)),
         },
@@ -1046,6 +1055,8 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "members": [],
             "assignable_roles": [],
             "quick_accounts": [],
+            "notes": [],
+            "note_candidates": [],
             "busy": true,
             "error": {"code": "invalid_input", "field": "slug"},
         },
@@ -1222,6 +1233,56 @@ fn member_request_validation(#[case] role: Role, #[case] valid: bool) {
     assert_eq!(ASSIGNABLE_ROLES.contains(&role), valid);
 }
 
+#[rstest]
+#[case::one_other(vec![ACCOUNT_B], Ok(vec![ACCOUNT_B]))]
+#[case::self_and_duplicates_dropped(vec![ACCOUNT_A, ACCOUNT_C, ACCOUNT_B, ACCOUNT_C], Ok(vec![ACCOUNT_B, ACCOUNT_C]))]
+#[case::only_self(vec![ACCOUNT_A], Err(InputField::NoteMembers))]
+#[case::nobody(vec![], Err(InputField::NoteMembers))]
+#[case::too_many((0..=NOTE_MEMBERS_MAX).map(|_| AccountId::generate()).collect(), Err(InputField::NoteMembers))]
+fn note_member_rules(
+    #[case] requested: Vec<AccountId>,
+    #[case] expected: Result<Vec<AccountId>, InputField>,
+) {
+    let sorted = |ids: Vec<AccountId>| {
+        let mut ids = ids;
+        ids.sort_by_key(ToString::to_string);
+        ids
+    };
+    assert_eq!(
+        normalize_note_members(&requested, ACCOUNT_A).map(sorted),
+        expected.map(sorted)
+    );
+}
+
+#[test]
+fn note_member_key_ignores_order_and_repeats() {
+    assert_eq!(
+        note_member_key(&[ACCOUNT_A, ACCOUNT_B, ACCOUNT_C]),
+        note_member_key(&[ACCOUNT_C, ACCOUNT_A, ACCOUNT_B, ACCOUNT_A])
+    );
+}
+
+#[rstest]
+#[case::others_named(vec![(ACCOUNT_A, "Ada"), (ACCOUNT_B, "Grace"), (ACCOUNT_C, "Linus")], "Grace, Linus")]
+#[case::only_viewer(vec![(ACCOUNT_A, "Ada")], "Ada")]
+fn note_titles_name_the_other_members(
+    #[case] members: Vec<(AccountId, &str)>,
+    #[case] title: &str,
+) {
+    let note = Note {
+        campus_id: CAMPUS_A,
+        room_id: ROOM_A,
+        members: members
+            .into_iter()
+            .map(|(account_id, display_name)| NoteMember {
+                account_id,
+                display_name: display_name.to_owned(),
+            })
+            .collect(),
+    };
+    assert_eq!(note_title(&note, ACCOUNT_A), title);
+}
+
 #[test]
 fn role_and_permission_lists_are_complete() {
     assert_eq!(Role::ALL.len(), 5);
@@ -1345,6 +1406,7 @@ fn password_rules(#[case] raw: &str, #[case] valid: bool) {
 #[case::hyphen_inside("north-quad", true)]
 #[case::digits("room-42", true)]
 #[case::leading_hyphen("-abc", false)]
+#[case::reserved_note_prefix("note-abc", false)]
 #[case::trailing_hyphen("abc-", false)]
 #[case::uppercase("Abc", false)]
 #[case::underscore("a_b", false)]

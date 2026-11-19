@@ -1,8 +1,9 @@
 use pulse_protocol::{
     AccountId, AddMemberRequest, ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated,
     CampusId, CampusInvite, CampusList, CampusMember, CreateCampusRequest, CreateUploadRequest,
-    DownloadTickets, DownloadTicketsRequest, JoinCampusRequest, MemberList, RoomId, RoomList,
-    SignInRequest, SignUpRequest, UpdateMemberRequest, UploadTicket, api_path,
+    DownloadTickets, DownloadTicketsRequest, JoinCampusRequest, MemberList, Note, NoteList, RoomId,
+    RoomList, SignInRequest, SignUpRequest, StartNoteRequest, UpdateMemberRequest, UploadTicket,
+    api_path,
 };
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Method, RequestBuilder};
@@ -167,6 +168,25 @@ impl ApiTransport for HttpApiTransport {
     ) -> Result<CampusMember, ApiError> {
         let path = api_path::campus_member(campus_id, account_id);
         Self::call_with_body(self.request(Method::PATCH, &path, Some(&token)), &request).await
+    }
+
+    async fn list_notes(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> Result<NoteList, ApiError> {
+        let path = api_path::campus_notes(campus_id);
+        Self::call(self.request(Method::GET, &path, Some(&token))).await
+    }
+
+    async fn start_note(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        request: StartNoteRequest,
+    ) -> Result<Note, ApiError> {
+        let path = api_path::campus_notes(campus_id);
+        Self::call_with_body(self.request(Method::POST, &path, Some(&token)), &request).await
     }
 
     async fn remove_member(

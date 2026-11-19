@@ -11,10 +11,10 @@ use pulse_protocol::{
     AckWork, AgentStreamChunk, CallTool, ClientFrame, HistoryRead, InputField, JoinLounge,
     LeaveLounge, ListRoomsArguments, ListTools, Lounge, LoungeChanged, LoungeHeartbeat,
     LoungeJoined, LoungeRejected, LoungeRejection, LoungeScope, LoungeTicket, LoungesSynced,
-    ManageSteward, MembershipRevoked, MessagePosted, PostMessageArguments, REMIND_AT_HORIZON_MS,
-    REMINDER_PICKER_STEP_MS, ReadRoomHistoryArguments, ReadThreadArguments, Room, RoomId,
-    RoomsListed, STEWARD_ROOMS_MAX, ServerFrame, StewardAction, StewardChanged, StewardIssued,
-    StewardProfile, StewardRejected, StewardRejection, StewardTool, StewardWorkItem,
+    ManageSteward, MembershipRevoked, MessagePosted, Note, NoteStarted, PostMessageArguments,
+    REMIND_AT_HORIZON_MS, REMINDER_PICKER_STEP_MS, ReadRoomHistoryArguments, ReadThreadArguments,
+    Room, RoomId, RoomsListed, STEWARD_ROOMS_MAX, ServerFrame, StewardAction, StewardChanged,
+    StewardIssued, StewardProfile, StewardRejected, StewardRejection, StewardTool, StewardWorkItem,
     StewardsSynced, StreamAbortReason, StreamChunk, StreamId, StreamPhase, StreamRejected,
     StreamRejection, StreamWriter, SyncLounges, SyncStewards, SyncWork, ToolContent,
     ToolContentKind, ToolDescriptor, ToolErrorCode, ToolResult, ToolsListed, WorkSynced,
@@ -209,6 +209,10 @@ fn client_frames_round_trip_under_their_tag(#[case] frame: ClientFrame, #[case] 
 #[case::membership_revoked(
     ServerFrame::MembershipRevoked(MembershipRevoked { campus_id: CAMPUS_A, account_id: ACCOUNT_A }),
     "membership_revoked"
+)]
+#[case::note_started(
+    ServerFrame::NoteStarted(NoteStarted { note: Note { campus_id: CAMPUS_A, room_id: ROOM_A, members: vec![] } }),
+    "note_started"
 )]
 #[case::lounges_synced(ServerFrame::LoungesSynced(LoungesSynced { lounges: vec![lounge()] }), "lounges_synced")]
 #[case::lounge_joined(

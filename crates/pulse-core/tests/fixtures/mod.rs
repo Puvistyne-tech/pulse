@@ -18,13 +18,13 @@ use pulse_protocol::{
     CreateCampusRequest, DeliveryState, HandshakeRejected, HandshakeRejection, Hello,
     INVITE_SECRET_CHARS, InboxSnapshot, InboxStep, InboxSynced, InviteCode, JoinCampusRequest,
     MarkThreadRead, MemberList, MentionRef, MessageAccepted, MessageCreated, MessageId,
-    MessageRejected, MessageRejection, MessageUpdated, ProtocolVersion, React, ReactionAction,
-    ReactionRejected, ReactionRejection, ReactionTally, Role, Room, RoomCursor, RoomId, RoomList,
-    RoomMessage, RoomSynced, RoomUnavailable, SendMessage, ServerFrame, SessionSnapshot,
-    SetThreadSubscription, SetTopicTitle, SignInRequest, SignUpRequest, SubscriptionOrigin,
-    SubscriptionState, SyncInbox, SyncLounges, SyncRooms, SyncShelf, SyncStewards, SyncThread,
-    ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ThreadSynced, TimelineSnapshot,
-    UpdateMemberRequest, Welcome,
+    MessageRejected, MessageRejection, MessageUpdated, Note, NoteList, NoteMember, ProtocolVersion,
+    React, ReactionAction, ReactionRejected, ReactionRejection, ReactionTally, Role, Room,
+    RoomCursor, RoomId, RoomList, RoomMessage, RoomSynced, RoomUnavailable, SendMessage,
+    ServerFrame, SessionSnapshot, SetThreadSubscription, SetTopicTitle, SignInRequest,
+    SignUpRequest, StartNoteRequest, SubscriptionOrigin, SubscriptionState, SyncInbox, SyncLounges,
+    SyncRooms, SyncShelf, SyncStewards, SyncThread, ThreadChanged, ThreadRejected, ThreadRejection,
+    ThreadSummary, ThreadSynced, TimelineSnapshot, UpdateMemberRequest, Welcome,
 };
 
 pub fn token_a() -> AuthToken {
@@ -146,6 +146,8 @@ pub enum RecordedCall {
     AddMember(AuthToken, CampusId, AddMemberRequest),
     UpdateMember(AuthToken, CampusId, AccountId, UpdateMemberRequest),
     RemoveMember(AuthToken, CampusId, AccountId),
+    ListNotes(AuthToken, CampusId),
+    StartNote(AuthToken, CampusId, StartNoteRequest),
 }
 
 #[derive(Debug, Default)]
@@ -161,6 +163,8 @@ pub struct ScriptedApi {
     pub member_lists: VecDeque<Result<MemberList, ApiError>>,
     pub member_saves: VecDeque<Result<CampusMember, ApiError>>,
     pub member_removals: VecDeque<Result<(), ApiError>>,
+    pub note_lists: VecDeque<Result<NoteList, ApiError>>,
+    pub note_starts: VecDeque<Result<Note, ApiError>>,
     pub calls: Vec<RecordedCall>,
 }
 
@@ -261,6 +265,29 @@ impl ApiTransport for ScriptedApi {
         self.member_saves.pop_front().unwrap_or(Err(unavailable()))
     }
 
+    async fn list_notes(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> Result<NoteList, ApiError> {
+        self.calls.push(RecordedCall::ListNotes(token, campus_id));
+        self.note_lists.pop_front().unwrap_or(Ok(NoteList {
+            campus_id,
+            notes: Vec::new(),
+        }))
+    }
+
+    async fn start_note(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        request: StartNoteRequest,
+    ) -> Result<Note, ApiError> {
+        self.calls
+            .push(RecordedCall::StartNote(token, campus_id, request));
+        self.note_starts.pop_front().unwrap_or(Err(unavailable()))
+    }
+
     async fn remove_member(
         &mut self,
         token: AuthToken,
@@ -283,6 +310,24 @@ pub fn campus_member(campus_id: CampusId, account_id: AccountId, role: Role) -> 
         email: format!("{account_id}@example.org"),
         role,
     }
+}
+
+pub fn note_with(campus_id: CampusId, room_id: RoomId, members: &[(AccountId, &str)]) -> Note {
+    Note {
+        campus_id,
+        room_id,
+        members: members
+            .iter()
+            .map(|(account_id, display_name)| NoteMember {
+                account_id: *account_id,
+                display_name: (*display_name).to_owned(),
+            })
+            .collect(),
+    }
+}
+
+pub fn note_list(campus_id: CampusId, notes: Vec<Note>) -> NoteList {
+    NoteList { campus_id, notes }
 }
 
 pub fn member_list(campus_id: CampusId, members: &[(AccountId, Role)]) -> MemberList {

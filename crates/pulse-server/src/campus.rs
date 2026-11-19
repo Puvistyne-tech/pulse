@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::auth::{Authenticated, mint_token};
 use crate::error::{ApiFailure, ApiJson, is_unique_violation};
+use crate::note::NOT_A_NOTE;
 use crate::state::AppState;
 
 pub(crate) fn not_found() -> ApiFailure {
@@ -129,9 +130,10 @@ async fn campus_rooms(
     executor: impl sqlx::PgExecutor<'_>,
     campus_id: CampusId,
 ) -> Result<Vec<Room>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT room_id, slug FROM rooms WHERE campus_id = $1 ORDER BY slug",
-    )
+    let rows = sqlx::query_as::<_, (Uuid, String)>(sqlx::AssertSqlSafe(format!(
+        "SELECT r.room_id, r.slug FROM rooms r WHERE r.campus_id = $1 \
+         AND {NOT_A_NOTE} ORDER BY r.slug"
+    )))
     .bind(campus_id.as_uuid())
     .fetch_all(executor)
     .await?;

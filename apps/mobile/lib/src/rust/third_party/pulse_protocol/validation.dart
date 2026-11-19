@@ -78,6 +78,14 @@ Future<void> validateSlug({required String raw}) =>
 Future<InviteCode> normalizeInviteCode({required String raw}) =>
     RustLib.instance.api.pulseProtocolValidationNormalizeInviteCode(raw: raw);
 
+Future<List<AccountId>> normalizeNoteMembers({
+  required List<AccountId> requested,
+  required AccountId starter,
+}) => RustLib.instance.api.pulseProtocolValidationNormalizeNoteMembers(
+  requested: requested,
+  starter: starter,
+);
+
 Future<void> validateAssignableRole({required Role role}) => RustLib
     .instance
     .api

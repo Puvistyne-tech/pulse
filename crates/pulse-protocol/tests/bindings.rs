@@ -32,8 +32,8 @@ use pulse_protocol::{
     ToolContentKind, ToolDescriptor, ToolErrorCode, ToolResult, ToolsListed, WorkSynced,
 };
 use pulse_protocol::{
-    AddMemberRequest, CampusMember, DevAccount, MemberEntry, MemberList, MembershipRevoked,
-    UpdateMemberRequest,
+    AddMemberRequest, CampusMember, DevAccount, MemberEntry, MemberList, MembershipRevoked, Note,
+    NoteEntry, NoteList, NoteMember, NoteStarted, StartNoteRequest, UpdateMemberRequest,
 };
 use std::path::PathBuf;
 use ts_rs::{Config, TS};
@@ -203,6 +203,12 @@ fn render_bindings() -> String {
         MembershipRevoked::decl(&config),
         MemberEntry::decl(&config),
         DevAccount::decl(&config),
+        NoteMember::decl(&config),
+        Note::decl(&config),
+        NoteList::decl(&config),
+        StartNoteRequest::decl(&config),
+        NoteStarted::decl(&config),
+        NoteEntry::decl(&config),
         ServerFrame::decl(&config),
         ConnectionPhase::decl(&config),
         AuthPhase::decl(&config),

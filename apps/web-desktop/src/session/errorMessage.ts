@@ -16,6 +16,7 @@ const invalidFieldMessages: Record<InputField, string> = {
   rooms: "Choose a valid set of rooms for that steward",
   invite_code: "That invite code is not valid or has expired",
   role: "Choose a role you can assign",
+  note_members: "Pick people from this campus to start a note",
 };
 
 const conflictFieldMessages: Record<InputField, string> = {
@@ -34,6 +35,7 @@ const conflictFieldMessages: Record<InputField, string> = {
   rooms: "Those rooms cannot be used",
   invite_code: "That invite code cannot be used",
   role: "That role cannot be used",
+  note_members: "Those people cannot be in a note together",
 };
 
 const codeMessages: Record<ApiErrorCode, string> = {

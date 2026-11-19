@@ -7,15 +7,15 @@ use pulse_protocol::{
     HandshakeRejection, Hello, INBOX_SYNC_LIMIT, InboxSynced, JoinLounge, LeaveLounge,
     LoungeChanged, LoungeHeartbeat, LoungeId, LoungeRejected, LoungeRejection, LoungesSynced,
     ManageSteward, MarkThreadRead, MessageAccepted, MessageCreated, MessageId, MessageRejected,
-    MessageRejection, MessageUpdated, Permission, PinRejected, Pong, ProtocolVersion, React,
-    ReactionRejected, ReactionRejection, Role, RoomId, RoomUnavailable, SHELF_SYNC_LIMIT,
+    MessageRejection, MessageUpdated, Permission, PinRejected, PinRejection, Pong, ProtocolVersion,
+    React, ReactionRejected, ReactionRejection, Role, RoomId, RoomUnavailable, SHELF_SYNC_LIMIT,
     STEWARD_TOKEN_PREFIX, SYNC_MAX_ROOMS, SendMessage, ServerFrame, SessionId, SetPin,
-    SetThreadSubscription, SetTopicTitle, ShelfChanged, ShelfItem, ShelfRejected, ShelfSynced,
-    StewardChanged, StewardIssued, StewardRejected, StewardsSynced, StreamAbortReason, StreamChunk,
-    StreamPhase, StreamRejected, StreamRejection, SyncRooms, SyncShelf, SyncThread, SyncVault,
-    ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ToolsListed, UpdateShelf,
-    VaultRejected, VaultRejection, VersionMismatch, WORK_SYNC_LIMIT, Welcome, WorkSynced,
-    close_code, role_permits, tool_descriptors,
+    SetThreadSubscription, SetTopicTitle, ShelfChanged, ShelfItem, ShelfRejected, ShelfRejection,
+    ShelfSynced, StewardChanged, StewardIssued, StewardRejected, StewardsSynced, StreamAbortReason,
+    StreamChunk, StreamPhase, StreamRejected, StreamRejection, SyncRooms, SyncShelf, SyncThread,
+    SyncVault, ThreadChanged, ThreadRejected, ThreadRejection, ThreadSummary, ToolsListed,
+    UpdateShelf, VaultRejected, VaultRejection, VersionMismatch, WORK_SYNC_LIMIT, Welcome,
+    WorkSynced, close_code, role_permits, tool_descriptors,
 };
 use tokio::sync::broadcast::error::RecvError;
 
@@ -26,6 +26,7 @@ use crate::lounge::{LoungeFailure, heartbeat_lounge, join_lounge, leave_lounge, 
 use crate::message::{
     PostFailure, PostOutcome, is_top_level, post_message, send_message, sync_room, sync_thread,
 };
+use crate::note::room_accessible;
 use crate::pin::{PinFailure, PinOutcome, set_pin};
 use crate::publish::{publish_created, publish_frame, publish_summaries};
 use crate::reaction::{ReactionFailure, ReactionOutcome, apply_reaction};
@@ -238,7 +239,7 @@ async fn room_open(
     room_id: RoomId,
 ) -> Result<bool, sqlx::Error> {
     match active.steward {
-        None => Ok(true),
+        None => room_accessible(&state.db, active.campus_id, room_id, active.account_id).await,
         Some(_) => {
             steward_room_assigned(&state.db, active.campus_id, active.account_id, room_id).await
         }
@@ -1314,6 +1315,76 @@ async fn stream_deadline(deadline_ms: Option<u64>) {
     }
 }
 
+fn closed_room_reply(frame: &ClientFrame) -> Option<(RoomId, ServerFrame)> {
+    let thread = |room_id: RoomId, root_message_id: MessageId| {
+        ServerFrame::ThreadRejected(ThreadRejected {
+            room_id,
+            root_message_id,
+            reason: ThreadRejection::UnknownThread,
+        })
+    };
+    match frame {
+        ClientFrame::SendMessage(request) => Some((
+            request.room_id,
+            ServerFrame::MessageRejected(MessageRejected {
+                client_nonce: request.client_nonce,
+                reason: MessageRejection::UnknownRoom,
+            }),
+        )),
+        ClientFrame::React(request) => Some((
+            request.room_id,
+            ServerFrame::ReactionRejected(ReactionRejected {
+                room_id: request.room_id,
+                message_id: request.message_id,
+                emoji: request.emoji.clone(),
+                reason: ReactionRejection::UnknownMessage,
+            }),
+        )),
+        ClientFrame::SetTopicTitle(request) => Some((
+            request.room_id,
+            thread(request.room_id, request.root_message_id),
+        )),
+        ClientFrame::SetThreadSubscription(request) => Some((
+            request.room_id,
+            thread(request.room_id, request.root_message_id),
+        )),
+        ClientFrame::MarkThreadRead(request) => Some((
+            request.room_id,
+            thread(request.room_id, request.root_message_id),
+        )),
+        ClientFrame::SyncThread(request) => Some((
+            request.room_id,
+            thread(request.room_id, request.root_message_id),
+        )),
+        ClientFrame::SetPin(request) => Some((
+            request.room_id,
+            ServerFrame::PinRejected(PinRejected {
+                room_id: request.room_id,
+                message_id: request.message_id,
+                reason: PinRejection::UnknownMessage,
+            }),
+        )),
+        ClientFrame::SyncVault(request) => Some((
+            request.room_id,
+            ServerFrame::VaultRejected(VaultRejected {
+                room_id: request.room_id,
+                tab: request.tab,
+                reason: VaultRejection::UnknownRoom,
+            }),
+        )),
+        ClientFrame::UpdateShelf(request) => Some((
+            request.room_id,
+            ServerFrame::ShelfRejected(ShelfRejected {
+                room_id: request.room_id,
+                message_id: request.message_id,
+                action: request.action,
+                reason: ShelfRejection::UnknownMessage,
+            }),
+        )),
+        _ => None,
+    }
+}
+
 async fn handle_frame(
     socket: &mut WebSocket,
     state: &AppState,
@@ -1322,6 +1393,15 @@ async fn handle_frame(
 ) -> Flow {
     if active.steward.is_some() && !steward_frame_allowed(&frame) {
         return stop_with(socket, close_code::POLICY_VIOLATION).await;
+    }
+    if active.steward.is_none()
+        && let Some((room_id, rejection)) = closed_room_reply(&frame)
+    {
+        match room_accessible(&state.db, active.campus_id, room_id, active.account_id).await {
+            Ok(true) => {}
+            Ok(false) => return reply_with(socket, &rejection).await,
+            Err(error) => return database_failure(socket, "room access", error).await,
+        }
     }
     match frame {
         ClientFrame::Ping(ping) => {
@@ -1384,9 +1464,9 @@ fn deliverable(active: &Subscriptions, envelope: &FanoutEnvelope) -> bool {
         | ServerFrame::MessageUpdated(MessageUpdated { message }) => {
             message.campus_id == active.campus_id && active.rooms.contains(&message.room_id)
         }
-        ServerFrame::ThreadChanged(_) | ServerFrame::ShelfChanged(_) => {
-            envelope.account_id == Some(active.account_id)
-        }
+        ServerFrame::ThreadChanged(_)
+        | ServerFrame::ShelfChanged(_)
+        | ServerFrame::NoteStarted(_) => envelope.account_id == Some(active.account_id),
         ServerFrame::StewardWorkItem(item) => {
             item.message.campus_id == active.campus_id
                 && envelope.account_id == Some(active.account_id)

@@ -791,6 +791,13 @@ async fn abort_streams(
     }
 }
 
+fn abort_reason_for(rejection: StreamRejection) -> StreamAbortReason {
+    match rejection {
+        StreamRejection::Forbidden => StreamAbortReason::Revoked,
+        _ => StreamAbortReason::Rejected,
+    }
+}
+
 async fn admit_stream(
     state: &AppState,
     active: &Subscriptions,
@@ -829,7 +836,13 @@ async fn finalize_stream(
         Err(error) => return database_failure(socket, "room assignment", error).await,
     };
     if !assigned {
-        publish_abort(state, active, base, StreamAbortReason::Rejected).await;
+        publish_abort(
+            state,
+            active,
+            base,
+            abort_reason_for(StreamRejection::Forbidden),
+        )
+        .await;
         return reply_with(socket, &reject(StreamRejection::Forbidden)).await;
     }
     let request = SendMessage {
@@ -847,19 +860,13 @@ async fn finalize_stream(
         }
         Ok(PostOutcome::Replayed(message)) => message,
         Err(PostFailure::Rejected(reason)) => {
-            let (rejection, abort) = match reason {
-                MessageRejection::Forbidden => {
-                    (StreamRejection::Forbidden, StreamAbortReason::Revoked)
-                }
-                MessageRejection::UnknownRoom => {
-                    (StreamRejection::UnknownRoom, StreamAbortReason::Rejected)
-                }
-                MessageRejection::UnknownThread => {
-                    (StreamRejection::UnknownThread, StreamAbortReason::Rejected)
-                }
-                _ => (StreamRejection::InvalidBody, StreamAbortReason::Rejected),
+            let rejection = match reason {
+                MessageRejection::Forbidden => StreamRejection::Forbidden,
+                MessageRejection::UnknownRoom => StreamRejection::UnknownRoom,
+                MessageRejection::UnknownThread => StreamRejection::UnknownThread,
+                _ => StreamRejection::InvalidBody,
             };
-            publish_abort(state, active, base, abort).await;
+            publish_abort(state, active, base, abort_reason_for(rejection)).await;
             return reply_with(socket, &reject(rejection)).await;
         }
         Err(PostFailure::Database(error)) => {
@@ -901,7 +908,7 @@ async fn handle_stream(
         None | Some(Ok(None)) => {}
         Some(Ok(Some(reason))) => {
             let streams = active.streams.take_all();
-            abort_streams(state, active, streams, StreamAbortReason::Revoked).await;
+            abort_streams(state, active, streams, abort_reason_for(reason)).await;
             return reply_with(socket, &reject(reason)).await;
         }
         Some(Err(error)) => return database_failure(socket, "stream admission", error).await,
@@ -1396,7 +1403,7 @@ async fn forward_feed(
         .rooms
         .retain(|room_id| changed.steward.room_ids.contains(room_id));
     let pruned = active.streams.take_outside(&changed.steward.room_ids);
-    abort_streams(state, active, pruned, StreamAbortReason::Rejected).await;
+    abort_streams(state, active, pruned, StreamAbortReason::Revoked).await;
     flow
 }
 

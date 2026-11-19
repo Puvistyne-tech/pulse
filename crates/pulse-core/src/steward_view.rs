@@ -226,21 +226,34 @@ impl StewardTracker {
         vec![ClientFrame::ManageSteward(request)]
     }
 
-    pub(crate) fn snapshot(&self) -> StewardSnapshot {
+    fn entry(profile: &StewardProfile, manageable: bool) -> StewardEntry {
+        StewardEntry {
+            steward_id: profile.steward_id,
+            display_name: profile.display_name.clone(),
+            mention_token: mention_token(profile.steward_id),
+            room_ids: profile.room_ids.clone(),
+            revoked: profile.revoked,
+            manageable: manageable && !profile.revoked,
+        }
+    }
+
+    pub(crate) fn mentionable(&self, room_id: RoomId) -> Vec<StewardEntry> {
+        self.directory
+            .values()
+            .filter(|profile| !profile.revoked && profile.room_ids.contains(&room_id))
+            .map(|profile| Self::entry(profile, false))
+            .collect()
+    }
+
+    pub(crate) fn snapshot(&self, can_manage: bool) -> StewardSnapshot {
         StewardSnapshot {
             open: self.open,
             stewards: self
                 .directory
                 .values()
-                .map(|profile| StewardEntry {
-                    steward_id: profile.steward_id,
-                    display_name: profile.display_name.clone(),
-                    mention_token: mention_token(profile.steward_id),
-                    room_ids: profile.room_ids.clone(),
-                    revoked: profile.revoked,
-                })
+                .map(|profile| Self::entry(profile, can_manage))
                 .collect(),
-            can_manage: false,
+            can_manage,
             issued: self.issued.clone(),
             pending: self.pending.is_some(),
             error: self.error,

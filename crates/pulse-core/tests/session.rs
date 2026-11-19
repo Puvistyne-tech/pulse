@@ -10,8 +10,8 @@ use fixtures::{
 use pulse_core::{SessionCommand, SessionEvent, SessionMachine, decode_api_response};
 use pulse_protocol::{
     AccountId, AddMemberRequest, ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId,
-    CampusList, DEV_SEED_PASSWORD, InputField, MemberList, Role, RoomId, RoomList, SignInRequest,
-    UpdateMemberRequest,
+    CampusList, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, InputField, MemberList, Role, RoomId, RoomList,
+    SignInRequest, UpdateMemberRequest,
 };
 use rstest::rstest;
 
@@ -678,9 +678,9 @@ fn quick_sign_in_of(email: &str) -> Option<SessionCommand> {
 }
 
 #[rstest]
-#[case::enabled_seeded(true, vec![], "grace@pulse.test", 5, quick_sign_in_of("grace@pulse.test"))]
-#[case::enabled_unknown(true, vec![], "nobody@pulse.test", 5, None)]
-#[case::disabled(false, vec![], "grace@pulse.test", 0, None)]
+#[case::enabled_seeded(true, vec![], DEV_SEED_PEOPLE[1].0, DEV_SEED_PEOPLE.len(), quick_sign_in_of(DEV_SEED_PEOPLE[1].0))]
+#[case::enabled_unknown(true, vec![], "nobody@pulse.test", DEV_SEED_PEOPLE.len(), None)]
+#[case::disabled(false, vec![], DEV_SEED_PEOPLE[1].0, 0, None)]
 #[case::kept_after_sign_out(
     true,
     vec![
@@ -688,11 +688,11 @@ fn quick_sign_in_of(email: &str) -> Option<SessionCommand> {
         SessionEvent::Authenticated(auth_session()),
         SessionEvent::SignOutRequested,
     ],
-    "ada@pulse.test",
-    5,
-    quick_sign_in_of("ada@pulse.test"),
+    DEV_SEED_PEOPLE[0].0,
+    DEV_SEED_PEOPLE.len(),
+    quick_sign_in_of(DEV_SEED_PEOPLE[0].0),
 )]
-#[case::hidden_when_signed_in(true, ready_events(), "ada@pulse.test", 0, None)]
+#[case::hidden_when_signed_in(true, ready_events(), DEV_SEED_PEOPLE[0].0, 0, None)]
 fn quick_sign_in_uses_seeded_accounts(
     #[case] enabled: bool,
     #[case] setup: Vec<SessionEvent>,

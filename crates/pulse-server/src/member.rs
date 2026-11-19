@@ -5,19 +5,22 @@ use pulse_protocol::{
     AccountId, AddMemberRequest, ApiError, ApiErrorCode, CampusId, CampusMember, InputField,
     MemberList, MembershipRevoked, Permission, Role, RoleParseError, ServerFrame,
     UpdateMemberRequest, Validate, member_manageable, normalize_email, role_assignable,
+    role_permits,
 };
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
-use crate::auth::Authenticated;
-use crate::campus::{campus_role_locked, not_found, parse_campus_id, require_permission};
+use crate::auth::{Authenticated, account_by_email};
+use crate::campus::{
+    campus_role_locked, insert_membership, not_found, parse_campus_id, require_permission,
+};
 use crate::error::{ApiFailure, ApiJson};
 use crate::publish::publish_frame;
 use crate::state::AppState;
 
 const MEMBER_COLUMNS: &str = "SELECT a.account_id, a.display_name, a.email, m.role \
      FROM campus_members m JOIN accounts a ON a.account_id = m.account_id \
-     WHERE m.campus_id = $1 AND m.role <> 'steward'";
+     WHERE m.campus_id = $1 AND m.role <> $2";
 
 type MemberRow = (Uuid, String, String, String);
 
@@ -47,9 +50,10 @@ async fn member_row(
     campus_id: CampusId,
     account_id: AccountId,
 ) -> Result<Option<CampusMember>, sqlx::Error> {
-    let query = format!("{MEMBER_COLUMNS} AND m.account_id = $2");
+    let query = format!("{MEMBER_COLUMNS} AND m.account_id = $3");
     sqlx::query_as::<_, MemberRow>(sqlx::AssertSqlSafe(query))
         .bind(campus_id.as_uuid())
+        .bind(Role::Steward.as_str())
         .bind(account_id.as_uuid())
         .fetch_optional(connection)
         .await?
@@ -65,7 +69,7 @@ async fn actor_role(
     let role = campus_role_locked(&mut *connection, campus_id, account_id)
         .await?
         .ok_or_else(not_found)?;
-    if role_assignable(role, Role::Member) {
+    if role_permits(role, Permission::ManageMembers) {
         Ok(role)
     } else {
         Err(forbidden())
@@ -112,6 +116,7 @@ async fn campus_members(
     let query = format!("{MEMBER_COLUMNS} ORDER BY lower(a.display_name), a.account_id");
     sqlx::query_as::<_, MemberRow>(sqlx::AssertSqlSafe(query))
         .bind(campus_id.as_uuid())
+        .bind(Role::Steward.as_str())
         .fetch_all(db)
         .await?
         .into_iter()
@@ -133,27 +138,14 @@ pub async fn add_member(
         return Err(forbidden());
     }
     let email = normalize_email(&request.email).map_err(ApiError::invalid)?;
-    let account_id =
-        sqlx::query_scalar::<_, Uuid>("SELECT account_id FROM accounts WHERE email = $1")
-            .bind(&email)
-            .fetch_optional(&mut *transaction)
-            .await?
-            .map(AccountId)
-            .ok_or(ApiFailure(ApiError {
-                code: ApiErrorCode::NotFound,
-                field: Some(InputField::Email),
-            }))?;
-    let inserted = sqlx::query(
-        "INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3) \
-         ON CONFLICT (campus_id, account_id) DO NOTHING",
-    )
-    .bind(campus_id.as_uuid())
-    .bind(account_id.as_uuid())
-    .bind(request.role.as_str())
-    .execute(&mut *transaction)
-    .await?
-    .rows_affected()
-        == 1;
+    let account_id = account_by_email(&mut *transaction, &email)
+        .await?
+        .ok_or(ApiFailure(ApiError {
+            code: ApiErrorCode::NotFound,
+            field: Some(InputField::Email),
+        }))?;
+    let inserted =
+        insert_membership(&mut *transaction, campus_id, account_id, request.role).await?;
     let member = member_row(&mut transaction, campus_id, account_id)
         .await?
         .ok_or_else(forbidden)?;

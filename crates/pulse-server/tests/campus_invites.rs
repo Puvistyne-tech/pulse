@@ -3,13 +3,15 @@ mod common;
 use std::time::Duration;
 
 use axum::http::{Method, StatusCode};
-use common::{api, campus_for, campuses_of, count_rows, fresh_state, grant_role, signed_up};
+use common::{
+    api, campus_for, campuses_of, count_rows, expire_invite, fresh_state, grant_role, signed_up,
+};
 use futures_util::future::join_all;
 use pulse_protocol::AuthToken;
 use pulse_protocol::fixtures::CAMPUS_B;
 use pulse_protocol::{
-    CampusCreated, CampusId, CampusInvite, DEFAULT_ROOM_SLUGS, INVITE_SECRET_CHARS, InviteCode,
-    JoinCampusRequest, Role, api_path,
+    CampusCreated, CampusId, CampusInvite, DEFAULT_ROOM_SLUGS, INVITE_CODE_SEPARATOR,
+    INVITE_SECRET_CHARS, InviteCode, JoinCampusRequest, Role, api_path,
 };
 use pulse_server::AppState;
 use rstest::rstest;
@@ -86,7 +88,11 @@ async fn invite_creation_requires_member_management(
     if status == StatusCode::CREATED {
         let invite: CampusInvite = serde_json::from_value(body).expect("campus invite");
         assert_eq!(invite.campus_id, campus_id);
-        assert!(invite.code.starts_with(&format!("{campus_id}.")));
+        assert!(
+            invite
+                .code
+                .starts_with(&format!("{campus_id}{INVITE_CODE_SEPARATOR}"))
+        );
     }
 }
 
@@ -129,17 +135,15 @@ async fn joining_with_invite_code(#[case] code: Code, #[case] status: StatusCode
         .campus
         .campus_id;
     let invite = issued_invite(&state, &owner.token, campus_id).await;
+    let secret = invite
+        .code
+        .split_once(INVITE_CODE_SEPARATOR)
+        .expect("separator")
+        .1
+        .to_owned();
     if matches!(code, Code::Expired) {
-        sqlx::query(
-            "UPDATE campus_invites SET expires_at = now() - interval '1 second' \
-             WHERE campus_id = $1",
-        )
-        .bind(campus_id.as_uuid())
-        .execute(&state.db)
-        .await
-        .expect("expire invite");
+        expire_invite(&state, campus_id, &secret).await;
     }
-    let secret = invite.code.split_once('.').expect("separator").1.to_owned();
     let raw = match code {
         Code::Issued | Code::Expired => invite.code.clone(),
         Code::WrongSecret => InviteCode {

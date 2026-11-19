@@ -1,17 +1,20 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
+use std::time::Duration;
+
 use common::{
-    api, campus_for, expect_close, fresh_state, grant_role, joined_socket, signed_up,
-    spawn_server_with,
+    ClientSocket, api, campus_for, connect, expect_close, expect_frame, fresh_state, grant_role,
+    hello, joined_socket, ping, send, signed_up, spawn_server_with,
 };
 use pulse_protocol::{
-    AccountId, AddMemberRequest, AuthSession, CampusId, CampusMember, MemberList, Role,
-    UpdateMemberRequest, api_path, close_code,
+    AccountId, AddMemberRequest, AuthSession, CampusId, CampusMember, MemberList, ProtocolVersion,
+    Role, ServerFrame, UpdateMemberRequest, api_path, close_code,
 };
 use pulse_server::AppState;
 use rstest::rstest;
 use serde_json::{Value, json};
+use tokio::time::timeout;
 
 struct Cast {
     state: AppState,
@@ -244,16 +247,57 @@ async fn adding_by_email_edge_cases(
     assert_eq!(observed, expected);
 }
 
+async fn answers_ping(socket: &mut ClientSocket, nonce: u32) -> bool {
+    send(socket, &ping(nonce)).await;
+    matches!(expect_frame(socket).await, ServerFrame::Pong(pong) if pong.nonce == nonce)
+}
+
 #[tokio::test]
-async fn removed_member_socket_is_closed() {
+async fn removal_closes_only_the_removed_members_campus_socket() {
+    timeout(Duration::from_secs(30), async {
+        let cast = Cast::open().await;
+        let elsewhere = campus_for(&cast.state, &cast.member.token, "south-quad")
+            .await
+            .campus
+            .campus_id;
+        let addr = spawn_server_with(cast.state.clone()).await;
+        let (mut removed, _) = joined_socket(addr, cast.campus_id, &cast.member.token).await;
+        let (mut bystander, _) = joined_socket(addr, cast.campus_id, &cast.admin.token).await;
+        let (mut other_campus, _) = joined_socket(addr, elsewhere, &cast.member.token).await;
+        assert!(answers_ping(&mut bystander, 1).await);
+        let path = api_path::campus_member(cast.campus_id, cast.id(Who::Member));
+        let (status, body) = cast.call(Who::Owner, Method::DELETE, &path, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+        assert_eq!(
+            expect_close(&mut removed).await,
+            close_code::POLICY_VIOLATION
+        );
+        assert!(answers_ping(&mut bystander, 2).await);
+        assert!(answers_ping(&mut other_campus, 3).await);
+    })
+    .await
+    .expect("revocation settles");
+}
+
+#[tokio::test]
+async fn removed_member_cannot_reconnect() {
     let cast = Cast::open().await;
-    let addr = spawn_server_with(cast.state.clone()).await;
-    let (mut removed, _) = joined_socket(addr, cast.campus_id, &cast.member.token).await;
     let path = api_path::campus_member(cast.campus_id, cast.id(Who::Member));
     let (status, body) = cast.call(Who::Owner, Method::DELETE, &path, None).await;
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
-    assert_eq!(
-        expect_close(&mut removed).await,
-        close_code::POLICY_VIOLATION
-    );
+    let addr = spawn_server_with(cast.state.clone()).await;
+    let mut socket = connect(addr).await;
+    send(
+        &mut socket,
+        &hello(
+            cast.campus_id,
+            ProtocolVersion::CURRENT.0,
+            &cast.member.token,
+        ),
+    )
+    .await;
+    assert!(!matches!(
+        expect_frame(&mut socket).await,
+        ServerFrame::Welcome(_)
+    ));
 }

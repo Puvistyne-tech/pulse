@@ -32,7 +32,10 @@ async fn run() -> Result<(), StartupError> {
     if std::env::args().any(|argument| argument == SEED_ARGUMENT) {
         match seed_dev_campus(&app_state.db).await {
             Ok(campus_id) => tracing::info!(%campus_id, "seeded demo campus"),
-            Err(failure) => tracing::error!(?failure, "seeding demo campus failed"),
+            Err(failure) => {
+                tracing::error!(?failure, "seeding demo campus failed");
+                std::process::exit(1);
+            }
         }
     }
     if let Err(error) = app_state.storage.ensure_bucket().await {

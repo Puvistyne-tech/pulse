@@ -5,7 +5,7 @@ use pulse_protocol::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::auth::hash_password;
+use crate::auth::{account_by_email, hash_password};
 use crate::campus::furnish_campus;
 use crate::error::ApiFailure;
 
@@ -25,12 +25,9 @@ async fn seeded_account(
     .bind(password_hash)
     .execute(db)
     .await?;
-    let account_id =
-        sqlx::query_scalar::<_, Uuid>("SELECT account_id FROM accounts WHERE email = $1")
-            .bind(email)
-            .fetch_one(db)
-            .await?;
-    Ok(AccountId(account_id))
+    account_by_email(db, email)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)
 }
 
 async fn seeded_campus(db: &PgPool, owner: AccountId) -> Result<CampusId, sqlx::Error> {

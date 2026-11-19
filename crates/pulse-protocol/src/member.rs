@@ -48,12 +48,7 @@ pub const fn member_manageable(actor: Role, target: Role) -> bool {
 }
 
 pub const fn role_assignable(actor: Role, role: Role) -> bool {
-    role_permits(actor, Permission::ManageMembers)
-        && match role {
-            Role::Owner | Role::Steward => false,
-            Role::Admin => matches!(actor, Role::Owner),
-            Role::Member | Role::Guest => true,
-        }
+    member_manageable(actor, role)
 }
 
 pub fn assignable_roles(actor: Role) -> Vec<Role> {

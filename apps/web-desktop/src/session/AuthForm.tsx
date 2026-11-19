@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { ApiError, DevAccount } from "@pulse/protocol";
 import { Avatar } from "../ui/Avatar";
+import { roleLabels } from "../ui/roleLabels";
 import type { PulseIntents } from "../client/usePulseClient";
 import { PulseMark } from "../ui/PulseMark";
 import { ui } from "../ui/styles";
@@ -100,7 +101,7 @@ export function AuthForm({ busy, error, quickAccounts = [], intents }: AuthFormP
                       <span className="block truncate text-sm font-medium text-ink">{quick.display_name}</span>
                       <span className="block truncate text-xs text-subtle">{quick.email}</span>
                     </span>
-                    <span className={`${ui.pill} bg-muted capitalize text-subtle`}>{quick.role}</span>
+                    <span className={`${ui.pill} bg-muted text-subtle`}>{roleLabels[quick.role]}</span>
                   </button>
                 </li>
               ))}

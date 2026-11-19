@@ -1460,18 +1460,22 @@ pub async fn serve_socket(mut socket: WebSocket, state: AppState) {
             return;
         }
     };
-    if let Some(session) = active.steward.as_ref() {
-        let current = credential_current(
+    let still_permitted = match active.steward.as_ref() {
+        Some(session) => credential_current(
             &state.db,
             active.campus_id,
             active.account_id,
             session.credential_revision,
         )
-        .await;
-        if !matches!(current, Ok(true)) {
-            close_with(&mut socket, close_code::POLICY_VIOLATION).await;
-            return;
-        }
+        .await
+        .unwrap_or(false),
+        None => permitted(&state, &active, Permission::ViewCampus)
+            .await
+            .unwrap_or(false),
+    };
+    if !still_permitted {
+        close_with(&mut socket, close_code::POLICY_VIOLATION).await;
+        return;
     }
     loop {
         let deadline = active.streams.next_deadline_ms();

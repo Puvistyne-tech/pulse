@@ -46,7 +46,7 @@ export function InvitePanel({ invite, busy, createInvite }: InvitePanelProps) {
             </div>
           </label>
           <p className={ui.hint}>
-            Valid until {new Date(invite.expires_at_ms).toLocaleDateString()}. Anyone with this code can join as a member.
+            Valid until {new Date(invite.expires_at_ms).toLocaleDateString()}. Anyone with this code can join this campus.
           </p>
         </div>
       )}

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { AccountId, AddMemberRequest, MemberEntry, Role, UpdateMemberRequest } from "@pulse/protocol";
 import { Avatar } from "../ui/Avatar";
+import { roleLabels } from "../ui/roleLabels";
 import { ui } from "../ui/styles";
 
 interface MembersPanelProps {
@@ -12,13 +13,6 @@ interface MembersPanelProps {
   removeMember(accountId: AccountId): Promise<void>;
 }
 
-const roleLabels: Record<Role, string> = {
-  owner: "Owner",
-  admin: "Admin",
-  member: "Member",
-  guest: "Guest",
-  steward: "Steward",
-};
 
 function AddMemberForm({
   assignableRoles,

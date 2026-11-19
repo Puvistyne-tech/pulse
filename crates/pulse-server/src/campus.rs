@@ -180,6 +180,25 @@ pub async fn list_campuses(
     Ok(Json(CampusList { campuses }))
 }
 
+pub async fn insert_membership(
+    executor: impl sqlx::PgExecutor<'_>,
+    campus_id: CampusId,
+    account_id: AccountId,
+    role: Role,
+) -> Result<bool, sqlx::Error> {
+    let affected = sqlx::query(
+        "INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3) \
+         ON CONFLICT (campus_id, account_id) DO NOTHING",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(account_id.as_uuid())
+    .bind(role.as_str())
+    .execute(executor)
+    .await?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
 pub async fn furnish_campus(
     connection: &mut PgConnection,
     campus_id: CampusId,
@@ -321,14 +340,12 @@ pub async fn join_campus(
     if !live {
         return Err(rejected_invite());
     }
-    sqlx::query(
-        "INSERT INTO campus_members (campus_id, account_id, role) VALUES ($1, $2, $3) \
-         ON CONFLICT (campus_id, account_id) DO NOTHING",
+    insert_membership(
+        &mut *transaction,
+        campus_id,
+        authenticated.account_id,
+        Role::Member,
     )
-    .bind(campus_id.as_uuid())
-    .bind(authenticated.account_id.as_uuid())
-    .bind(Role::Member.as_str())
-    .execute(&mut *transaction)
     .await?;
     let role = campus_role(&mut *transaction, campus_id, authenticated.account_id)
         .await?

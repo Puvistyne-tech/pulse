@@ -4,14 +4,14 @@ use std::collections::BTreeSet;
 
 use common::{room_message, room_message_json};
 use pulse_protocol::fixtures::{
-    CAMPUS_A, LOUNGE_A, MESSAGE_A, MESSAGE_B, NONCE_A, ROOM_A, ROOM_B, STEWARD_A, STEWARD_TOKEN_A,
-    STREAM_A, STREAM_B, TOOL_CALL_A, auth_token,
+    ACCOUNT_A, CAMPUS_A, LOUNGE_A, MESSAGE_A, MESSAGE_B, NONCE_A, ROOM_A, ROOM_B, STEWARD_A,
+    STEWARD_TOKEN_A, STREAM_A, STREAM_B, TOOL_CALL_A, auth_token,
 };
 use pulse_protocol::{
     AckWork, AgentStreamChunk, CallTool, ClientFrame, HistoryRead, InputField, JoinLounge,
     LeaveLounge, ListRoomsArguments, ListTools, Lounge, LoungeChanged, LoungeHeartbeat,
     LoungeJoined, LoungeRejected, LoungeRejection, LoungeScope, LoungeTicket, LoungesSynced,
-    ManageSteward, MessagePosted, PostMessageArguments, REMIND_AT_HORIZON_MS,
+    ManageSteward, MembershipRevoked, MessagePosted, PostMessageArguments, REMIND_AT_HORIZON_MS,
     REMINDER_PICKER_STEP_MS, ReadRoomHistoryArguments, ReadThreadArguments, Room, RoomId,
     RoomsListed, STEWARD_ROOMS_MAX, ServerFrame, StewardAction, StewardChanged, StewardIssued,
     StewardProfile, StewardRejected, StewardRejection, StewardTool, StewardWorkItem,
@@ -205,6 +205,10 @@ fn client_frames_round_trip_under_their_tag(#[case] frame: ClientFrame, #[case] 
 #[case::stewards_synced(
     ServerFrame::StewardsSynced(StewardsSynced { stewards: vec![profile()] }),
     "stewards_synced"
+)]
+#[case::membership_revoked(
+    ServerFrame::MembershipRevoked(MembershipRevoked { campus_id: CAMPUS_A, account_id: ACCOUNT_A }),
+    "membership_revoked"
 )]
 #[case::lounges_synced(ServerFrame::LoungesSynced(LoungesSynced { lounges: vec![lounge()] }), "lounges_synced")]
 #[case::lounge_joined(

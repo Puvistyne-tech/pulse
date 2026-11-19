@@ -6,17 +6,18 @@ use axum::http::{Method, StatusCode};
 use common::{
     ClientSocket, api, attachment_ids_in, campus_for, download_tickets_of, expect_frame,
     frames_until_pong, fresh_state, grant_role, issue_steward, joined_socket, mark_read,
-    mention_rows, mentioning, next_of, parsed_tickets, pin_frame, posted, react, replied,
-    request_upload, rooms_of, seed_attachments, seed_messages, send, set_subscription, set_title,
-    shelf_frame, signed_up, spawn_server_with, sync_rooms, sync_thread, upload_request,
-    vault_frame,
+    mention_rows, mentioning, message_count, next_of, parsed_tickets, pin_frame, posted, react,
+    replied, request_upload, rooms_of, seed_attachments, seed_messages, send, send_message,
+    set_subscription, set_title, shelf_frame, signed_up, spawn_server_with, sync_rooms,
+    sync_thread, upload_request, vault_frame,
 };
 use futures_util::future::join_all;
-use pulse_protocol::fixtures::EMOJI_A;
+use pulse_protocol::fixtures::{EMOJI_A, NONCE_A};
 use pulse_protocol::{
-    AccountId, AuthSession, CampusId, ClientNonce, Note, NoteList, PinRejection, ReactionAction,
-    ReactionRejection, Role, RoomId, ServerFrame, ShelfAction, ShelfRejection, StartNoteRequest,
-    SubscriptionOrigin, SubscriptionState, ThreadRejection, VaultRejection, VaultTab, api_path,
+    AccountId, AuthSession, CampusId, ClientNonce, MessageRejection, Note, NoteList, PinRejection,
+    ReactionAction, ReactionRejection, Role, RoomId, ServerFrame, ShelfAction, ShelfRejection,
+    StartNoteRequest, SubscriptionOrigin, SubscriptionState, ThreadRejection, VaultRejection,
+    VaultTab, api_path,
 };
 use pulse_server::AppState;
 use rstest::rstest;
@@ -292,6 +293,7 @@ async fn concurrent_starts_of_one_set_share_a_single_note() {
 
 #[derive(Clone, Copy, Debug)]
 enum Probe {
+    Send(ClientNonce),
     SyncThread,
     React,
     Pin,
@@ -304,6 +306,9 @@ enum Probe {
 
 fn rejected_without_content(probe: Probe, frame: &ServerFrame) -> bool {
     match (probe, frame) {
+        (Probe::Send(nonce), ServerFrame::MessageRejected(rejected)) => {
+            rejected.client_nonce == nonce && rejected.reason == MessageRejection::UnknownRoom
+        }
         (
             Probe::SyncThread | Probe::Title | Probe::Follow | Probe::MarkRead,
             ServerFrame::ThreadRejected(rejected),
@@ -325,6 +330,7 @@ fn rejected_without_content(probe: Probe, frame: &ServerFrame) -> bool {
 }
 
 #[rstest]
+#[case::send(Probe::Send(NONCE_A))]
 #[case::sync_thread(Probe::SyncThread)]
 #[case::react(Probe::React)]
 #[case::pin(Probe::Pin)]
@@ -357,7 +363,19 @@ async fn outsiders_cannot_reach_note_content(#[case] probe: Probe) {
         )
         .await;
         let (mut linus, _) = joined_socket(addr, cast.campus_id, &cast.linus.token).await;
+        next_of(&mut ada, |frame| match frame {
+            ServerFrame::MessageCreated(created)
+                if created.message.message_id == reply.message_id =>
+            {
+                Some(())
+            }
+            _ => None,
+        })
+        .await;
+        frames_until_pong(&mut ada, 8).await;
+        let before = message_count(&cast.state, cast.campus_id).await;
         let outgoing = match probe {
+            Probe::Send(nonce) => send_message(note.room_id, nonce, "intrusion"),
             Probe::SyncThread => sync_thread(note.room_id, root.message_id, None),
             Probe::React => react(note.room_id, root.message_id, EMOJI_A, ReactionAction::Add),
             Probe::Pin => pin_frame(note.room_id, root.message_id, true),
@@ -376,6 +394,13 @@ async fn outsiders_cannot_reach_note_content(#[case] probe: Probe) {
         let answer = expect_frame(&mut linus).await;
         assert!(rejected_without_content(probe, &answer), "{answer:?}");
         assert!(!format!("{answer:?}").contains("secret"));
+        assert_eq!(message_count(&cast.state, cast.campus_id).await, before);
+        let seen_by_ada = frames_until_pong(&mut ada, 9).await;
+        assert!(
+            seen_by_ada
+                .iter()
+                .all(|frame| !matches!(frame, ServerFrame::MessageCreated(_)))
+        );
     })
     .await
     .expect("probe settles");

@@ -508,8 +508,8 @@ impl SessionMachine {
                 if Some(list.campus_id) == self.active_campus_id {
                     self.notes = list.notes;
                     self.settle_active_room();
+                    self.busy = false;
                 }
-                self.busy = false;
                 (self, None)
             }
             SessionEvent::StartNoteRequested(request) => {

@@ -1,8 +1,8 @@
 mod common;
 
 use common::{
-    SCENARIO_DEADLINE, Stage, join_lounge_frame, joined_socket, lounge_rows, member_session,
-    next_of, send, spawn_server_with,
+    SCENARIO_DEADLINE, Stage, campus_lounge, join_lounge_frame, joined_socket, lounge_rows,
+    member_session, next_of, send, spawn_server_with,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use pulse_protocol::{
@@ -42,10 +42,6 @@ fn decode_with(ticket: &LoungeTicket, key: &str, issuer: &str) -> Result<LiveKit
     )
     .map(|data| data.claims)
     .map_err(|error| error.to_string())
-}
-
-async fn campus_lounge(stage: &Stage) -> LoungeId {
-    lounge_rows(&stage.state, stage.campus.id).await[0].0
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -114,7 +110,7 @@ async fn configured_credentials_and_lifetime_are_honoured() {
             ticket_ttl_ms: 120_000,
         };
         let addr = spawn_server_with(stage.state.clone().with_lounge(config)).await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let ticket = ticket_for(addr, stage.campus.id, &stage.ada.token, lounge_id).await;
         assert_eq!(ticket.livekit_url, "wss://media.example.org");
         let claims = decode_with(&ticket, "other-secret", "other-key").expect("valid ticket");
@@ -143,7 +139,7 @@ enum Tamper {
 async fn altered_tickets_fail_local_verification(#[case] tamper: Tamper) {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let ticket = ticket_for(stage.addr, stage.campus.id, &stage.ada.token, lounge_id).await;
         assert!(decode_with(&ticket, "secret", "devkey").is_ok());
         let verdict = match tamper {
@@ -182,8 +178,8 @@ async fn tickets_are_scoped_to_their_campus_and_lounge() {
         let stage = Stage::open().await;
         let other =
             common::campus_with_owner(&stage.state, "other@example.org", "south-quad").await;
-        let ours = campus_lounge(&stage).await;
-        let theirs = lounge_rows(&stage.state, other.id).await[0].0;
+        let ours = campus_lounge(&stage.state, stage.campus.id).await;
+        let theirs = campus_lounge(&stage.state, other.id).await;
         let mine = ticket_for(stage.addr, stage.campus.id, &stage.ada.token, ours).await;
         let foreign = ticket_for(stage.addr, other.id, &other.owner.token, theirs).await;
         assert_ne!(mine.room_name, foreign.room_name);
@@ -201,7 +197,7 @@ async fn tickets_are_scoped_to_their_campus_and_lounge() {
 async fn the_media_server_accepts_valid_tickets_and_refuses_tampered_ones() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let ticket = ticket_for(stage.addr, stage.campus.id, &stage.ada.token, lounge_id).await;
         let client = reqwest::Client::new();
         let verdict = |token: String| {

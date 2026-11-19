@@ -6,9 +6,10 @@ use std::time::Duration;
 use axum::http::{Method, StatusCode};
 use common::steward::StewardClient;
 use common::{
-    ClientSocket, Person, SCENARIO_DEADLINE, Stage, api, count_rows, frames_until_pong,
-    issue_steward, join_lounge_frame, leave_lounge_frame, lounge_heartbeat_frame, lounge_rows,
-    next_of, presence_size, send, sibling_state, spawn_server_with, sync_lounges_frame,
+    ClientSocket, Person, SCENARIO_DEADLINE, Stage, api, campus_lounge, count_rows,
+    frames_until_pong, issue_steward, join_lounge_frame, leave_lounge_frame,
+    lounge_heartbeat_frame, lounge_rows, next_of, presence_size, send, sibling_state,
+    spawn_server_with, sync_lounges_frame,
 };
 use pulse_protocol::{
     AccountId, CampusId, CreateRoomRequest, Lounge, LoungeId, LoungeJoined, LoungeRejection,
@@ -81,15 +82,6 @@ fn members(lounge: &Lounge) -> BTreeSet<AccountId> {
         .collect()
 }
 
-async fn campus_lounge(stage: &Stage) -> LoungeId {
-    lounge_rows(&stage.state, stage.campus.id)
-        .await
-        .into_iter()
-        .find(|(_, room_id)| room_id.is_none())
-        .map(|(lounge_id, _)| lounge_id)
-        .expect("campus lounge")
-}
-
 fn short_ttl(ttl_ms: u64) -> LoungeConfig {
     LoungeConfig {
         presence_ttl_ms: ttl_ms,
@@ -152,7 +144,7 @@ async fn sync_lists_the_campus_lounge_then_one_per_room() {
 async fn joins_leaves_and_disconnects_fan_out_to_other_members() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let ada_id = stage.id_of(Person::Ada);
         let mut grace = stage.plain(Person::Grace).await;
         let mut ada = stage.plain(Person::Ada).await;
@@ -194,7 +186,7 @@ async fn joins_leaves_and_disconnects_fan_out_to_other_members() {
 async fn stewards_never_see_lounge_traffic() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let (_, token) = issue_steward(
             &stage.state,
             stage.campus.id,
@@ -224,7 +216,7 @@ async fn presence_expires_without_heartbeats_and_heartbeats_extend_it() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
         let addr = spawn_server_with(stage.state.clone().with_lounge(short_ttl(1_000))).await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let ada_id = stage.id_of(Person::Ada);
         let (mut ada, _) = common::joined_socket(addr, stage.campus.id, &stage.ada.token).await;
         let (mut observer, _) =
@@ -262,7 +254,7 @@ async fn concurrent_joins_and_leaves_converge_on_exact_members(
 ) {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let sessions =
             common::extra_members(&stage.state, stage.campus.id, leavers + stayers).await;
         let mut watcher = stage.plain(Person::Linus).await;
@@ -313,7 +305,7 @@ async fn concurrent_joins_and_leaves_converge_on_exact_members(
 async fn two_sessions_of_one_account_share_a_single_participant() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let ada_id = stage.id_of(Person::Ada);
         let mut watcher = stage.plain(Person::Grace).await;
         let mut first = stage.plain(Person::Ada).await;
@@ -357,7 +349,7 @@ async fn two_sessions_of_one_account_share_a_single_participant() {
 async fn only_speaking_roles_get_a_speaking_slot(#[case] person: Person, #[case] can_speak: bool) {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let mut socket = stage.plain(person).await;
         let joined = join(&mut socket, lounge_id).await;
         assert_eq!(joined.lounge.participants.len(), 1);
@@ -381,7 +373,7 @@ async fn joining_a_lounge_outside_the_campus_is_unknown(#[case] foreign: bool) {
         let target = if foreign {
             let other =
                 common::campus_with_owner(&stage.state, "other@example.org", "south-quad").await;
-            lounge_rows(&stage.state, other.id).await[0].0
+            campus_lounge(&stage.state, other.id).await
         } else {
             LoungeId::generate()
         };
@@ -413,7 +405,7 @@ async fn joining_a_lounge_outside_the_campus_is_unknown(#[case] foreign: bool) {
 async fn a_full_lounge_turns_newcomers_away() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let mut connection = stage
             .state
             .valkey
@@ -452,7 +444,7 @@ async fn a_full_lounge_turns_newcomers_away() {
 async fn a_valkey_outage_degrades_lounges_without_closing_sockets() {
     timeout(SCENARIO_DEADLINE, async {
         let stage = Stage::open().await;
-        let lounge_id = campus_lounge(&stage).await;
+        let lounge_id = campus_lounge(&stage.state, stage.campus.id).await;
         let mut broken = sibling_state(&stage.state);
         broken.valkey = redis::Client::open("redis://127.0.0.1:1").expect("client");
         let addr = spawn_server_with(broken).await;

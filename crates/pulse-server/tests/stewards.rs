@@ -4,10 +4,10 @@ use std::collections::BTreeSet;
 
 use axum::http::StatusCode;
 use common::{
-    ClientSocket, Managed, Observed, SCENARIO_DEADLINE, Stage, api_get, campus_with_owner,
-    create_steward_request, handshake_outcome, issue_steward, joined_socket, manage_as, manage_on,
-    next_of, send, sibling_state, spawn_server_with, steward_request, steward_room_rows,
-    steward_row, sync_stewards_frame,
+    ClientSocket, Managed, Observed, SCENARIO_DEADLINE, Stage, active_steward_count, api_get,
+    campus_with_owner, create_steward_request, handshake_outcome, issue_steward, joined_socket,
+    manage_as, manage_on, next_of, send, sibling_state, spawn_server_with, steward_request,
+    steward_room_rows, steward_row, sync_stewards_frame,
 };
 use pulse_protocol::{
     AccountId, AuthToken, ClientNonce, HandshakeRejected, HandshakeRejection, Role, RoomId,
@@ -145,6 +145,57 @@ async fn the_campus_cap_counts_only_active_stewards() {
         )
         .await;
         issue_steward(&stage.state, stage.campus.id, owner, "Replacement", &[]).await;
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[rstest]
+#[case::four(4)]
+#[case::twelve(12)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_creates_at_the_cap_issue_exactly_one_steward(#[case] attempts: usize) {
+    timeout(SCENARIO_DEADLINE, async {
+        let stage = Stage::open().await;
+        let owner = stage.campus.owner.account.account_id;
+        for index in 0..STEWARDS_PER_CAMPUS_MAX - 1 {
+            issue_steward(
+                &stage.state,
+                stage.campus.id,
+                owner,
+                &format!("Steward {index}"),
+                &[],
+            )
+            .await;
+        }
+        let mut creating = JoinSet::new();
+        for index in 0..attempts {
+            let state = sibling_state(&stage.state);
+            let campus_id = stage.campus.id;
+            creating.spawn(async move {
+                manage_steward(
+                    &state.db,
+                    campus_id,
+                    owner,
+                    create_steward_request(&format!("Racer {index}"), &[]),
+                )
+                .await
+            });
+        }
+        let mut issued = 0;
+        let mut rejected = 0;
+        while let Some(done) = creating.join_next().await {
+            match done.expect("creation task") {
+                Ok(StewardOutcome::Issued(..)) => issued += 1,
+                Err(StewardFailure::Rejected(StewardRejection::TooManyStewards)) => rejected += 1,
+                other => panic!("unexpected creation outcome {other:?}"),
+            }
+        }
+        assert_eq!((issued, rejected), (1, attempts - 1));
+        assert_eq!(
+            active_steward_count(&stage.state, stage.campus.id).await,
+            i64::try_from(STEWARDS_PER_CAMPUS_MAX).expect("cap")
+        );
     })
     .await
     .expect("scenario deadline");

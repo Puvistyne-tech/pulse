@@ -2,7 +2,7 @@ mod fixtures;
 
 use fixtures::{
     ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, CAMPUS_B, LOUNGE_A, LOUNGE_B, ROOM_A, client_rooms, clock,
-    connect_burst_at, connected_as, lounge_changed_frame, lounge_joined_frame,
+    connect_burst_at, connected_as, error_of, lounge_changed_frame, lounge_joined_frame,
     lounge_rejected_frame, lounge_with, lounges_synced_frame, received, settled_machine, step_all,
     timeline_connected,
 };
@@ -85,10 +85,6 @@ fn beat_frame(lounge_id: LoungeId) -> ClientFrame {
 
 fn joined_in(lounge_id: LoungeId) -> TimelineEvent {
     received(lounge_joined_frame(lounge_with(lounge_id, 1, &[])))
-}
-
-fn error_of(code: ApiErrorCode) -> Option<ApiError> {
-    Some(ApiError::new(code))
 }
 
 const LATER: u64 = 100_000;

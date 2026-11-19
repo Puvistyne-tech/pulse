@@ -5,9 +5,9 @@ use std::time::Duration;
 use common::steward::StewardClient;
 use common::{
     ClientSocket, Observed, SCENARIO_DEADLINE, Stage, agent_chunks_of, authored_count,
-    expect_close, expect_frame, frames_until_pong, issue_steward, manage_on, messages_with_nonce,
-    next_of, observe_until, owner_socket, posted, send, spawn_server_with, steward_request,
-    stream_chunk_frame, subscribed_socket,
+    drop_steward_room, expect_close, expect_frame, frames_until_pong, issue_steward, manage_on,
+    messages_with_nonce, next_of, observe_until, owner_socket, posted, send, spawn_server_with,
+    steward_request, stream_chunk_frame, subscribed_socket,
 };
 use pulse_protocol::{
     AccountId, AgentStreamChunk, ClientNonce, MESSAGE_BODY_MAX_CHARS, MessageId, RoomId,
@@ -834,6 +834,29 @@ async fn reply_streams_land_in_their_thread() {
     .expect("scenario deadline");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_unknown_thread_admission_failure_aborts_open_streams_as_rejected() {
+    timeout(SCENARIO_DEADLINE, async {
+        let mut rig = Rig::open().await;
+        let (open, doomed) = (StreamId::generate(), StreamId::generate());
+        let mut writer = rig.writer(open);
+        rig.push(writer.begin()).await;
+        rig.push(writer.delta("half")).await;
+        rig.await_sequence(open, 1).await;
+        let mut stray = StreamWriter::new(doomed, rig.room(), Some(MessageId::generate()));
+        rig.push(stray.begin()).await;
+        assert_eq!(rig.rejection(doomed).await, StreamRejection::UnknownThread);
+        let frames = rig.through_terminal(open).await;
+        assert_eq!(
+            aborted_with(&frames, open),
+            Some(StreamAbortReason::Rejected)
+        );
+        assert_eq!(rig.authored().await, 0);
+    })
+    .await
+    .expect("scenario deadline");
+}
+
 #[rstest]
 #[case::unknown_root(false)]
 #[case::reply_as_root(true)]
@@ -892,7 +915,7 @@ async fn pruning_the_assigned_rooms_aborts_streams_outside_them() {
         let frames = rig.through_terminal(stream_id).await;
         assert_eq!(
             aborted_with(&frames, stream_id),
-            Some(StreamAbortReason::Rejected)
+            Some(StreamAbortReason::Revoked)
         );
         rig.push(writer.delta("late")).await;
         assert_eq!(
@@ -920,15 +943,13 @@ async fn losing_the_room_between_chunks_revokes_every_stream() {
         rig.push(writer_first.begin()).await;
         rig.push(writer_second.begin()).await;
         await_sequence(&mut rig.watcher, &[first, second], 0).await;
-        sqlx::query(
-            "DELETE FROM steward_rooms WHERE campus_id = $1 AND steward_id = $2 AND room_id = $3",
+        drop_steward_room(
+            &rig.stage.state,
+            rig.stage.campus.id,
+            rig.profile.steward_id,
+            rig.room(),
         )
-        .bind(rig.stage.campus.id.as_uuid())
-        .bind(rig.profile.steward_id.as_uuid())
-        .bind(rig.room().as_uuid())
-        .execute(&rig.stage.state.db)
-        .await
-        .expect("drop assignment");
+        .await;
         rig.push(writer_first.delta("x")).await;
         assert_eq!(rig.rejection(first).await, StreamRejection::Forbidden);
         for stream_id in [first, second] {

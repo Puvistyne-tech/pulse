@@ -16,10 +16,10 @@ use common::{
 use pulse_protocol::fixtures::{CAMPUS_A, CAMPUS_B, EMOJI_A, NONCE_A, NONCE_B};
 use pulse_protocol::{
     AuthToken, CampusCreated, CampusId, ClientNonce, DEFAULT_ROOM_SLUGS, HandshakeRejected,
-    HandshakeRejection, MessageRejected, MessageRejection, PinRejection, ReactionAction,
-    ReactionRejection, Role, RoomUnavailable, ServerFrame, ShelfAction, ShelfRejection,
-    SubscriptionOrigin, SubscriptionState, ThreadRejection, VaultRejection, VaultTab, api_path,
-    mention_token,
+    HandshakeRejection, MessageRejected, MessageRejection, PinRejection, PostMessageArguments,
+    ReactionAction, ReactionRejection, ReadRoomHistoryArguments, ReadThreadArguments, Role,
+    RoomUnavailable, ServerFrame, ShelfAction, ShelfRejection, StewardTool, SubscriptionOrigin,
+    SubscriptionState, ThreadRejection, VaultRejection, VaultTab, api_path, mention_token,
 };
 use pulse_server::fanout::campus_channel;
 use rstest::rstest;
@@ -871,9 +871,20 @@ async fn a_steward_cannot_reach_rooms_of_another_campus(#[case] call: ForeignCal
     timeout(SCENARIO_DEADLINE, async {
         let twin = twin_campuses().await;
         let foreign_room = twin.theirs.rooms[0];
-        let mut theirs =
-            subscribed_socket(twin.addr, twin.theirs.id, &twin.theirs.owner.token, &[foreign_room]).await;
-        let root = posted(&mut theirs, foreign_room, ClientNonce::generate(), "private").await;
+        let mut theirs = subscribed_socket(
+            twin.addr,
+            twin.theirs.id,
+            &twin.theirs.owner.token,
+            &[foreign_room],
+        )
+        .await;
+        let root = posted(
+            &mut theirs,
+            foreign_room,
+            ClientNonce::generate(),
+            "private",
+        )
+        .await;
         let (_, token) = common::issue_steward(
             &twin.state,
             twin.ours.id,
@@ -889,10 +900,14 @@ async fn a_steward_cannot_reach_rooms_of_another_campus(#[case] call: ForeignCal
         match call {
             ForeignCall::History => {
                 let result = steward
-                    .call_tool_raw(
+                    .call_tool(
                         call_id,
-                        "read_room_history",
-                        &format!("{{\"room_id\":\"{foreign_room}\"}}"),
+                        StewardTool::ReadRoomHistory.name(),
+                        &ReadRoomHistoryArguments {
+                            room_id: foreign_room,
+                            before: None,
+                            limit: None,
+                        },
                     )
                     .await;
                 assert!(result.is_error);
@@ -900,13 +915,13 @@ async fn a_steward_cannot_reach_rooms_of_another_campus(#[case] call: ForeignCal
             }
             ForeignCall::Thread => {
                 let result = steward
-                    .call_tool_raw(
+                    .call_tool(
                         call_id,
-                        "read_thread",
-                        &format!(
-                            "{{\"room_id\":\"{foreign_room}\",\"root_message_id\":\"{}\"}}",
-                            root.message_id
-                        ),
+                        StewardTool::ReadThread.name(),
+                        &ReadThreadArguments {
+                            room_id: foreign_room,
+                            root_message_id: root.message_id,
+                        },
                     )
                     .await;
                 assert!(result.is_error);
@@ -914,13 +929,15 @@ async fn a_steward_cannot_reach_rooms_of_another_campus(#[case] call: ForeignCal
             }
             ForeignCall::Post => {
                 let result = steward
-                    .call_tool_raw(
+                    .call_tool(
                         call_id,
-                        "post_message",
-                        &format!(
-                            "{{\"room_id\":\"{foreign_room}\",\"client_nonce\":\"{}\",\"body\":\"intrude\"}}",
-                            ClientNonce::generate()
-                        ),
+                        StewardTool::PostMessage.name(),
+                        &PostMessageArguments {
+                            room_id: foreign_room,
+                            client_nonce: ClientNonce::generate(),
+                            body: "intrude".to_owned(),
+                            thread_root_id: None,
+                        },
                     )
                     .await;
                 assert!(result.is_error);
@@ -931,11 +948,16 @@ async fn a_steward_cannot_reach_rooms_of_another_campus(#[case] call: ForeignCal
                 let frame = expect_frame(&mut steward.socket).await;
                 assert_eq!(
                     frame,
-                    ServerFrame::RoomUnavailable(RoomUnavailable { room_id: foreign_room })
+                    ServerFrame::RoomUnavailable(RoomUnavailable {
+                        room_id: foreign_room
+                    })
                 );
             }
         }
-        assert_eq!(count_rows(&twin.state, "room_messages", twin.theirs.id).await, before);
+        assert_eq!(
+            count_rows(&twin.state, "room_messages", twin.theirs.id).await,
+            before
+        );
         let leaked = frames_until_pong(&mut theirs, 4).await;
         assert!(leaked.iter().all(|frame| !matches!(
             frame,
@@ -967,8 +989,8 @@ async fn stream_lounge_steward_and_work_frames_stay_inside_their_campus() {
         .await;
         let mut client =
             common::steward::StewardClient::connect(twin.addr, twin.ours.id, &token).await;
-        let our_lounge = common::lounge_rows(&twin.state, twin.ours.id).await[0].0;
-        let their_lounge = common::lounge_rows(&twin.state, twin.theirs.id).await[0].0;
+        let our_lounge = common::campus_lounge(&twin.state, twin.ours.id).await;
+        let their_lounge = common::campus_lounge(&twin.state, twin.theirs.id).await;
         let stream_id = pulse_protocol::StreamId::generate();
         client.stream_reply(stream_id, our_room, None, &["hello"]).await;
         send(&mut ours, &common::join_lounge_frame(our_lounge)).await;

@@ -3,8 +3,8 @@ use pulse_core::native::NativeClient;
 use pulse_protocol::{
     AccountId, AddMemberRequest, CampusId, ClientNonce, ClientSnapshot, CreateCampusRequest,
     DraftId, InboxStep, JoinCampusRequest, LoungeId, LoungeMediaState, MessageId, ReactionAction,
-    ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest, SubscriptionState,
-    UpdateMemberRequest, VaultTab,
+    ReminderPreset, RoomId, ShelfAction, SignInRequest, SignUpRequest, StartNoteRequest,
+    SubscriptionState, UpdateMemberRequest, VaultTab,
 };
 use tauri::ipc::InvokeBody;
 use tauri::{Manager, State};
@@ -60,6 +60,11 @@ async fn join_campus(client: State<'_, NativeClient>, request: JoinCampusRequest
 #[tauri::command]
 async fn create_invite(client: State<'_, NativeClient>) -> CommandResult {
     Ok(client.create_invite().await)
+}
+
+#[tauri::command]
+async fn start_note(client: State<'_, NativeClient>, request: StartNoteRequest) -> CommandResult {
+    Ok(client.start_note(request).await)
 }
 
 #[tauri::command]
@@ -393,6 +398,7 @@ pub fn run() {
             create_campus,
             join_campus,
             create_invite,
+            start_note,
             load_members,
             add_member,
             update_member,

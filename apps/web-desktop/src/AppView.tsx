@@ -6,6 +6,8 @@ import { CreateCampusForm } from "./campus/CreateCampusForm";
 import { InvitePanel } from "./campus/InvitePanel";
 import { JoinCampusForm } from "./campus/JoinCampusForm";
 import { MembersPanel } from "./campus/MembersPanel";
+import { NoteList } from "./campus/NoteList";
+import { StartNoteForm } from "./campus/StartNoteForm";
 import { RoomList } from "./campus/RoomList";
 import type { PulseIntents } from "./client/usePulseClient";
 import { LoungePanel } from "./lounge/LoungePanel";
@@ -50,6 +52,20 @@ const navButton =
 
 const countBadge = "ml-auto rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-5 text-on-accent";
 
+function useNoteDialog(noteCount: number): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(false);
+  const seen = useRef(noteCount);
+
+  useEffect(() => {
+    if (noteCount > seen.current) {
+      setOpen(false);
+    }
+    seen.current = noteCount;
+  }, [noteCount]);
+
+  return [open, setOpen];
+}
+
 type CampusDialog = "create" | "join" | null;
 
 function useCampusDialog(campusCount: number): [CampusDialog, (dialog: CampusDialog) => void] {
@@ -84,6 +100,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
   const [theme, setTheme] = useTheme();
   const [campusDialog, setCampusDialog] = useCampusDialog(session.campuses.length);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [noteStart, setNoteStart] = useNoteDialog(session.notes.length);
 
   if (session.auth !== "signed_in") {
     return (
@@ -100,6 +117,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
     (campus) => campus.campus_id === session.active_campus_id,
   );
   const activeRoom = session.rooms.find((room) => room.room_id === session.active_room_id);
+  const activeNote = session.notes.find((note) => note.room_id === session.active_room_id);
   const displayName = session.account?.display_name ?? "";
   const threadOpen = thread.root_message_id !== null;
   const sidePanelOpen = threadOpen || inbox.open || shelf.open || vault.open || stewards.open;
@@ -200,6 +218,26 @@ export function AppView({ snapshot, intents }: AppViewProps) {
               />
             </div>
           )}
+          {activeCampus && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between px-2.5">
+                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-side-subtle">Notes</h2>
+                <button
+                  className="inline-flex h-5 w-5 items-center justify-center rounded text-side-subtle hover:bg-side-hover hover:text-white"
+                  type="button"
+                  aria-label="New note"
+                  title="New note"
+                  onClick={() => {
+                    setNoteStart(true);
+                    void intents.loadMembers();
+                  }}
+                >
+                  <Plus size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <NoteList notes={session.notes} activeRoomId={session.active_room_id} selectRoom={intents.selectRoom} />
+            </div>
+          )}
           <LoungePanel lounges={lounges} intents={intents} />
         </div>
         <footer className="shrink-0 space-y-2 border-t border-white/10 p-3">
@@ -233,7 +271,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        {campusDialog === null && !peopleOpen && session.error !== null && (
+        {campusDialog === null && !peopleOpen && !noteStart && session.error !== null && (
           <div className="shrink-0 px-5 pt-3">
             <ErrorNotice error={session.error} />
           </div>
@@ -268,6 +306,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
             presets={shelf.presets}
             customTime={shelf.picker_anchor_ms !== null}
             roomSlug={activeRoom?.slug ?? null}
+            noteTitle={activeNote?.title ?? null}
           />
         )}
       </main>
@@ -321,6 +360,21 @@ export function AppView({ snapshot, intents }: AppViewProps) {
         >
           <ErrorNotice error={session.error} />
           <JoinCampusForm busy={session.busy} joinCampus={intents.joinCampus} />
+        </Dialog>
+      )}
+      {noteStart && activeCampus && (
+        <Dialog
+          title="New note"
+          description="A private conversation with the people you pick. Only they can read it."
+          closeLabel="Close"
+          onClose={() => setNoteStart(false)}
+        >
+          <ErrorNotice error={session.error} />
+          <StartNoteForm
+            people={session.members.filter((member) => !member.is_self)}
+            busy={session.busy}
+            startNote={intents.startNote}
+          />
         </Dialog>
       )}
       {peopleOpen && activeCampus && (

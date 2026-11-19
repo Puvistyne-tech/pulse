@@ -5,7 +5,7 @@ use axum::routing::{delete, get, patch, post};
 use pulse_protocol::api_path;
 
 use crate::state::AppState;
-use crate::{auth, campus, media, member, ws};
+use crate::{auth, campus, media, member, note, ws};
 
 async fn healthz() -> &'static str {
     "ok"
@@ -28,6 +28,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route(api_path::CAMPUS_MEMBERSHIPS, post(campus::join_campus))
         .route(api_path::CAMPUS_INVITES_ROUTE, post(campus::create_invite))
+        .route(
+            api_path::CAMPUS_NOTES_ROUTE,
+            get(note::list_notes).post(note::start_note),
+        )
         .route(
             api_path::CAMPUS_MEMBERS_ROUTE,
             get(member::list_members).post(member::add_member),

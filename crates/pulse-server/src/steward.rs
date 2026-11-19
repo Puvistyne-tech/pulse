@@ -271,7 +271,9 @@ async fn rooms_exist(
 ) -> Result<bool, sqlx::Error> {
     let ids: Vec<Uuid> = room_ids.iter().map(|room_id| room_id.as_uuid()).collect();
     let found = sqlx::query_scalar::<_, i64>(
-        "SELECT count(*) FROM rooms WHERE campus_id = $1 AND room_id = ANY($2)",
+        "SELECT count(*) FROM rooms r WHERE r.campus_id = $1 AND r.room_id = ANY($2) \
+         AND NOT EXISTS (SELECT 1 FROM direct_notes n \
+                         WHERE n.campus_id = r.campus_id AND n.room_id = r.room_id)",
     )
     .bind(campus_id.as_uuid())
     .bind(&ids)

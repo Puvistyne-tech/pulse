@@ -2,8 +2,9 @@ use pulse_protocol::{
     AccountId, AccountProfile, AddMemberRequest, ApiError, ApiErrorCode, AuthPhase, AuthSession,
     AuthToken, CampusCreated, CampusId, CampusInvite, CampusList, CampusMember, CampusSummary,
     CreateCampusRequest, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, JoinCampusRequest, MemberEntry,
-    MemberList, Permission, Room, RoomId, RoomList, SessionSnapshot, SignInRequest, SignUpRequest,
-    UpdateMemberRequest, Validate, assignable_roles, dev_accounts, member_manageable, role_permits,
+    MemberList, Note, NoteEntry, NoteList, Permission, Room, RoomId, RoomList, SessionSnapshot,
+    SignInRequest, SignUpRequest, StartNoteRequest, UpdateMemberRequest, Validate,
+    assignable_roles, dev_accounts, member_manageable, note_title, role_permits,
 };
 
 use crate::api::ApiTransport;
@@ -39,6 +40,10 @@ pub enum SessionEvent {
     RequestFailed(ApiError),
     SignOutRequested,
     QuickSignInRequested(String),
+    NotesLoaded(NoteList),
+    StartNoteRequested(StartNoteRequest),
+    NoteOpened(Note),
+    NoteStarted(Note),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +88,15 @@ pub enum SessionCommand {
         campus_id: CampusId,
         account_id: AccountId,
     },
+    LoadNotes {
+        token: AuthToken,
+        campus_id: CampusId,
+    },
+    StartNote {
+        token: AuthToken,
+        campus_id: CampusId,
+        request: StartNoteRequest,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +110,7 @@ pub struct SessionMachine {
     active_room_id: Option<RoomId>,
     invite: Option<CampusInvite>,
     members: Vec<CampusMember>,
+    notes: Vec<Note>,
     quick_sign_in: bool,
     busy: bool,
     error: Option<ApiError>,
@@ -113,6 +128,7 @@ impl Default for SessionMachine {
             active_room_id: None,
             invite: None,
             members: Vec::new(),
+            notes: Vec::new(),
             quick_sign_in: false,
             busy: false,
             error: None,
@@ -165,10 +181,34 @@ impl SessionMachine {
             .find(|campus| Some(campus.campus_id) == self.active_campus_id)
     }
 
+    fn room_listed(&self, room_id: RoomId) -> bool {
+        self.rooms.iter().any(|room| room.room_id == room_id)
+            || self.notes.iter().any(|note| note.room_id == room_id)
+    }
+
+    pub fn note_room_ids(&self) -> impl Iterator<Item = RoomId> + '_ {
+        self.notes.iter().map(|note| note.room_id)
+    }
+
+    fn keep_note(&mut self, note: Note) -> bool {
+        if Some(note.campus_id) != self.active_campus_id {
+            return false;
+        }
+        match self
+            .notes
+            .iter_mut()
+            .find(|listed| listed.room_id == note.room_id)
+        {
+            Some(listed) => *listed = note,
+            None => self.notes.push(note),
+        }
+        true
+    }
+
     fn settle_active_room(&mut self) {
         let still_listed = self
             .active_room_id
-            .is_some_and(|active| self.rooms.iter().any(|room| room.room_id == active));
+            .is_some_and(|active| self.room_listed(active));
         if !still_listed {
             self.active_room_id = self.rooms.first().map(|room| room.room_id);
         }
@@ -194,6 +234,7 @@ impl SessionMachine {
                 .active_campus()
                 .map(|campus| assignable_roles(campus.role))
                 .unwrap_or_default(),
+            notes: self.note_entries(),
             quick_accounts: if self.quick_sign_in && self.auth == AuthPhase::SignedOut {
                 dev_accounts()
             } else {
@@ -202,6 +243,21 @@ impl SessionMachine {
             busy: self.busy,
             error: self.error,
         }
+    }
+
+    fn note_entries(&self) -> Vec<NoteEntry> {
+        let Some(viewer) = self.account.as_ref().map(|account| account.account_id) else {
+            return Vec::new();
+        };
+        self.notes
+            .iter()
+            .filter(|note| Some(note.campus_id) == self.active_campus_id)
+            .map(|note| NoteEntry {
+                room_id: note.room_id,
+                title: note_title(note, viewer),
+                member_count: u32::try_from(note.members.len()).unwrap_or(u32::MAX),
+            })
+            .collect()
     }
 
     fn member_entries(&self) -> Vec<MemberEntry> {
@@ -215,6 +271,7 @@ impl SessionMachine {
                 display_name: member.display_name.clone(),
                 email: member.email.clone(),
                 role: member.role,
+                is_self: Some(member.account_id) == self_id,
                 manageable: Some(member.account_id) != self_id
                     && actor.is_some_and(|actor| member_manageable(actor, member.role)),
             })
@@ -272,6 +329,7 @@ impl SessionMachine {
         self.active_campus_id = Some(campus_id);
         self.rooms.clear();
         self.members.clear();
+        self.notes.clear();
         self.active_room_id = None;
         self.busy = true;
         Some(SessionCommand::LoadRooms { token, campus_id })
@@ -427,15 +485,46 @@ impl SessionMachine {
                 (self, command)
             }
             SessionEvent::RoomsLoaded(list) => {
+                if Some(list.campus_id) != self.active_campus_id {
+                    return (self, None);
+                }
+                self.rooms = list.rooms;
+                self.settle_active_room();
+                self.active_command(|token, campus_id| SessionCommand::LoadNotes {
+                    token,
+                    campus_id,
+                })
+            }
+            SessionEvent::NotesLoaded(list) => {
                 if Some(list.campus_id) == self.active_campus_id {
-                    self.rooms = list.rooms;
+                    self.notes = list.notes;
                     self.settle_active_room();
-                    self.busy = false;
+                }
+                self.busy = false;
+                (self, None)
+            }
+            SessionEvent::StartNoteRequested(request) => {
+                let validation = request.validate();
+                self.validated_command(validation, |token, campus_id| SessionCommand::StartNote {
+                    token,
+                    campus_id,
+                    request,
+                })
+            }
+            SessionEvent::NoteOpened(note) => {
+                self.busy = false;
+                let room_id = note.room_id;
+                if self.keep_note(note) {
+                    self.active_room_id = Some(room_id);
                 }
                 (self, None)
             }
+            SessionEvent::NoteStarted(note) => {
+                self.keep_note(note);
+                (self, None)
+            }
             SessionEvent::RoomSelected(room_id) => {
-                if self.rooms.iter().any(|room| room.room_id == room_id) {
+                if self.room_listed(room_id) {
                     self.active_room_id = Some(room_id);
                 }
                 (self, None)
@@ -564,6 +653,18 @@ pub async fn drive_session<A: ApiTransport>(
                 .update_member(token, campus_id, account_id, request)
                 .await
                 .map_or_else(SessionEvent::RequestFailed, SessionEvent::MemberSaved),
+            SessionCommand::LoadNotes { token, campus_id } => api
+                .list_notes(token, campus_id)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, SessionEvent::NotesLoaded),
+            SessionCommand::StartNote {
+                token,
+                campus_id,
+                request,
+            } => api
+                .start_note(token, campus_id, request)
+                .await
+                .map_or_else(SessionEvent::RequestFailed, SessionEvent::NoteOpened),
             SessionCommand::RemoveMember {
                 token,
                 campus_id,

@@ -1,17 +1,17 @@
 mod fixtures;
 
 use fixtures::{
-    ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, CAMPUS_A, CAMPUS_B, CAMPUS_C, active_room_slug, auth_session,
-    campus_invite, campus_list, campus_member, campus_summary, create_campus_request,
+    ACCOUNT_A, ACCOUNT_B, ACCOUNT_C, CAMPUS_A, CAMPUS_B, CAMPUS_C, ROOM_A, active_room_slug,
+    auth_session, campus_invite, campus_list, campus_member, campus_summary, create_campus_request,
     invalid_create_campus_request, invalid_sign_in_request, invite_code, join_campus_request,
-    member_list, room, room_list, session_after, session_from, short_password_sign_up_request,
-    sign_in_request, sign_up_request, token_a, two_campuses,
+    member_list, note_list, note_with, room, room_list, session_after, session_from,
+    short_password_sign_up_request, sign_in_request, sign_up_request, token_a, two_campuses,
 };
 use pulse_core::{SessionCommand, SessionEvent, SessionMachine, decode_api_response};
 use pulse_protocol::{
     AccountId, AddMemberRequest, ApiError, ApiErrorCode, AuthPhase, CampusCreated, CampusId,
-    CampusList, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, InputField, MemberList, Role, RoomId, RoomList,
-    SignInRequest, UpdateMemberRequest,
+    CampusList, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, InputField, MemberList, Note, Role, RoomId,
+    RoomList, SignInRequest, StartNoteRequest, UpdateMemberRequest,
 };
 use rstest::rstest;
 
@@ -105,6 +105,7 @@ fn ready_events() -> Vec<SessionEvent> {
         SessionEvent::Authenticated(auth_session()),
         SessionEvent::CampusesLoaded(two_campuses()),
         SessionEvent::RoomsLoaded(room_list(CAMPUS_A, &["commons", "courtyard"])),
+        SessionEvent::NotesLoaded(note_list(CAMPUS_A, vec![])),
     ]
 }
 
@@ -482,6 +483,8 @@ fn created(campus_id: CampusId, slug: &str, rooms: &[&str]) -> SessionEvent {
         assignable: vec![],
         rooms: vec!["lab"],
         active_room: Some("lab"),
+        busy: true,
+        command: Some(SessionCommand::LoadNotes { token: token_a(), campus_id: CAMPUS_B }),
         ..ready()
     },
 )]
@@ -709,4 +712,79 @@ fn quick_sign_in_uses_seeded_accounts(
         machine.snapshot().auth == AuthPhase::Authenticating,
         authenticating
     );
+}
+
+const NOTE_ROOM: RoomId = ROOM_A;
+
+fn grace_note(campus_id: CampusId) -> Note {
+    note_with(
+        campus_id,
+        NOTE_ROOM,
+        &[(ACCOUNT_A, "Ada"), (ACCOUNT_B, "Grace")],
+    )
+}
+
+fn start_request(account_ids: Vec<AccountId>) -> StartNoteRequest {
+    StartNoteRequest { account_ids }
+}
+
+#[rstest]
+#[case::loaded(
+    SessionEvent::NotesLoaded(note_list(CAMPUS_A, vec![grace_note(CAMPUS_A)])),
+    vec!["Grace"], false, None, None,
+)]
+#[case::loaded_for_stale_campus(
+    SessionEvent::NotesLoaded(note_list(CAMPUS_B, vec![grace_note(CAMPUS_B)])),
+    vec![], false, None, None,
+)]
+#[case::opened_selects_it(SessionEvent::NoteOpened(grace_note(CAMPUS_A)), vec!["Grace"], true, None, None)]
+#[case::announced_keeps_selection(SessionEvent::NoteStarted(grace_note(CAMPUS_A)), vec!["Grace"], false, None, None)]
+#[case::announced_for_other_campus(SessionEvent::NoteStarted(grace_note(CAMPUS_B)), vec![], false, None, None)]
+#[case::start_valid(
+    SessionEvent::StartNoteRequested(start_request(vec![ACCOUNT_B])),
+    vec![], false,
+    Some(SessionCommand::StartNote {
+        token: token_a(),
+        campus_id: CAMPUS_A,
+        request: start_request(vec![ACCOUNT_B]),
+    }),
+    None,
+)]
+#[case::start_without_anyone(
+    SessionEvent::StartNoteRequested(start_request(vec![])),
+    vec![], false, None, Some(ApiError::invalid(InputField::NoteMembers)),
+)]
+fn notes_follow_the_active_campus(
+    #[case] event: SessionEvent,
+    #[case] titles: Vec<&str>,
+    #[case] selected: bool,
+    #[case] command: Option<SessionCommand>,
+    #[case] error: Option<ApiError>,
+) {
+    let (machine, actual) = session_after(ready_events()).step(event);
+    let snapshot = machine.snapshot();
+    assert_eq!(
+        snapshot
+            .notes
+            .iter()
+            .map(|note| note.title.as_str())
+            .collect::<Vec<_>>(),
+        titles
+    );
+    assert_eq!(snapshot.active_room_id == Some(NOTE_ROOM), selected);
+    assert_eq!(actual, command);
+    assert_eq!(snapshot.error, error);
+}
+
+#[test]
+fn listed_notes_can_be_selected_and_survive_reloads_of_rooms() {
+    let mut events = ready_events();
+    events.push(SessionEvent::NotesLoaded(note_list(
+        CAMPUS_A,
+        vec![grace_note(CAMPUS_A)],
+    )));
+    events.push(SessionEvent::RoomSelected(NOTE_ROOM));
+    let machine = session_after(events);
+    assert_eq!(machine.snapshot().active_room_id, Some(NOTE_ROOM));
+    assert_eq!(machine.note_room_ids().collect::<Vec<_>>(), vec![NOTE_ROOM]);
 }

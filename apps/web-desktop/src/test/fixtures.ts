@@ -128,6 +128,7 @@ const signedOutSession: SessionSnapshot = {
   members: [],
   assignable_roles: [],
   quick_accounts: [],
+  notes: [],
   busy: false,
   error: null,
 };
@@ -796,6 +797,7 @@ export function noopIntents() {
     joinCampus: vi.fn(async () => {}),
     createInvite: vi.fn(async () => {}),
     loadMembers: vi.fn(async () => {}),
+    startNote: vi.fn(async () => {}),
     addMember: vi.fn(async () => {}),
     updateMember: vi.fn(async () => {}),
     removeMember: vi.fn(async () => {}),

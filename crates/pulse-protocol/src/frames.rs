@@ -13,6 +13,7 @@ use crate::messaging::{
     MessageAccepted, MessageCreated, MessageRejected, MessageUpdated, RoomSynced, RoomUnavailable,
     SendMessage, SyncRooms,
 };
+use crate::note::NoteStarted;
 use crate::rbac::Role;
 use crate::reaction::{React, ReactionRejected};
 use crate::shelf::{ShelfChanged, ShelfRejected, ShelfSynced, SyncShelf, UpdateShelf};
@@ -141,6 +142,7 @@ pub enum ServerFrame {
     LoungeChanged(LoungeChanged),
     LoungeRejected(LoungeRejected),
     MembershipRevoked(MembershipRevoked),
+    NoteStarted(NoteStarted),
 }
 
 pub mod close_code {

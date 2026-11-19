@@ -63,4 +63,5 @@ enum InputField {
   rooms,
   inviteCode,
   role,
+  noteMembers,
 }

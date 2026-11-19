@@ -12,6 +12,7 @@ pub mod media;
 pub mod member;
 pub mod mention;
 pub mod messaging;
+pub mod note;
 pub mod rbac;
 pub mod reaction;
 pub mod search;
@@ -67,6 +68,10 @@ pub use messaging::{
     ReactionTally, RoomCursor, RoomMessage, RoomSynced, RoomUnavailable, SYNC_MAX_ROOMS,
     SYNC_PAGE_LIMIT, SendMessage, SyncRooms,
 };
+pub use note::{
+    NOTE_MEMBERS_MAX, NOTE_SLUG_PREFIX, Note, NoteList, NoteMember, NoteStarted, StartNoteRequest,
+    note_member_key, note_title,
+};
 pub use rbac::{Permission, Role, RoleParseError, role_permits};
 pub use reaction::{
     REACTION_KINDS_MAX, REACTION_PALETTE, React, ReactionAction, ReactionRejected,
@@ -86,9 +91,10 @@ pub use snapshot::{
     AttachmentView, AuthPhase, ClientSnapshot, ConnectionPhase, ConnectionSnapshot, DeliveryState,
     DraftAttachmentView, HighlightSpan, InboxItem, InboxItemKind, InboxSnapshot, InboxStep,
     IssuedStewardToken, LoungeEntry, LoungeMediaState, LoungeParticipantView, LoungeSnapshot,
-    MemberEntry, ReactionSummary, ReplyPreview, SearchHit, SearchSnapshot, SessionSnapshot,
-    ShelfEntry, ShelfSnapshot, StewardEntry, StewardSnapshot, StreamState, ThreadPreview,
-    ThreadSnapshot, TimelineEntry, TimelineSnapshot, UploadState, VaultEntry, VaultSnapshot,
+    MemberEntry, NoteEntry, ReactionSummary, ReplyPreview, SearchHit, SearchSnapshot,
+    SessionSnapshot, ShelfEntry, ShelfSnapshot, StewardEntry, StewardSnapshot, StreamState,
+    ThreadPreview, ThreadSnapshot, TimelineEntry, TimelineSnapshot, UploadState, VaultEntry,
+    VaultSnapshot,
 };
 pub use steward::{
     AckWork, AgentStreamChunk, CallTool, HistoryRead, ListRoomsArguments, ListTools, ManageSteward,
@@ -112,8 +118,8 @@ pub use validation::{
     SLUG_MIN_CHARS, TOPIC_TITLE_MAX_CHARS, Validate, normalize_attachment_ids,
     normalize_content_type, normalize_display_name, normalize_email, normalize_file_name,
     normalize_invite_code, normalize_message_body, normalize_message_content,
-    normalize_reaction_emoji, normalize_room_ids, normalize_search_query, normalize_topic_title,
-    validate_byte_size, validate_display_name, validate_password, validate_remind_at,
-    validate_slug,
+    normalize_note_members, normalize_reaction_emoji, normalize_room_ids, normalize_search_query,
+    normalize_topic_title, validate_byte_size, validate_display_name, validate_password,
+    validate_remind_at, validate_slug,
 };
 pub use version::ProtocolVersion;

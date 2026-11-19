@@ -15,6 +15,7 @@ use crate::auth::Authenticated;
 use crate::campus::require_permission;
 use crate::error::{ApiFailure, ApiJson};
 use crate::message::PostFailure;
+use crate::note::room_accessible;
 use crate::state::AppState;
 use crate::storage::ObjectLocation;
 
@@ -102,7 +103,9 @@ pub async fn create_upload(
     let file_name = normalize_file_name(&request.file_name).map_err(ApiError::invalid)?;
     let content_type = normalize_content_type(&request.content_type).map_err(ApiError::invalid)?;
     let byte_size = validate_byte_size(request.byte_size).map_err(ApiError::invalid)?;
-    if !room_exists(&state.db, campus_id, room_id).await? {
+    if !room_exists(&state.db, campus_id, room_id).await?
+        || !room_accessible(&state.db, campus_id, room_id, authenticated.account_id).await?
+    {
         return Err(not_found());
     }
     let attachment_id = AttachmentId::generate();
@@ -173,9 +176,21 @@ pub async fn download_tickets(
     .fetch_all(&state.db)
     .await?;
     let mut found: HashMap<AttachmentId, (RoomId, Attachment)> = HashMap::new();
+    let mut access: HashMap<RoomId, bool> = HashMap::new();
     for row in rows {
         let (_, room_id, attachment) = attachment_from_row(row)?;
-        found.insert(attachment.attachment_id, (room_id, attachment));
+        let open = match access.get(&room_id) {
+            Some(open) => *open,
+            None => {
+                let open = room_accessible(&state.db, campus_id, room_id, authenticated.account_id)
+                    .await?;
+                access.insert(room_id, open);
+                open
+            }
+        };
+        if open {
+            found.insert(attachment.attachment_id, (room_id, attachment));
+        }
     }
     let mut tickets = Vec::new();
     for attachment_id in request.attachment_ids {

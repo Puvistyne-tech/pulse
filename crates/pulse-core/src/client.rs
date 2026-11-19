@@ -178,6 +178,13 @@ impl Client {
                 self.step_connection(ConnectionEvent::HandshakeRejected(rejected))
             }
             ServerFrame::Pong(_) => None,
+            ServerFrame::NoteStarted(started) => {
+                let rooms_before = self.room_ids();
+                let machine = core::mem::take(&mut self.session);
+                self.session = machine.step(SessionEvent::NoteStarted(started.note)).0;
+                self.reconcile(rooms_before);
+                None
+            }
             frame => {
                 self.feed_timeline(TimelineEvent::FrameReceived(frame));
                 None
@@ -316,6 +323,7 @@ impl Client {
             .rooms
             .iter()
             .map(|room| room.room_id)
+            .chain(self.session.note_room_ids())
             .collect()
     }
 

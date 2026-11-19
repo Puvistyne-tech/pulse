@@ -57,6 +57,7 @@ pub enum InputField {
     Rooms,
     InviteCode,
     Role,
+    NoteMembers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -97,6 +98,7 @@ pub mod api_path {
     pub const CAMPUS_DOWNLOADS_ROUTE: &str = "/v1/campuses/{campus_id}/downloads";
     pub const CAMPUS_INVITES_ROUTE: &str = "/v1/campuses/{campus_id}/invites";
     pub const CAMPUS_MEMBERSHIPS: &str = "/v1/campus-memberships";
+    pub const CAMPUS_NOTES_ROUTE: &str = "/v1/campuses/{campus_id}/notes";
     pub const CAMPUS_MEMBERS_ROUTE: &str = "/v1/campuses/{campus_id}/members";
     pub const CAMPUS_MEMBER_ROUTE: &str = "/v1/campuses/{campus_id}/members/{account_id}";
     pub const WEBSOCKET: &str = "/ws";
@@ -111,6 +113,10 @@ pub mod api_path {
 
     pub fn campus_invites(campus_id: CampusId) -> String {
         format!("{CAMPUSES}/{campus_id}/invites")
+    }
+
+    pub fn campus_notes(campus_id: CampusId) -> String {
+        format!("{CAMPUSES}/{campus_id}/notes")
     }
 
     pub fn campus_members(campus_id: CampusId) -> String {

@@ -26,6 +26,7 @@ use crate::lounge::{LoungeFailure, heartbeat_lounge, join_lounge, leave_lounge, 
 use crate::message::{
     PostFailure, PostOutcome, is_top_level, post_message, send_message, sync_room, sync_thread,
 };
+use crate::note::room_accessible;
 use crate::pin::{PinFailure, PinOutcome, set_pin};
 use crate::publish::{publish_created, publish_frame, publish_summaries};
 use crate::reaction::{ReactionFailure, ReactionOutcome, apply_reaction};
@@ -238,7 +239,7 @@ async fn room_open(
     room_id: RoomId,
 ) -> Result<bool, sqlx::Error> {
     match active.steward {
-        None => Ok(true),
+        None => room_accessible(&state.db, active.campus_id, room_id, active.account_id).await,
         Some(_) => {
             steward_room_assigned(&state.db, active.campus_id, active.account_id, room_id).await
         }
@@ -1384,9 +1385,9 @@ fn deliverable(active: &Subscriptions, envelope: &FanoutEnvelope) -> bool {
         | ServerFrame::MessageUpdated(MessageUpdated { message }) => {
             message.campus_id == active.campus_id && active.rooms.contains(&message.room_id)
         }
-        ServerFrame::ThreadChanged(_) | ServerFrame::ShelfChanged(_) => {
-            envelope.account_id == Some(active.account_id)
-        }
+        ServerFrame::ThreadChanged(_)
+        | ServerFrame::ShelfChanged(_)
+        | ServerFrame::NoteStarted(_) => envelope.account_id == Some(active.account_id),
         ServerFrame::StewardWorkItem(item) => {
             item.message.campus_id == active.campus_id
                 && envelope.account_id == Some(active.account_id)

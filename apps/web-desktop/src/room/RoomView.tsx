@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Archive, Hash } from "lucide-react";
+import { Archive, Hash, MessagesSquare } from "lucide-react";
 import type {
   ReminderPreset,
   TimelineSnapshot,
@@ -17,6 +17,7 @@ interface RoomViewProps {
   presets?: ReminderPreset[];
   customTime?: boolean;
   roomSlug?: string | null;
+  noteTitle?: string | null;
   headerExtras?: ReactNode;
 }
 
@@ -26,6 +27,7 @@ export function RoomView({
   presets = [],
   customTime = true,
   roomSlug = null,
+  noteTitle = null,
   headerExtras = null,
 }: RoomViewProps) {
   const [insertion, mention] = useInsertion();
@@ -39,8 +41,12 @@ export function RoomView({
     <section aria-label="Room" className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas">
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-5">
         <div className="flex min-w-0 items-center gap-1.5">
-          <Hash size={18} aria-hidden="true" className="shrink-0 text-subtle" />
-          <span className="truncate text-[15px] font-semibold text-ink">{roomSlug ?? "room"}</span>
+          {noteTitle === null ? (
+            <Hash size={18} aria-hidden="true" className="shrink-0 text-subtle" />
+          ) : (
+            <MessagesSquare size={18} aria-hidden="true" className="shrink-0 text-subtle" />
+          )}
+          <span className="truncate text-[15px] font-semibold text-ink">{noteTitle ?? roomSlug ?? "room"}</span>
         </div>
         <div className="flex items-center gap-2">
           {headerExtras}
@@ -77,7 +83,9 @@ export function RoomView({
         />
         <Composer
           insertion={insertion}
-          placeholder={roomSlug === null ? undefined : `Message #${roomSlug}`}
+          placeholder={
+            noteTitle !== null ? `Message ${noteTitle}` : roomSlug === null ? undefined : `Message #${roomSlug}`
+          }
           drafts={timeline.drafts}
           canUpload={timeline.can_upload}
           onAttach={(file) => void intents.attachFile(roomId, file)}

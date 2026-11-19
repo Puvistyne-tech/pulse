@@ -130,7 +130,10 @@ async fn campus_rooms(
     campus_id: CampusId,
 ) -> Result<Vec<Room>, sqlx::Error> {
     let rows = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT room_id, slug FROM rooms WHERE campus_id = $1 ORDER BY slug",
+        "SELECT r.room_id, r.slug FROM rooms r WHERE r.campus_id = $1 \
+         AND NOT EXISTS (SELECT 1 FROM direct_notes n \
+                         WHERE n.campus_id = r.campus_id AND n.room_id = r.room_id) \
+         ORDER BY r.slug",
     )
     .bind(campus_id.as_uuid())
     .fetch_all(executor)

@@ -28,6 +28,7 @@ fn migrations_apply_in_order() {
             "create media vault shelf".to_owned(),
             "create stewards lounges".to_owned(),
             "create campus invites".to_owned(),
+            "create direct notes".to_owned(),
         ]
     );
 }

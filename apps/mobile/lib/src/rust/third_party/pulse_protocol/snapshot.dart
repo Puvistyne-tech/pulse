@@ -498,6 +498,7 @@ class MemberEntry {
   final String email;
   final Role role;
   final bool manageable;
+  final bool isSelf;
 
   const MemberEntry({
     required this.accountId,
@@ -505,6 +506,7 @@ class MemberEntry {
     required this.email,
     required this.role,
     required this.manageable,
+    required this.isSelf,
   });
 
   @override
@@ -513,7 +515,8 @@ class MemberEntry {
       displayName.hashCode ^
       email.hashCode ^
       role.hashCode ^
-      manageable.hashCode;
+      manageable.hashCode ^
+      isSelf.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -524,7 +527,32 @@ class MemberEntry {
           displayName == other.displayName &&
           email == other.email &&
           role == other.role &&
-          manageable == other.manageable;
+          manageable == other.manageable &&
+          isSelf == other.isSelf;
+}
+
+class NoteEntry {
+  final RoomId roomId;
+  final String title;
+  final int memberCount;
+
+  const NoteEntry({
+    required this.roomId,
+    required this.title,
+    required this.memberCount,
+  });
+
+  @override
+  int get hashCode => roomId.hashCode ^ title.hashCode ^ memberCount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NoteEntry &&
+          runtimeType == other.runtimeType &&
+          roomId == other.roomId &&
+          title == other.title &&
+          memberCount == other.memberCount;
 }
 
 class ReactionSummary {
@@ -679,6 +707,7 @@ class SessionSnapshot {
   final List<MemberEntry> members;
   final List<Role> assignableRoles;
   final List<DevAccount> quickAccounts;
+  final List<NoteEntry> notes;
   final bool busy;
   final ApiError? error;
 
@@ -694,6 +723,7 @@ class SessionSnapshot {
     required this.members,
     required this.assignableRoles,
     required this.quickAccounts,
+    required this.notes,
     required this.busy,
     this.error,
   });
@@ -711,6 +741,7 @@ class SessionSnapshot {
       members.hashCode ^
       assignableRoles.hashCode ^
       quickAccounts.hashCode ^
+      notes.hashCode ^
       busy.hashCode ^
       error.hashCode;
 
@@ -730,6 +761,7 @@ class SessionSnapshot {
           members == other.members &&
           assignableRoles == other.assignableRoles &&
           quickAccounts == other.quickAccounts &&
+          notes == other.notes &&
           busy == other.busy &&
           error == other.error;
 }

@@ -3,7 +3,8 @@ use core::future::Future;
 use pulse_protocol::{
     AccountId, AddMemberRequest, ApiError, ApiErrorCode, AuthSession, AuthToken, CampusCreated,
     CampusId, CampusInvite, CampusList, CampusMember, CreateCampusRequest, JoinCampusRequest,
-    MemberList, RoomList, SignInRequest, SignUpRequest, UpdateMemberRequest,
+    MemberList, Note, NoteList, RoomList, SignInRequest, SignUpRequest, StartNoteRequest,
+    UpdateMemberRequest,
 };
 use serde::de::DeserializeOwned;
 
@@ -59,6 +60,17 @@ pub trait ApiTransport {
         account_id: AccountId,
         request: UpdateMemberRequest,
     ) -> impl Future<Output = Result<CampusMember, ApiError>>;
+    fn list_notes(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+    ) -> impl Future<Output = Result<NoteList, ApiError>>;
+    fn start_note(
+        &mut self,
+        token: AuthToken,
+        campus_id: CampusId,
+        request: StartNoteRequest,
+    ) -> impl Future<Output = Result<Note, ApiError>>;
     fn remove_member(
         &mut self,
         token: AuthToken,

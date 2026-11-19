@@ -384,7 +384,7 @@ test("an active note shows its title instead of a room slug", () => {
     ...signedInWithRooms,
     session: {
       ...signedInWithRooms.session,
-      notes: [{ room_id: noteRoom, title: "Grace Hopper", member_count: 2 }],
+      notes: [{ room_id: noteRoom, title: "Grace Hopper", member_count: 2, group: false }],
       active_room_id: noteRoom,
     },
     timeline: { ...signedInWithRooms.timeline, room_id: noteRoom },

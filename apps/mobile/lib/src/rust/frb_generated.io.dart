@@ -225,9 +225,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignUpRequest dco_decode_box_autoadd_sign_up_request(dynamic raw);
 
   @protected
-  StartNoteRequest dco_decode_box_autoadd_start_note_request(dynamic raw);
-
-  @protected
   StewardTool dco_decode_box_autoadd_steward_tool(dynamic raw);
 
   @protected
@@ -635,9 +632,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignUpRequest dco_decode_sign_up_request(dynamic raw);
 
   @protected
-  StartNoteRequest dco_decode_start_note_request(dynamic raw);
-
-  @protected
   StewardEntry dco_decode_steward_entry(dynamic raw);
 
   @protected
@@ -932,11 +926,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SignUpRequest sse_decode_box_autoadd_sign_up_request(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  StartNoteRequest sse_decode_box_autoadd_start_note_request(
     SseDeserializer deserializer,
   );
 
@@ -1434,9 +1423,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignUpRequest sse_decode_sign_up_request(SseDeserializer deserializer);
 
   @protected
-  StartNoteRequest sse_decode_start_note_request(SseDeserializer deserializer);
-
-  @protected
   StewardEntry sse_decode_steward_entry(SseDeserializer deserializer);
 
   @protected
@@ -1805,12 +1791,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_sign_up_request(
     SignUpRequest self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_box_autoadd_start_note_request(
-    StartNoteRequest self,
     SseSerializer serializer,
   );
 
@@ -2452,12 +2432,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_sign_up_request(SignUpRequest self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_start_note_request(
-    StartNoteRequest self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_steward_entry(StewardEntry self, SseSerializer serializer);

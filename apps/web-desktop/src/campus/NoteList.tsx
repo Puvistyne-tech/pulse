@@ -24,7 +24,7 @@ export function NoteList({ notes, activeRoomId, selectRoom }: NoteListProps) {
               onClick={() => void selectRoom(note.room_id)}
             >
               <span className="min-w-0 flex-1 truncate">{note.title}</span>
-              {note.member_count > 2 && (
+              {note.group && (
                 <span className="shrink-0 text-[11px] opacity-70">{note.member_count}</span>
               )}
             </button>

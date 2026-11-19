@@ -4,14 +4,19 @@ use std::time::Duration;
 
 use axum::http::{Method, StatusCode};
 use common::{
-    ClientSocket, api, campus_for, expect_frame, frames_until_pong, fresh_state, grant_role,
-    issue_steward, joined_socket, mention_rows, mentioning, next_of, posted, rooms_of, send,
-    signed_up, spawn_server_with, sync_rooms,
+    ClientSocket, api, attachment_ids_in, campus_for, download_tickets_of, expect_frame,
+    frames_until_pong, fresh_state, grant_role, issue_steward, joined_socket, mark_read,
+    mention_rows, mentioning, next_of, parsed_tickets, pin_frame, posted, react, replied,
+    request_upload, rooms_of, seed_attachments, seed_messages, send, set_subscription, set_title,
+    shelf_frame, signed_up, spawn_server_with, sync_rooms, sync_thread, upload_request,
+    vault_frame,
 };
 use futures_util::future::join_all;
+use pulse_protocol::fixtures::EMOJI_A;
 use pulse_protocol::{
-    AccountId, AuthSession, CampusId, ClientNonce, Note, NoteList, Role, RoomId, ServerFrame,
-    StartNoteRequest, api_path,
+    AccountId, AuthSession, CampusId, ClientNonce, Note, NoteList, PinRejection, ReactionAction,
+    ReactionRejection, Role, RoomId, ServerFrame, ShelfAction, ShelfRejection, StartNoteRequest,
+    SubscriptionOrigin, SubscriptionState, ThreadRejection, VaultRejection, VaultTab, api_path,
 };
 use pulse_server::AppState;
 use rstest::rstest;
@@ -283,4 +288,130 @@ async fn concurrent_starts_of_one_set_share_a_single_note() {
         common::count_rows(&cast.state, "direct_note_members", cast.campus_id).await,
         3
     );
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Probe {
+    SyncThread,
+    React,
+    Pin,
+    Title,
+    Follow,
+    MarkRead,
+    Vault(VaultTab),
+    Shelf,
+}
+
+fn rejected_without_content(probe: Probe, frame: &ServerFrame) -> bool {
+    match (probe, frame) {
+        (
+            Probe::SyncThread | Probe::Title | Probe::Follow | Probe::MarkRead,
+            ServerFrame::ThreadRejected(rejected),
+        ) => rejected.reason == ThreadRejection::UnknownThread,
+        (Probe::React, ServerFrame::ReactionRejected(rejected)) => {
+            rejected.reason == ReactionRejection::UnknownMessage
+        }
+        (Probe::Pin, ServerFrame::PinRejected(rejected)) => {
+            rejected.reason == PinRejection::UnknownMessage
+        }
+        (Probe::Vault(_), ServerFrame::VaultRejected(rejected)) => {
+            rejected.reason == VaultRejection::UnknownRoom
+        }
+        (Probe::Shelf, ServerFrame::ShelfRejected(rejected)) => {
+            rejected.reason == ShelfRejection::UnknownMessage
+        }
+        _ => false,
+    }
+}
+
+#[rstest]
+#[case::sync_thread(Probe::SyncThread)]
+#[case::react(Probe::React)]
+#[case::pin(Probe::Pin)]
+#[case::title(Probe::Title)]
+#[case::follow(Probe::Follow)]
+#[case::mark_read(Probe::MarkRead)]
+#[case::vault_media(Probe::Vault(VaultTab::Media))]
+#[case::vault_files(Probe::Vault(VaultTab::Files))]
+#[case::vault_links(Probe::Vault(VaultTab::Links))]
+#[case::vault_pinned(Probe::Vault(VaultTab::Pinned))]
+#[case::shelf(Probe::Shelf)]
+#[tokio::test]
+async fn outsiders_cannot_reach_note_content(#[case] probe: Probe) {
+    timeout(DEADLINE, async {
+        let cast = Cast::open().await;
+        let addr = spawn_server_with(cast.state.clone()).await;
+        let note = cast.started(&cast.ada, &[id(&cast.grace)]).await;
+        let (mut ada, _) = joined_socket(addr, cast.campus_id, &cast.ada.token).await;
+        assert!(matches!(
+            synced(&mut ada, note.room_id).await,
+            ServerFrame::RoomSynced(_)
+        ));
+        let root = posted(&mut ada, note.room_id, ClientNonce::generate(), "secret").await;
+        let reply = replied(
+            &mut ada,
+            note.room_id,
+            root.message_id,
+            ClientNonce::generate(),
+            "also secret",
+        )
+        .await;
+        let (mut linus, _) = joined_socket(addr, cast.campus_id, &cast.linus.token).await;
+        let outgoing = match probe {
+            Probe::SyncThread => sync_thread(note.room_id, root.message_id, None),
+            Probe::React => react(note.room_id, root.message_id, EMOJI_A, ReactionAction::Add),
+            Probe::Pin => pin_frame(note.room_id, root.message_id, true),
+            Probe::Title => set_title(note.room_id, root.message_id, "peek"),
+            Probe::Follow => set_subscription(
+                note.room_id,
+                root.message_id,
+                SubscriptionState::Following,
+                SubscriptionOrigin::Explicit,
+            ),
+            Probe::MarkRead => mark_read(note.room_id, root.message_id, reply.message_id),
+            Probe::Vault(tab) => vault_frame(note.room_id, tab, None),
+            Probe::Shelf => shelf_frame(note.room_id, root.message_id, ShelfAction::Save, None),
+        };
+        send(&mut linus, &outgoing).await;
+        let answer = expect_frame(&mut linus).await;
+        assert!(rejected_without_content(probe, &answer), "{answer:?}");
+        assert!(!format!("{answer:?}").contains("secret"));
+    })
+    .await
+    .expect("probe settles");
+}
+
+#[tokio::test]
+async fn outsiders_cannot_upload_or_download_in_a_note() {
+    let cast = Cast::open().await;
+    let note = cast.started(&cast.ada, &[id(&cast.grace)]).await;
+    let request = upload_request("plan.txt", "text/plain", 10);
+    let (status, body) = request_upload(
+        &cast.state,
+        &cast.linus.token,
+        cast.campus_id,
+        note.room_id,
+        &request,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    let message_id =
+        seed_messages(&cast.state, cast.campus_id, note.room_id, id(&cast.ada), 1).await[0];
+    seed_attachments(
+        &cast.state,
+        cast.campus_id,
+        note.room_id,
+        id(&cast.ada),
+        &[(message_id, "text/plain", "file")],
+    )
+    .await;
+    let ids = attachment_ids_in(&cast.state, cast.campus_id, note.room_id).await;
+    let (outsider_status, outsider) =
+        download_tickets_of(&cast.state, &cast.linus.token, cast.campus_id, ids.clone()).await;
+    assert_eq!(outsider_status, StatusCode::OK, "{outsider}");
+    assert!(parsed_tickets(outsider).tickets.is_empty());
+    let (member_status, member) =
+        download_tickets_of(&cast.state, &cast.grace.token, cast.campus_id, ids).await;
+    assert_eq!(member_status, StatusCode::OK, "{member}");
+    assert_eq!(parsed_tickets(member).tickets.len(), 1);
 }

@@ -10,7 +10,7 @@ use crate::media::{
 };
 use crate::member::{ASSIGNABLE_ROLES, AddMemberRequest, UpdateMemberRequest};
 use crate::messaging::SendMessage;
-use crate::note::{NOTE_MEMBERS_MAX, StartNoteRequest};
+use crate::note::{NOTE_MEMBERS_MAX, NOTE_SLUG_PREFIX};
 use crate::rbac::Role;
 use crate::reaction::React;
 use crate::search::{SEARCH_QUERY_MAX_CHARS, SEARCH_TERMS_MAX, search_terms};
@@ -230,7 +230,11 @@ pub fn validate_slug(raw: &str) -> Result<(), InputField> {
         && raw
             .chars()
             .all(|character| is_alphanumeric(character) || character == '-');
-    if valid { Ok(()) } else { Err(InputField::Slug) }
+    if valid && !raw.starts_with(NOTE_SLUG_PREFIX) {
+        Ok(())
+    } else {
+        Err(InputField::Slug)
+    }
 }
 
 pub fn normalize_invite_code(raw: &str) -> Result<InviteCode, InputField> {
@@ -331,16 +335,6 @@ impl Validate for AddMemberRequest {
 impl Validate for UpdateMemberRequest {
     fn validate(&self) -> Result<(), ApiError> {
         validate_assignable_role(self.role).map_err(invalid)
-    }
-}
-
-impl Validate for StartNoteRequest {
-    fn validate(&self) -> Result<(), ApiError> {
-        if self.account_ids.is_empty() || self.account_ids.len() > NOTE_MEMBERS_MAX + 1 {
-            Err(ApiError::invalid(InputField::NoteMembers))
-        } else {
-            Ok(())
-        }
     }
 }
 

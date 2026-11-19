@@ -1,5 +1,4 @@
 import '../../frb_generated.dart';
-import 'api.dart';
 import 'ids.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
@@ -51,23 +50,4 @@ class NoteMember {
           runtimeType == other.runtimeType &&
           accountId == other.accountId &&
           displayName == other.displayName;
-}
-
-class StartNoteRequest {
-  final List<AccountId> accountIds;
-
-  const StartNoteRequest({required this.accountIds});
-
-  Future<void> validate() => RustLib.instance.api
-      .pulseProtocolNoteStartNoteRequestValidate(that: this);
-
-  @override
-  int get hashCode => accountIds.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is StartNoteRequest &&
-          runtimeType == other.runtimeType &&
-          accountIds == other.accountIds;
 }

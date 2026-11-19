@@ -204,8 +204,8 @@ test.each<[string, (intents: ReturnType<typeof noopIntents>) => void, IntentName
 });
 
 const notes: NoteEntry[] = [
-  { room_id: ROOM_A, title: "Grace", member_count: 2 },
-  { room_id: ROOM_B, title: "Grace, Linus", member_count: 3 },
+  { room_id: ROOM_A, title: "Grace", member_count: 2, group: false },
+  { room_id: ROOM_B, title: "Grace, Linus", member_count: 3, group: true },
 ];
 
 test.each([

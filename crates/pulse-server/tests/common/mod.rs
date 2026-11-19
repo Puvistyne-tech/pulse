@@ -1316,6 +1316,25 @@ pub async fn download_tickets_of(
     .await
 }
 
+pub async fn attachment_ids_in(
+    state: &AppState,
+    campus_id: CampusId,
+    room_id: RoomId,
+) -> Vec<AttachmentId> {
+    sqlx::query_scalar::<_, Uuid>(
+        "SELECT attachment_id FROM attachments WHERE campus_id = $1 AND room_id = $2 \
+         ORDER BY attachment_id",
+    )
+    .bind(campus_id.as_uuid())
+    .bind(room_id.as_uuid())
+    .fetch_all(&state.db)
+    .await
+    .expect("attachment ids")
+    .into_iter()
+    .map(AttachmentId)
+    .collect()
+}
+
 pub fn parsed_tickets(body: Value) -> DownloadTickets {
     serde_json::from_value(body).expect("download tickets")
 }

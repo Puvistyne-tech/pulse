@@ -1,13 +1,16 @@
 use pulse_protocol::{
     AccountId, AccountProfile, AddMemberRequest, ApiError, ApiErrorCode, AuthPhase, AuthSession,
     AuthToken, CampusCreated, CampusId, CampusInvite, CampusList, CampusMember, CampusSummary,
-    CreateCampusRequest, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, JoinCampusRequest, MemberEntry,
-    MemberList, Note, NoteEntry, NoteList, Permission, Room, RoomId, RoomList, SessionSnapshot,
-    SignInRequest, SignUpRequest, StartNoteRequest, UpdateMemberRequest, Validate,
-    assignable_roles, dev_accounts, member_manageable, note_title, role_permits,
+    CreateCampusRequest, DEV_SEED_PASSWORD, DEV_SEED_PEOPLE, InputField, JoinCampusRequest,
+    MemberEntry, MemberList, Note, NoteEntry, NoteList, Permission, Room, RoomId, RoomList,
+    SessionSnapshot, SignInRequest, SignUpRequest, StartNoteRequest, UpdateMemberRequest, Validate,
+    assignable_roles, dev_accounts, member_manageable, normalize_note_members, note_title,
+    role_permits,
 };
 
 use crate::api::ApiTransport;
+
+const NOTE_PAIR_SIZE: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionEvent {
@@ -235,6 +238,11 @@ impl SessionMachine {
                 .map(|campus| assignable_roles(campus.role))
                 .unwrap_or_default(),
             notes: self.note_entries(),
+            note_candidates: self
+                .member_entries()
+                .into_iter()
+                .filter(|member| !member.is_self)
+                .collect(),
             quick_accounts: if self.quick_sign_in && self.auth == AuthPhase::SignedOut {
                 dev_accounts()
             } else {
@@ -256,6 +264,7 @@ impl SessionMachine {
                 room_id: note.room_id,
                 title: note_title(note, viewer),
                 member_count: u32::try_from(note.members.len()).unwrap_or(u32::MAX),
+                group: note.members.len() > NOTE_PAIR_SIZE,
             })
             .collect()
     }
@@ -504,7 +513,12 @@ impl SessionMachine {
                 (self, None)
             }
             SessionEvent::StartNoteRequested(request) => {
-                let validation = request.validate();
+                let starter = self.account.as_ref().map(|account| account.account_id);
+                let validation = starter
+                    .ok_or(InputField::NoteMembers)
+                    .and_then(|starter| normalize_note_members(&request.account_ids, starter))
+                    .map(|_| ())
+                    .map_err(ApiError::invalid);
                 self.validated_command(validation, |token, campus_id| SessionCommand::StartNote {
                     token,
                     campus_id,

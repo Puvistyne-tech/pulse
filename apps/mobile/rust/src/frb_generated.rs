@@ -34,7 +34,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 796307434;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -2057301126;
 
 flutter_rust_bridge::frb_generated_default_handler!();
 
@@ -4326,39 +4326,6 @@ fn wire__crate__api__client__start_inbox_reply_impl(
         },
     )
 }
-fn wire__pulse_protocol__note__start_note_request_validate_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "start_note_request_validate",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_that = <pulse_protocol::note::StartNoteRequest>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, pulse_protocol::api::ApiError>((move || {
-                    let output_ok = pulse_protocol::note::StartNoteRequest::validate(&api_that)?;
-                    std::result::Result::Ok(output_ok)
-                })())
-            }
-        },
-    )
-}
 fn wire__pulse_protocol__snapshot__steward_snapshot_default_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -5600,6 +5567,7 @@ const _: fn() = || {
         let _: pulse_protocol::ids::RoomId = NoteEntry.room_id;
         let _: String = NoteEntry.title;
         let _: u32 = NoteEntry.member_count;
+        let _: bool = NoteEntry.group;
     }
     {
         let NoteMember = None::<pulse_protocol::note::NoteMember>.unwrap();
@@ -5685,6 +5653,7 @@ const _: fn() = || {
         let _: Vec<pulse_protocol::rbac::Role> = SessionSnapshot.assignable_roles;
         let _: Vec<pulse_protocol::dev_seed::DevAccount> = SessionSnapshot.quick_accounts;
         let _: Vec<pulse_protocol::snapshot::NoteEntry> = SessionSnapshot.notes;
+        let _: Vec<pulse_protocol::snapshot::MemberEntry> = SessionSnapshot.note_candidates;
         let _: bool = SessionSnapshot.busy;
         let _: Option<pulse_protocol::api::ApiError> = SessionSnapshot.error;
     }
@@ -5733,10 +5702,6 @@ const _: fn() = || {
         let _: String = SignUpRequest.email;
         let _: String = SignUpRequest.display_name;
         let _: String = SignUpRequest.password;
-    }
-    {
-        let StartNoteRequest = None::<pulse_protocol::note::StartNoteRequest>.unwrap();
-        let _: Vec<pulse_protocol::ids::AccountId> = StartNoteRequest.account_ids;
     }
     {
         let StewardEntry = None::<pulse_protocol::snapshot::StewardEntry>.unwrap();
@@ -6944,10 +6909,12 @@ impl SseDecode for pulse_protocol::snapshot::NoteEntry {
         let mut var_roomId = <pulse_protocol::ids::RoomId>::sse_decode(deserializer);
         let mut var_title = <String>::sse_decode(deserializer);
         let mut var_memberCount = <u32>::sse_decode(deserializer);
+        let mut var_group = <bool>::sse_decode(deserializer);
         return pulse_protocol::snapshot::NoteEntry {
             room_id: var_roomId,
             title: var_title,
             member_count: var_memberCount,
+            group: var_group,
         };
     }
 }
@@ -7515,6 +7482,8 @@ impl SseDecode for pulse_protocol::snapshot::SessionSnapshot {
         let mut var_quickAccounts =
             <Vec<pulse_protocol::dev_seed::DevAccount>>::sse_decode(deserializer);
         let mut var_notes = <Vec<pulse_protocol::snapshot::NoteEntry>>::sse_decode(deserializer);
+        let mut var_noteCandidates =
+            <Vec<pulse_protocol::snapshot::MemberEntry>>::sse_decode(deserializer);
         let mut var_busy = <bool>::sse_decode(deserializer);
         let mut var_error = <Option<pulse_protocol::api::ApiError>>::sse_decode(deserializer);
         return pulse_protocol::snapshot::SessionSnapshot {
@@ -7530,6 +7499,7 @@ impl SseDecode for pulse_protocol::snapshot::SessionSnapshot {
             assignable_roles: var_assignableRoles,
             quick_accounts: var_quickAccounts,
             notes: var_notes,
+            note_candidates: var_noteCandidates,
             busy: var_busy,
             error: var_error,
         };
@@ -7658,15 +7628,6 @@ impl SseDecode for pulse_protocol::auth::SignUpRequest {
             email: var_email,
             display_name: var_displayName,
             password: var_password,
-        };
-    }
-}
-
-impl SseDecode for pulse_protocol::note::StartNoteRequest {
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_accountIds = <Vec<pulse_protocol::ids::AccountId>>::sse_decode(deserializer);
-        return pulse_protocol::note::StartNoteRequest {
-            account_ids: var_accountIds,
         };
     }
 }
@@ -8492,135 +8453,129 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         121 => wire__crate__api__client__start_inbox_reply_impl(port, ptr, rust_vec_len, data_len),
-        122 => wire__pulse_protocol__note__start_note_request_validate_impl(
+        122 => wire__pulse_protocol__snapshot__steward_snapshot_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        123 => wire__pulse_protocol__snapshot__steward_snapshot_default_impl(
+        123 => wire__pulse_protocol__steward__steward_tool_description_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        124 => wire__pulse_protocol__steward__steward_tool_description_impl(
+        124 => wire__pulse_protocol__steward__steward_tool_from_name_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        125 => wire__pulse_protocol__steward__steward_tool_from_name_impl(
+        125 => wire__pulse_protocol__steward__steward_tool_input_schema_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        126 => wire__pulse_protocol__steward__steward_tool_input_schema_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
-        127 => {
+        126 => {
             wire__pulse_protocol__steward__steward_tool_name_impl(port, ptr, rust_vec_len, data_len)
         }
-        128 => wire__pulse_protocol__ids__stream_id_as_uuid_impl(port, ptr, rust_vec_len, data_len),
-        129 => wire__pulse_protocol__ids__stream_id_client_nonce_impl(
+        127 => wire__pulse_protocol__ids__stream_id_as_uuid_impl(port, ptr, rust_vec_len, data_len),
+        128 => wire__pulse_protocol__ids__stream_id_client_nonce_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        130 => {
+        129 => {
             wire__pulse_protocol__ids__stream_id_generate_impl(port, ptr, rust_vec_len, data_len)
         }
-        131 => wire__pulse_protocol__thread__subscription_state_as_str_impl(
+        130 => wire__pulse_protocol__thread__subscription_state_as_str_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        132 => wire__pulse_protocol__snapshot__thread_snapshot_default_impl(
+        131 => wire__pulse_protocol__snapshot__thread_snapshot_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        133 => wire__crate__api__client__toggle_inbox_impl(port, ptr, rust_vec_len, data_len),
-        134 => wire__crate__api__client__toggle_search_impl(port, ptr, rust_vec_len, data_len),
-        135 => wire__crate__api__client__toggle_shelf_impl(port, ptr, rust_vec_len, data_len),
-        136 => {
+        132 => wire__crate__api__client__toggle_inbox_impl(port, ptr, rust_vec_len, data_len),
+        133 => wire__crate__api__client__toggle_search_impl(port, ptr, rust_vec_len, data_len),
+        134 => wire__crate__api__client__toggle_shelf_impl(port, ptr, rust_vec_len, data_len),
+        135 => {
             wire__pulse_protocol__ids__tool_call_id_as_uuid_impl(port, ptr, rust_vec_len, data_len)
         }
-        137 => {
+        136 => {
             wire__pulse_protocol__ids__tool_call_id_generate_impl(port, ptr, rust_vec_len, data_len)
         }
-        138 => {
+        137 => {
             wire__pulse_protocol__steward__tool_descriptors_impl(port, ptr, rust_vec_len, data_len)
         }
-        139 => wire__pulse_protocol__steward__tool_error_code_as_str_impl(
+        138 => wire__pulse_protocol__steward__tool_error_code_as_str_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        140 => wire__pulse_protocol__member__update_member_request_validate_impl(
+        139 => wire__pulse_protocol__member__update_member_request_validate_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        141 => wire__crate__api__client__update_shelf_impl(port, ptr, rust_vec_len, data_len),
-        142 => wire__pulse_protocol__shelf__update_shelf_validate_impl(
+        140 => wire__crate__api__client__update_shelf_impl(port, ptr, rust_vec_len, data_len),
+        141 => wire__pulse_protocol__shelf__update_shelf_validate_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        143 => wire__pulse_protocol__validation__validate_assignable_role_impl(
+        142 => wire__pulse_protocol__validation__validate_assignable_role_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        144 => wire__pulse_protocol__validation__validate_byte_size_impl(
+        143 => wire__pulse_protocol__validation__validate_byte_size_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        145 => wire__pulse_protocol__validation__validate_display_name_impl(
+        144 => wire__pulse_protocol__validation__validate_display_name_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        146 => wire__pulse_protocol__validation__validate_password_impl(
+        145 => wire__pulse_protocol__validation__validate_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        147 => wire__pulse_protocol__validation__validate_remind_at_impl(
+        146 => wire__pulse_protocol__validation__validate_remind_at_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        148 => {
+        147 => {
             wire__pulse_protocol__validation__validate_slug_impl(port, ptr, rust_vec_len, data_len)
         }
-        149 => wire__pulse_protocol__snapshot__vault_snapshot_default_impl(
+        148 => wire__pulse_protocol__snapshot__vault_snapshot_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        150 => {
+        149 => {
             wire__pulse_protocol__media__vault_tab_default_impl(port, ptr, rust_vec_len, data_len)
         }
-        151 => wire__crate__api__client__watch_snapshots_impl(port, ptr, rust_vec_len, data_len),
+        150 => wire__crate__api__client__watch_snapshots_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -9651,6 +9606,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::Note
             self.0.room_id.into_into_dart().into_dart(),
             self.0.title.into_into_dart().into_dart(),
             self.0.member_count.into_into_dart().into_dart(),
+            self.0.group.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -10026,6 +9982,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::Sess
             self.0.assignable_roles.into_into_dart().into_dart(),
             self.0.quick_accounts.into_into_dart().into_dart(),
             self.0.notes.into_into_dart().into_dart(),
+            self.0.note_candidates.into_into_dart().into_dart(),
             self.0.busy.into_into_dart().into_dart(),
             self.0.error.into_into_dart().into_dart(),
         ]
@@ -10217,22 +10174,6 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::auth::SignUpRe
     for pulse_protocol::auth::SignUpRequest
 {
     fn into_into_dart(self) -> FrbWrapper<pulse_protocol::auth::SignUpRequest> {
-        self.into()
-    }
-}
-impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::note::StartNoteRequest> {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [self.0.account_ids.into_into_dart().into_dart()].into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for FrbWrapper<pulse_protocol::note::StartNoteRequest>
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<pulse_protocol::note::StartNoteRequest>>
-    for pulse_protocol::note::StartNoteRequest
-{
-    fn into_into_dart(self) -> FrbWrapper<pulse_protocol::note::StartNoteRequest> {
         self.into()
     }
 }
@@ -11571,6 +11512,7 @@ impl SseEncode for pulse_protocol::snapshot::NoteEntry {
         <pulse_protocol::ids::RoomId>::sse_encode(self.room_id, serializer);
         <String>::sse_encode(self.title, serializer);
         <u32>::sse_encode(self.member_count, serializer);
+        <bool>::sse_encode(self.group, serializer);
     }
 }
 
@@ -12033,6 +11975,7 @@ impl SseEncode for pulse_protocol::snapshot::SessionSnapshot {
         <Vec<pulse_protocol::rbac::Role>>::sse_encode(self.assignable_roles, serializer);
         <Vec<pulse_protocol::dev_seed::DevAccount>>::sse_encode(self.quick_accounts, serializer);
         <Vec<pulse_protocol::snapshot::NoteEntry>>::sse_encode(self.notes, serializer);
+        <Vec<pulse_protocol::snapshot::MemberEntry>>::sse_encode(self.note_candidates, serializer);
         <bool>::sse_encode(self.busy, serializer);
         <Option<pulse_protocol::api::ApiError>>::sse_encode(self.error, serializer);
     }
@@ -12130,12 +12073,6 @@ impl SseEncode for pulse_protocol::auth::SignUpRequest {
         <String>::sse_encode(self.email, serializer);
         <String>::sse_encode(self.display_name, serializer);
         <String>::sse_encode(self.password, serializer);
-    }
-}
-
-impl SseEncode for pulse_protocol::note::StartNoteRequest {
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <Vec<pulse_protocol::ids::AccountId>>::sse_encode(self.account_ids, serializer);
     }
 }
 

@@ -535,15 +535,18 @@ class NoteEntry {
   final RoomId roomId;
   final String title;
   final int memberCount;
+  final bool group;
 
   const NoteEntry({
     required this.roomId,
     required this.title,
     required this.memberCount,
+    required this.group,
   });
 
   @override
-  int get hashCode => roomId.hashCode ^ title.hashCode ^ memberCount.hashCode;
+  int get hashCode =>
+      roomId.hashCode ^ title.hashCode ^ memberCount.hashCode ^ group.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -552,7 +555,8 @@ class NoteEntry {
           runtimeType == other.runtimeType &&
           roomId == other.roomId &&
           title == other.title &&
-          memberCount == other.memberCount;
+          memberCount == other.memberCount &&
+          group == other.group;
 }
 
 class ReactionSummary {
@@ -708,6 +712,7 @@ class SessionSnapshot {
   final List<Role> assignableRoles;
   final List<DevAccount> quickAccounts;
   final List<NoteEntry> notes;
+  final List<MemberEntry> noteCandidates;
   final bool busy;
   final ApiError? error;
 
@@ -724,6 +729,7 @@ class SessionSnapshot {
     required this.assignableRoles,
     required this.quickAccounts,
     required this.notes,
+    required this.noteCandidates,
     required this.busy,
     this.error,
   });
@@ -742,6 +748,7 @@ class SessionSnapshot {
       assignableRoles.hashCode ^
       quickAccounts.hashCode ^
       notes.hashCode ^
+      noteCandidates.hashCode ^
       busy.hashCode ^
       error.hashCode;
 
@@ -762,6 +769,7 @@ class SessionSnapshot {
           assignableRoles == other.assignableRoles &&
           quickAccounts == other.quickAccounts &&
           notes == other.notes &&
+          noteCandidates == other.noteCandidates &&
           busy == other.busy &&
           error == other.error;
 }

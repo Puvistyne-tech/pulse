@@ -5,8 +5,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use pulse_protocol::{
     AccountId, ApiError, CampusId, InputField, NOTE_SLUG_PREFIX, Note, NoteList, NoteMember,
-    NoteStarted, Permission, Role, RoomId, ServerFrame, StartNoteRequest, Validate,
-    normalize_note_members, note_member_key,
+    NoteStarted, Permission, Role, RoomId, ServerFrame, StartNoteRequest, normalize_note_members,
+    note_member_key,
 };
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -34,6 +34,9 @@ pub async fn room_accessible(
     .fetch_one(executor)
     .await
 }
+
+pub const NOT_A_NOTE: &str = "NOT EXISTS (SELECT 1 FROM direct_notes n \
+     WHERE n.campus_id = r.campus_id AND n.room_id = r.room_id)";
 
 fn invalid_members() -> ApiFailure {
     ApiFailure(ApiError::invalid(InputField::NoteMembers))
@@ -193,19 +196,23 @@ async fn settle_note(
     campus_id: CampusId,
     member_key: &str,
     starter: AccountId,
+    others: &[AccountId],
     members: &[AccountId],
-) -> Result<(RoomId, bool), sqlx::Error> {
+) -> Result<Option<(RoomId, bool)>, sqlx::Error> {
     let mut transaction = state.db.begin().await?;
+    if eligible_count(&mut transaction, campus_id, others).await? != others.len() {
+        return Ok(None);
+    }
     if let Some(room_id) = existing_note(&mut transaction, campus_id, member_key).await? {
         enroll(&mut transaction, campus_id, room_id, members).await?;
         transaction.commit().await?;
-        return Ok((room_id, false));
+        return Ok(Some((room_id, false)));
     }
     match insert_note(&mut transaction, campus_id, member_key, starter).await {
         Ok(room_id) => {
             enroll(&mut transaction, campus_id, room_id, members).await?;
             transaction.commit().await?;
-            Ok((room_id, true))
+            Ok(Some((room_id, true)))
         }
         Err(error) if is_unique_violation(&error) => {
             transaction.rollback().await?;
@@ -215,7 +222,7 @@ async fn settle_note(
                 .ok_or(sqlx::Error::RowNotFound)?;
             enroll(&mut retry, campus_id, room_id, members).await?;
             retry.commit().await?;
-            Ok((room_id, false))
+            Ok(Some((room_id, false)))
         }
         Err(error) => Err(error),
     }
@@ -230,18 +237,15 @@ pub async fn start_note(
     let campus_id = parse_campus_id(&raw_campus_id)?;
     let starter = authenticated.account_id;
     require_permission(&state.db, campus_id, starter, Permission::PostMessage).await?;
-    request.validate()?;
     let others =
         normalize_note_members(&request.account_ids, starter).map_err(ApiError::invalid)?;
     let mut members = others.clone();
     members.push(starter);
-    let mut connection = state.db.acquire().await?;
-    if eligible_count(&mut connection, campus_id, &others).await? != others.len() {
-        return Err(invalid_members());
-    }
-    drop(connection);
     let member_key = note_member_key(&members);
-    let (room_id, created) = settle_note(&state, campus_id, &member_key, starter, &members).await?;
+    let (room_id, created) =
+        settle_note(&state, campus_id, &member_key, starter, &others, &members)
+            .await?
+            .ok_or_else(invalid_members)?;
     let note = notes_where(&state.db, campus_id, ROOM_IS, room_id.as_uuid())
         .await?
         .into_iter()

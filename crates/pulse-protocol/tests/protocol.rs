@@ -109,6 +109,7 @@ fn signed_out_session() -> SessionSnapshot {
         assignable_roles: Vec::new(),
         quick_accounts: Vec::new(),
         notes: Vec::new(),
+        note_candidates: Vec::new(),
         busy: false,
         error: None,
     }
@@ -919,6 +920,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "assignable_roles": [],
             "quick_accounts": [],
             "notes": [],
+            "note_candidates": [],
             "busy": false,
             "error": null,
         },
@@ -987,6 +989,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             assignable_roles: Vec::new(),
             quick_accounts: Vec::new(),
             notes: Vec::new(),
+            note_candidates: Vec::new(),
             busy: true,
             error: Some(ApiError::invalid(InputField::Slug)),
         },
@@ -1053,6 +1056,7 @@ fn timeline_entry_wire_format(#[case] entry: TimelineEntry, #[case] expected: Va
             "assignable_roles": [],
             "quick_accounts": [],
             "notes": [],
+            "note_candidates": [],
             "busy": true,
             "error": {"code": "invalid_input", "field": "slug"},
         },
@@ -1239,19 +1243,23 @@ fn note_member_rules(
     #[case] requested: Vec<AccountId>,
     #[case] expected: Result<Vec<AccountId>, InputField>,
 ) {
-    let mut normalized = normalize_note_members(&requested, ACCOUNT_A);
-    if let (Ok(actual), Ok(wanted)) = (&mut normalized, &expected) {
-        actual.sort_by_key(ToString::to_string);
-        let mut wanted = wanted.clone();
-        wanted.sort_by_key(ToString::to_string);
-        assert_eq!(*actual, wanted);
-        assert_eq!(
-            note_member_key(&[ACCOUNT_A, ACCOUNT_B, ACCOUNT_C]),
-            note_member_key(&[ACCOUNT_C, ACCOUNT_A, ACCOUNT_B, ACCOUNT_A])
-        );
-    } else {
-        assert_eq!(normalized, expected);
-    }
+    let sorted = |ids: Vec<AccountId>| {
+        let mut ids = ids;
+        ids.sort_by_key(ToString::to_string);
+        ids
+    };
+    assert_eq!(
+        normalize_note_members(&requested, ACCOUNT_A).map(sorted),
+        expected.map(sorted)
+    );
+}
+
+#[test]
+fn note_member_key_ignores_order_and_repeats() {
+    assert_eq!(
+        note_member_key(&[ACCOUNT_A, ACCOUNT_B, ACCOUNT_C]),
+        note_member_key(&[ACCOUNT_C, ACCOUNT_A, ACCOUNT_B, ACCOUNT_A])
+    );
 }
 
 #[rstest]
@@ -1398,6 +1406,7 @@ fn password_rules(#[case] raw: &str, #[case] valid: bool) {
 #[case::hyphen_inside("north-quad", true)]
 #[case::digits("room-42", true)]
 #[case::leading_hyphen("-abc", false)]
+#[case::reserved_note_prefix("note-abc", false)]
 #[case::trailing_hyphen("abc-", false)]
 #[case::uppercase("Abc", false)]
 #[case::underscore("a_b", false)]

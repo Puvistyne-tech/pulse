@@ -55,6 +55,7 @@ pub struct NoteEntry {
     pub room_id: RoomId,
     pub title: String,
     pub member_count: u32,
+    pub group: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -81,6 +82,7 @@ pub struct SessionSnapshot {
     pub assignable_roles: Vec<Role>,
     pub quick_accounts: Vec<DevAccount>,
     pub notes: Vec<NoteEntry>,
+    pub note_candidates: Vec<MemberEntry>,
     pub busy: bool,
     pub error: Option<ApiError>,
 }

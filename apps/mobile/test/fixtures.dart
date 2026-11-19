@@ -679,6 +679,7 @@ ClientSnapshot _snapshot({
     assignableRoles: const [],
     quickAccounts: const [],
     notes: const [],
+    noteCandidates: const [],
     busy: busy,
     error: error,
   ),

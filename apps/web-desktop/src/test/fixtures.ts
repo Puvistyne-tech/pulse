@@ -129,6 +129,7 @@ const signedOutSession: SessionSnapshot = {
   assignable_roles: [],
   quick_accounts: [],
   notes: [],
+  note_candidates: [],
   busy: false,
   error: null,
 };

@@ -52,16 +52,16 @@ const navButton =
 
 const countBadge = "ml-auto rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-5 text-on-accent";
 
-function useNoteDialog(noteCount: number): [boolean, (open: boolean) => void] {
+function useNoteDialog(activeRoomId: string | null): [boolean, (open: boolean) => void] {
   const [open, setOpen] = useState(false);
-  const seen = useRef(noteCount);
+  const seen = useRef(activeRoomId);
 
   useEffect(() => {
-    if (noteCount > seen.current) {
+    if (activeRoomId !== seen.current) {
       setOpen(false);
     }
-    seen.current = noteCount;
-  }, [noteCount]);
+    seen.current = activeRoomId;
+  }, [activeRoomId]);
 
   return [open, setOpen];
 }
@@ -100,7 +100,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
   const [theme, setTheme] = useTheme();
   const [campusDialog, setCampusDialog] = useCampusDialog(session.campuses.length);
   const [peopleOpen, setPeopleOpen] = useState(false);
-  const [noteStart, setNoteStart] = useNoteDialog(session.notes.length);
+  const [noteStart, setNoteStart] = useNoteDialog(session.active_room_id);
 
   if (session.auth !== "signed_in") {
     return (
@@ -371,7 +371,7 @@ export function AppView({ snapshot, intents }: AppViewProps) {
         >
           <ErrorNotice error={session.error} />
           <StartNoteForm
-            people={session.members.filter((member) => !member.is_self)}
+            people={session.note_candidates}
             busy={session.busy}
             startNote={intents.startNote}
           />

@@ -92,10 +92,14 @@ impl Rig {
     }
 
     async fn authored(&self) -> i64 {
+        self.authored_in(self.room()).await
+    }
+
+    async fn authored_in(&self, room_id: RoomId) -> i64 {
         authored_count(
             &self.stage.state,
             self.stage.campus.id,
-            self.room(),
+            room_id,
             self.profile.steward_id,
         )
         .await
@@ -834,8 +838,20 @@ async fn reply_streams_land_in_their_thread() {
     .expect("scenario deadline");
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Refusal {
+    UnknownThread,
+    UnassignedRoom,
+}
+
+#[rstest]
+#[case::unknown_thread(Refusal::UnknownThread, StreamRejection::UnknownThread)]
+#[case::unassigned_room(Refusal::UnassignedRoom, StreamRejection::Forbidden)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn an_unknown_thread_admission_failure_aborts_open_streams_as_rejected() {
+async fn a_refused_begin_leaves_the_other_streams_alive(
+    #[case] refusal: Refusal,
+    #[case] expected: StreamRejection,
+) {
     timeout(SCENARIO_DEADLINE, async {
         let mut rig = Rig::open().await;
         let (open, doomed) = (StreamId::generate(), StreamId::generate());
@@ -843,15 +859,64 @@ async fn an_unknown_thread_admission_failure_aborts_open_streams_as_rejected() {
         rig.push(writer.begin()).await;
         rig.push(writer.delta("half")).await;
         rig.await_sequence(open, 1).await;
-        let mut stray = StreamWriter::new(doomed, rig.room(), Some(MessageId::generate()));
+        let mut stray = match refusal {
+            Refusal::UnknownThread => {
+                StreamWriter::new(doomed, rig.room(), Some(MessageId::generate()))
+            }
+            Refusal::UnassignedRoom => {
+                drop_steward_room(
+                    &rig.stage.state,
+                    rig.stage.campus.id,
+                    rig.profile.steward_id,
+                    rig.rooms[1],
+                )
+                .await;
+                StreamWriter::new(doomed, rig.rooms[1], None)
+            }
+        };
         rig.push(stray.begin()).await;
-        assert_eq!(rig.rejection(doomed).await, StreamRejection::UnknownThread);
+        assert_eq!(rig.rejection(doomed).await, expected);
+        rig.push(writer.delta(" more")).await;
+        rig.push(writer.end()).await;
         let frames = rig.through_terminal(open).await;
+        assert_eq!(aborted_with(&frames, open), None);
+        assert_eq!(rig.authored_in(rig.room()).await, 1);
+        assert_eq!(rig.authored_in(rig.rooms[1]).await, 0);
+    })
+    .await
+    .expect("scenario deadline");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn losing_one_room_aborts_only_the_streams_in_it() {
+    timeout(SCENARIO_DEADLINE, async {
+        let mut rig = Rig::open().await;
+        let (kept, lost) = (StreamId::generate(), StreamId::generate());
+        let mut kept_writer = rig.writer(kept);
+        let mut lost_writer = StreamWriter::new(lost, rig.rooms[1], None);
+        rig.push(kept_writer.begin()).await;
+        rig.push(lost_writer.begin()).await;
+        await_sequence(&mut rig.watcher, &[kept, lost], 0).await;
+        drop_steward_room(
+            &rig.stage.state,
+            rig.stage.campus.id,
+            rig.profile.steward_id,
+            rig.rooms[1],
+        )
+        .await;
+        rig.push(lost_writer.delta("x")).await;
+        assert_eq!(rig.rejection(lost).await, StreamRejection::Forbidden);
+        let frames = rig.through_terminal(lost).await;
         assert_eq!(
-            aborted_with(&frames, open),
-            Some(StreamAbortReason::Rejected)
+            aborted_with(&frames, lost),
+            Some(StreamAbortReason::Revoked)
         );
-        assert_eq!(rig.authored().await, 0);
+        rig.push(kept_writer.delta("fine")).await;
+        rig.push(kept_writer.end()).await;
+        let frames = rig.through_terminal(kept).await;
+        assert_eq!(aborted_with(&frames, kept), None);
+        assert_eq!(rig.authored_in(rig.room()).await, 1);
+        assert_eq!(rig.authored_in(rig.rooms[1]).await, 0);
     })
     .await
     .expect("scenario deadline");

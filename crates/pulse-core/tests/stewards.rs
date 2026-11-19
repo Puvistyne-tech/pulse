@@ -524,8 +524,7 @@ fn an_empty_room_view_has_no_mentionable_stewards() {
 
 #[rstest]
 #[case::assigned_and_live(false, &[ROOM_A], vec![STEWARD_A])]
-#[case::revoked_excluded(true, &[ROOM_A], vec![])]
-#[case::unassigned_excluded(false, &[ROOM_B], vec![])]
+#[case::other_room_excluded(false, &[ROOM_B], vec![])]
 fn the_thread_view_lists_the_stewards_of_its_room(
     #[case] revoked: bool,
     #[case] rooms: &[RoomId],

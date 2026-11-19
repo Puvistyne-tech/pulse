@@ -5789,14 +5789,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   StewardEntry dco_decode_steward_entry(dynamic raw) {
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
     return StewardEntry(
       stewardId: dco_decode_account_id(arr[0]),
       displayName: dco_decode_String(arr[1]),
       mentionToken: dco_decode_String(arr[2]),
       roomIds: dco_decode_list_room_id(arr[3]),
       revoked: dco_decode_bool(arr[4]),
+      manageable: dco_decode_bool(arr[5]),
     );
   }
 
@@ -5876,8 +5877,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   ThreadSnapshot dco_decode_thread_snapshot(dynamic raw) {
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return ThreadSnapshot(
       roomId: dco_decode_opt_box_autoadd_room_id(arr[0]),
       rootMessageId: dco_decode_opt_box_autoadd_message_id(arr[1]),
@@ -5886,6 +5887,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       topicTitle: dco_decode_opt_String(arr[4]),
       subscription: dco_decode_opt_box_autoadd_subscription_state(arr[5]),
       syncing: dco_decode_bool(arr[6]),
+      mentionableStewards: dco_decode_list_steward_entry(arr[7]),
     );
   }
 
@@ -5920,8 +5922,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   TimelineSnapshot dco_decode_timeline_snapshot(dynamic raw) {
     final arr = raw as List<dynamic>;
-    if (arr.length != 9)
-      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
     return TimelineSnapshot(
       roomId: dco_decode_opt_box_autoadd_room_id(arr[0]),
       entries: dco_decode_list_timeline_entry(arr[1]),
@@ -5932,6 +5934,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       focusMessageId: dco_decode_opt_box_autoadd_message_id(arr[6]),
       canPin: dco_decode_bool(arr[7]),
       canUpload: dco_decode_bool(arr[8]),
+      mentionableStewards: dco_decode_list_steward_entry(arr[9]),
     );
   }
 
@@ -7660,12 +7663,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_mentionToken = sse_decode_String(deserializer);
     var var_roomIds = sse_decode_list_room_id(deserializer);
     var var_revoked = sse_decode_bool(deserializer);
+    var var_manageable = sse_decode_bool(deserializer);
     return StewardEntry(
       stewardId: var_stewardId,
       displayName: var_displayName,
       mentionToken: var_mentionToken,
       roomIds: var_roomIds,
       revoked: var_revoked,
+      manageable: var_manageable,
     );
   }
 
@@ -7772,6 +7777,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       deserializer,
     );
     var var_syncing = sse_decode_bool(deserializer);
+    var var_mentionableStewards = sse_decode_list_steward_entry(deserializer);
     return ThreadSnapshot(
       roomId: var_roomId,
       rootMessageId: var_rootMessageId,
@@ -7780,6 +7786,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       topicTitle: var_topicTitle,
       subscription: var_subscription,
       syncing: var_syncing,
+      mentionableStewards: var_mentionableStewards,
     );
   }
 
@@ -7842,6 +7849,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     );
     var var_canPin = sse_decode_bool(deserializer);
     var var_canUpload = sse_decode_bool(deserializer);
+    var var_mentionableStewards = sse_decode_list_steward_entry(deserializer);
     return TimelineSnapshot(
       roomId: var_roomId,
       entries: var_entries,
@@ -7852,6 +7860,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       focusMessageId: var_focusMessageId,
       canPin: var_canPin,
       canUpload: var_canUpload,
+      mentionableStewards: var_mentionableStewards,
     );
   }
 
@@ -9473,6 +9482,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.mentionToken, serializer);
     sse_encode_list_room_id(self.roomIds, serializer);
     sse_encode_bool(self.revoked, serializer);
+    sse_encode_bool(self.manageable, serializer);
   }
 
   @protected
@@ -9554,6 +9564,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       serializer,
     );
     sse_encode_bool(self.syncing, serializer);
+    sse_encode_list_steward_entry(self.mentionableStewards, serializer);
   }
 
   @protected
@@ -9593,6 +9604,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_box_autoadd_message_id(self.focusMessageId, serializer);
     sse_encode_bool(self.canPin, serializer);
     sse_encode_bool(self.canUpload, serializer);
+    sse_encode_list_steward_entry(self.mentionableStewards, serializer);
   }
 
   @protected

@@ -1,6 +1,5 @@
 import type {
   ReminderPreset,
-  StewardEntry,
   TimelineSnapshot,
 } from "@pulse/protocol";
 import type { PulseIntents } from "../client/usePulseClient";
@@ -14,7 +13,6 @@ interface RoomViewProps {
   intents: PulseIntents;
   presets?: ReminderPreset[];
   customTime?: boolean;
-  stewards?: StewardEntry[];
 }
 
 export function RoomView({
@@ -22,7 +20,6 @@ export function RoomView({
   intents,
   presets = [],
   customTime = true,
-  stewards = [],
 }: RoomViewProps) {
   const [insertion, mention] = useInsertion();
   const roomId = timeline.room_id;
@@ -57,8 +54,7 @@ export function RoomView({
       />
       <ErrorNotice error={timeline.error} />
       <StewardMentionPicker
-        stewards={stewards}
-        roomId={roomId}
+        stewards={timeline.mentionable_stewards}
         onPick={mention}
       />
       <Composer

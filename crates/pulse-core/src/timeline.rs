@@ -222,6 +222,7 @@ pub(crate) fn empty_timeline(error: Option<ApiError>) -> TimelineSnapshot {
         focus_message_id: None,
         can_pin: false,
         can_upload: false,
+        mentionable_stewards: Vec::new(),
     }
 }
 
@@ -316,7 +317,11 @@ impl TimelineMachine {
     }
 
     pub fn steward_snapshot(&self) -> StewardSnapshot {
-        self.stewards.snapshot()
+        self.steward_snapshot_managed(false)
+    }
+
+    pub fn steward_snapshot_managed(&self, can_manage: bool) -> StewardSnapshot {
+        self.stewards.snapshot(can_manage)
     }
 
     pub fn campus_id(&self) -> CampusId {
@@ -1475,6 +1480,7 @@ impl TimelineMachine {
                 .thread_state(view.root_message_id)
                 .map(|(state, _)| state),
             syncing: view.syncing,
+            mentionable_stewards: self.stewards.mentionable(view.room_id),
         }
     }
 
@@ -1516,6 +1522,7 @@ impl TimelineMachine {
             focus_message_id: self.focus,
             can_pin: false,
             can_upload: false,
+            mentionable_stewards: self.stewards.mentionable(room_id),
         }
     }
 }

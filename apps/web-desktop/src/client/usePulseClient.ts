@@ -8,6 +8,7 @@ import type {
   AccountId,
   InboxStep,
   LoungeId,
+  LoungeMediaState,
   MessageId,
   ReactionAction,
   ReminderPreset,
@@ -82,6 +83,7 @@ export interface PulseIntents {
   dismissReminder(): Promise<void>;
   joinLounge(loungeId: LoungeId): Promise<void>;
   leaveLounge(): Promise<void>;
+  reportLoungeMedia(state: LoungeMediaState): Promise<void>;
   toggleStewards(): Promise<void>;
   createSteward(displayName: string, roomIds: RoomId[]): Promise<void>;
   rotateStewardToken(stewardId: AccountId): Promise<void>;
@@ -181,6 +183,8 @@ export function usePulseClient(): {
       dismissReminder: () => publish(pulseClient.dismissReminder()),
       joinLounge: (loungeId) => publish(pulseClient.joinLounge(loungeId)),
       leaveLounge: () => publish(pulseClient.leaveLounge()),
+      reportLoungeMedia: (state) =>
+        publish(pulseClient.reportLoungeMedia(state)),
       toggleStewards: () => publish(pulseClient.toggleStewards()),
       createSteward: (displayName, roomIds) =>
         publish(pulseClient.createSteward(displayName, roomIds)),

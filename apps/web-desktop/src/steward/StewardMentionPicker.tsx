@@ -1,25 +1,20 @@
-import type { RoomId, StewardEntry } from "@pulse/protocol";
+import type { StewardEntry } from "@pulse/protocol";
 
 interface StewardMentionPickerProps {
   stewards: StewardEntry[];
-  roomId: RoomId;
   onPick(mentionToken: string): void;
 }
 
 export function StewardMentionPicker({
   stewards,
-  roomId,
   onPick,
 }: StewardMentionPickerProps) {
-  const available = stewards.filter(
-    (steward) => !steward.revoked && steward.room_ids.includes(roomId),
-  );
-  if (available.length === 0) {
+  if (stewards.length === 0) {
     return null;
   }
   return (
     <div role="group" aria-label="Mention a steward" className="flex gap-2 text-xs">
-      {available.map((steward) => (
+      {stewards.map((steward) => (
         <button
           key={steward.steward_id}
           className="underline"

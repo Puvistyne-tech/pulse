@@ -119,14 +119,12 @@ export function AppView({ snapshot, intents }: AppViewProps) {
         intents={intents}
         presets={shelf.presets}
         customTime={shelf.picker_anchor_ms !== null}
-        stewards={stewards.stewards}
       />
       {thread.root_message_id !== null && (
         <ThreadPanel
           thread={thread}
           palette={timeline.reaction_palette}
           intents={intents}
-          stewards={stewards.stewards}
         />
       )}
       <SnapshotView network={network} />

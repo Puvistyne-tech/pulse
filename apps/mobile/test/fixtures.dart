@@ -301,6 +301,7 @@ TimelineSnapshot timelineOf(
   focusMessageId: focusMessageId,
   canPin: canPin,
   canUpload: canUpload,
+  mentionableStewards: const [],
 );
 
 const emptyTimeline = TimelineSnapshot(
@@ -310,6 +311,7 @@ const emptyTimeline = TimelineSnapshot(
   drafts: [],
   canPin: false,
   canUpload: false,
+  mentionableStewards: [],
 );
 
 const emptySearch = SearchSnapshot(
@@ -528,7 +530,11 @@ ShelfSnapshot shelfOf({
   error: error,
 );
 
-const emptyThread = ThreadSnapshot(replies: [], syncing: false);
+const emptyThread = ThreadSnapshot(
+  replies: [],
+  syncing: false,
+  mentionableStewards: [],
+);
 
 const emptyInbox = InboxSnapshot(
   open: false,
@@ -553,6 +559,7 @@ ThreadSnapshot threadOf({
   topicTitle: topicTitle,
   subscription: subscription,
   syncing: syncing,
+  mentionableStewards: const [],
 );
 
 InboxItem inboxItemOf(

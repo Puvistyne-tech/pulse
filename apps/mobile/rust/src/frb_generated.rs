@@ -5064,6 +5064,7 @@ const _: fn() = || {
         let _: String = StewardEntry.mention_token;
         let _: Vec<pulse_protocol::ids::RoomId> = StewardEntry.room_ids;
         let _: bool = StewardEntry.revoked;
+        let _: bool = StewardEntry.manageable;
     }
     {
         let StewardSnapshot = None::<pulse_protocol::snapshot::StewardSnapshot>.unwrap();
@@ -5105,6 +5106,7 @@ const _: fn() = || {
         let _: Option<String> = ThreadSnapshot.topic_title;
         let _: Option<pulse_protocol::thread::SubscriptionState> = ThreadSnapshot.subscription;
         let _: bool = ThreadSnapshot.syncing;
+        let _: Vec<pulse_protocol::snapshot::StewardEntry> = ThreadSnapshot.mentionable_stewards;
     }
     {
         let TimelineEntry = None::<pulse_protocol::snapshot::TimelineEntry>.unwrap();
@@ -5139,6 +5141,7 @@ const _: fn() = || {
         let _: Option<pulse_protocol::ids::MessageId> = TimelineSnapshot.focus_message_id;
         let _: bool = TimelineSnapshot.can_pin;
         let _: bool = TimelineSnapshot.can_upload;
+        let _: Vec<pulse_protocol::snapshot::StewardEntry> = TimelineSnapshot.mentionable_stewards;
     }
     {
         let ToolCallId_ = None::<pulse_protocol::ids::ToolCallId>.unwrap();
@@ -6779,12 +6782,14 @@ impl SseDecode for pulse_protocol::snapshot::StewardEntry {
         let mut var_mentionToken = <String>::sse_decode(deserializer);
         let mut var_roomIds = <Vec<pulse_protocol::ids::RoomId>>::sse_decode(deserializer);
         let mut var_revoked = <bool>::sse_decode(deserializer);
+        let mut var_manageable = <bool>::sse_decode(deserializer);
         return pulse_protocol::snapshot::StewardEntry {
             steward_id: var_stewardId,
             display_name: var_displayName,
             mention_token: var_mentionToken,
             room_ids: var_roomIds,
             revoked: var_revoked,
+            manageable: var_manageable,
         };
     }
 }
@@ -6920,6 +6925,8 @@ impl SseDecode for pulse_protocol::snapshot::ThreadSnapshot {
         let mut var_subscription =
             <Option<pulse_protocol::thread::SubscriptionState>>::sse_decode(deserializer);
         let mut var_syncing = <bool>::sse_decode(deserializer);
+        let mut var_mentionableStewards =
+            <Vec<pulse_protocol::snapshot::StewardEntry>>::sse_decode(deserializer);
         return pulse_protocol::snapshot::ThreadSnapshot {
             room_id: var_roomId,
             root_message_id: var_rootMessageId,
@@ -6928,6 +6935,7 @@ impl SseDecode for pulse_protocol::snapshot::ThreadSnapshot {
             topic_title: var_topicTitle,
             subscription: var_subscription,
             syncing: var_syncing,
+            mentionable_stewards: var_mentionableStewards,
         };
     }
 }
@@ -6999,6 +7007,8 @@ impl SseDecode for pulse_protocol::snapshot::TimelineSnapshot {
             <Option<pulse_protocol::ids::MessageId>>::sse_decode(deserializer);
         let mut var_canPin = <bool>::sse_decode(deserializer);
         let mut var_canUpload = <bool>::sse_decode(deserializer);
+        let mut var_mentionableStewards =
+            <Vec<pulse_protocol::snapshot::StewardEntry>>::sse_decode(deserializer);
         return pulse_protocol::snapshot::TimelineSnapshot {
             room_id: var_roomId,
             entries: var_entries,
@@ -7009,6 +7019,7 @@ impl SseDecode for pulse_protocol::snapshot::TimelineSnapshot {
             focus_message_id: var_focusMessageId,
             can_pin: var_canPin,
             can_upload: var_canUpload,
+            mentionable_stewards: var_mentionableStewards,
         };
     }
 }
@@ -9040,6 +9051,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::Stew
             self.0.mention_token.into_into_dart().into_dart(),
             self.0.room_ids.into_into_dart().into_dart(),
             self.0.revoked.into_into_dart().into_dart(),
+            self.0.manageable.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -9238,6 +9250,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::Thre
             self.0.topic_title.into_into_dart().into_dart(),
             self.0.subscription.into_into_dart().into_dart(),
             self.0.syncing.into_into_dart().into_dart(),
+            self.0.mentionable_stewards.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -9302,6 +9315,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<pulse_protocol::snapshot::Time
             self.0.focus_message_id.into_into_dart().into_dart(),
             self.0.can_pin.into_into_dart().into_dart(),
             self.0.can_upload.into_into_dart().into_dart(),
+            self.0.mentionable_stewards.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -10784,6 +10798,7 @@ impl SseEncode for pulse_protocol::snapshot::StewardEntry {
         <String>::sse_encode(self.mention_token, serializer);
         <Vec<pulse_protocol::ids::RoomId>>::sse_encode(self.room_ids, serializer);
         <bool>::sse_encode(self.revoked, serializer);
+        <bool>::sse_encode(self.manageable, serializer);
     }
 }
 
@@ -10906,6 +10921,10 @@ impl SseEncode for pulse_protocol::snapshot::ThreadSnapshot {
             serializer,
         );
         <bool>::sse_encode(self.syncing, serializer);
+        <Vec<pulse_protocol::snapshot::StewardEntry>>::sse_encode(
+            self.mentionable_stewards,
+            serializer,
+        );
     }
 }
 
@@ -10950,6 +10969,10 @@ impl SseEncode for pulse_protocol::snapshot::TimelineSnapshot {
         <Option<pulse_protocol::ids::MessageId>>::sse_encode(self.focus_message_id, serializer);
         <bool>::sse_encode(self.can_pin, serializer);
         <bool>::sse_encode(self.can_upload, serializer);
+        <Vec<pulse_protocol::snapshot::StewardEntry>>::sse_encode(
+            self.mentionable_stewards,
+            serializer,
+        );
     }
 }
 

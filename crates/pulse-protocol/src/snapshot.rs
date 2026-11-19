@@ -164,6 +164,7 @@ pub struct TimelineSnapshot {
     pub focus_message_id: Option<MessageId>,
     pub can_pin: bool,
     pub can_upload: bool,
+    pub mentionable_stewards: Vec<StewardEntry>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -175,6 +176,7 @@ pub struct ThreadSnapshot {
     pub topic_title: Option<String>,
     pub subscription: Option<SubscriptionState>,
     pub syncing: bool,
+    pub mentionable_stewards: Vec<StewardEntry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -344,6 +346,7 @@ pub struct StewardEntry {
     pub mention_token: String,
     pub room_ids: Vec<RoomId>,
     pub revoked: bool,
+    pub manageable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

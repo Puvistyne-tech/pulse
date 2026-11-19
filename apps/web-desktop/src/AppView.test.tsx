@@ -263,6 +263,10 @@ const withLounges = withExtras(signedInWithRooms, {
 const withStewards = withExtras(signedInWithRooms, {
   stewards: stewardsOf([stewardEntryOf(STEWARD_A, "Scribe")]),
 });
+const withMentionable = {
+  ...withStewards,
+  timeline: timelineOf([], { mentionable_stewards: [stewardEntryOf(STEWARD_A, "Scribe")] }),
+};
 const closedStewards = withExtras(signedInWithRooms, {
   stewards: stewardsOf([stewardEntryOf(STEWARD_A, "Scribe")], { open: false }),
 });
@@ -293,7 +297,7 @@ describe("steward and lounge wiring", () => {
   });
 
   test("assigned stewards offer a mention in the room composer", () => {
-    render(<AppView snapshot={withStewards} intents={noopIntents()} />);
+    render(<AppView snapshot={withMentionable} intents={noopIntents()} />);
     const group = screen.getAllByRole("group", { name: "Mention a steward" });
     expect(group.length).toBeGreaterThan(0);
     fireEvent.click(group[0]!.querySelector("button")!);

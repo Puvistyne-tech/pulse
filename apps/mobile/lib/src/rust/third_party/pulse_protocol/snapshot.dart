@@ -793,6 +793,7 @@ class StewardEntry {
   final String mentionToken;
   final List<RoomId> roomIds;
   final bool revoked;
+  final bool manageable;
 
   const StewardEntry({
     required this.stewardId,
@@ -800,6 +801,7 @@ class StewardEntry {
     required this.mentionToken,
     required this.roomIds,
     required this.revoked,
+    required this.manageable,
   });
 
   @override
@@ -808,7 +810,8 @@ class StewardEntry {
       displayName.hashCode ^
       mentionToken.hashCode ^
       roomIds.hashCode ^
-      revoked.hashCode;
+      revoked.hashCode ^
+      manageable.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -819,7 +822,8 @@ class StewardEntry {
           displayName == other.displayName &&
           mentionToken == other.mentionToken &&
           roomIds == other.roomIds &&
-          revoked == other.revoked;
+          revoked == other.revoked &&
+          manageable == other.manageable;
 }
 
 class StewardSnapshot {
@@ -913,6 +917,7 @@ class ThreadSnapshot {
   final String? topicTitle;
   final SubscriptionState? subscription;
   final bool syncing;
+  final List<StewardEntry> mentionableStewards;
 
   const ThreadSnapshot({
     this.roomId,
@@ -922,6 +927,7 @@ class ThreadSnapshot {
     this.topicTitle,
     this.subscription,
     required this.syncing,
+    required this.mentionableStewards,
   });
 
   static Future<ThreadSnapshot> default_() =>
@@ -935,7 +941,8 @@ class ThreadSnapshot {
       replies.hashCode ^
       topicTitle.hashCode ^
       subscription.hashCode ^
-      syncing.hashCode;
+      syncing.hashCode ^
+      mentionableStewards.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -948,7 +955,8 @@ class ThreadSnapshot {
           replies == other.replies &&
           topicTitle == other.topicTitle &&
           subscription == other.subscription &&
-          syncing == other.syncing;
+          syncing == other.syncing &&
+          mentionableStewards == other.mentionableStewards;
 }
 
 class TimelineEntry {
@@ -1052,6 +1060,7 @@ class TimelineSnapshot {
   final MessageId? focusMessageId;
   final bool canPin;
   final bool canUpload;
+  final List<StewardEntry> mentionableStewards;
 
   const TimelineSnapshot({
     this.roomId,
@@ -1063,6 +1072,7 @@ class TimelineSnapshot {
     this.focusMessageId,
     required this.canPin,
     required this.canUpload,
+    required this.mentionableStewards,
   });
 
   @override
@@ -1075,7 +1085,8 @@ class TimelineSnapshot {
       drafts.hashCode ^
       focusMessageId.hashCode ^
       canPin.hashCode ^
-      canUpload.hashCode;
+      canUpload.hashCode ^
+      mentionableStewards.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1090,7 +1101,8 @@ class TimelineSnapshot {
           drafts == other.drafts &&
           focusMessageId == other.focusMessageId &&
           canPin == other.canPin &&
-          canUpload == other.canUpload;
+          canUpload == other.canUpload &&
+          mentionableStewards == other.mentionableStewards;
 }
 
 enum UploadState { uploading, uploaded, failed }

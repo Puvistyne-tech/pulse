@@ -21,7 +21,7 @@ const _rejectionLabels = {
 
 const _streamLabels = {
   StreamState.streaming: 'Streaming',
-  StreamState.finalizing: 'Finishing',
+  StreamState.finalizing: 'Finalizing',
 };
 
 class EntryActions {

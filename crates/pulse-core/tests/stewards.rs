@@ -2,15 +2,15 @@ mod fixtures;
 
 use fixtures::{
     ACCOUNT_A, ACCOUNT_B, NONCE_A, NONCE_B, ROOM_A, ROOM_B, STEWARD_A, STREAM_A, connected_as,
-    created_frame, error_of, manage_frame, received, settled_machine, step_all,
+    created_frame, error_of, manage_frame, open_thread, received, settled_machine, step_all,
     steward_changed_frame, steward_issued_frame, steward_message, steward_profile,
     steward_rejected_frame, stewards_synced_frame, stream_event,
 };
 use pulse_core::{StewardIntent, TimelineEvent, TimelineMachine};
 use pulse_protocol::{
     AccountId, ApiError, ApiErrorCode, ClientFrame, ClientNonce, DISPLAY_NAME_MAX_CHARS,
-    InputField, Role, RoomId, STEWARD_ROOMS_MAX, StewardAction, StewardRejection, StewardSnapshot,
-    StreamPhase, mention_token,
+    InputField, Role, RoomId, STEWARD_ROOMS_MAX, StewardAction, StewardEntry, StewardProfile,
+    StewardRejection, StewardSnapshot, StreamPhase, mention_token,
 };
 use rstest::rstest;
 
@@ -469,4 +469,115 @@ fn managing_is_for_owners_and_admins(#[case] role: Role, #[case] can_manage: boo
         connected_as(role).snapshot().stewards.can_manage,
         can_manage
     );
+}
+
+fn directory_of(profiles: Vec<StewardProfile>) -> TimelineMachine {
+    settled_machine(vec![received(stewards_synced_frame(profiles))])
+}
+
+fn mentionable_ids(entries: &[StewardEntry]) -> Vec<AccountId> {
+    entries.iter().map(|entry| entry.steward_id).collect()
+}
+
+#[rstest]
+#[case::assigned_and_live(vec![steward_profile(STEWARD_A, "Scribe", &[ROOM_A], false)], ROOM_A, vec![STEWARD_A])]
+#[case::revoked_excluded(vec![steward_profile(STEWARD_A, "Scribe", &[ROOM_A], true)], ROOM_A, vec![])]
+#[case::unassigned_excluded(vec![steward_profile(STEWARD_A, "Scribe", &[ROOM_B], false)], ROOM_A, vec![])]
+#[case::no_rooms_excluded(vec![steward_profile(STEWARD_A, "Scribe", &[], false)], ROOM_A, vec![])]
+#[case::room_switch_changes_the_list(vec![steward_profile(STEWARD_A, "Scribe", &[ROOM_B], false)], ROOM_B, vec![STEWARD_A])]
+#[case::only_assigned_among_many(
+    vec![
+        steward_profile(STEWARD_A, "Scribe", &[ROOM_A], false),
+        steward_profile(OTHER_STEWARD, "Herald", &[ROOM_B], false),
+    ],
+    ROOM_B,
+    vec![OTHER_STEWARD]
+)]
+#[case::revoked_beside_live(
+    vec![
+        steward_profile(STEWARD_A, "Scribe", &[ROOM_A], true),
+        steward_profile(OTHER_STEWARD, "Herald", &[ROOM_A], false),
+    ],
+    ROOM_A,
+    vec![OTHER_STEWARD]
+)]
+fn the_room_view_lists_only_live_stewards_assigned_to_it(
+    #[case] profiles: Vec<StewardProfile>,
+    #[case] room_id: RoomId,
+    #[case] expected: Vec<AccountId>,
+) {
+    let snapshot = directory_of(profiles).snapshot(Some(room_id));
+    assert_eq!(mentionable_ids(&snapshot.mentionable_stewards), expected);
+    assert!(
+        snapshot
+            .mentionable_stewards
+            .iter()
+            .all(|entry| !entry.manageable && !entry.revoked)
+    );
+}
+
+#[test]
+fn an_empty_room_view_has_no_mentionable_stewards() {
+    let machine = directory_of(vec![steward_profile(STEWARD_A, "Scribe", &[ROOM_A], false)]);
+    assert!(machine.snapshot(None).mentionable_stewards.is_empty());
+}
+
+#[rstest]
+#[case::assigned_and_live(false, &[ROOM_A], vec![STEWARD_A])]
+#[case::revoked_excluded(true, &[ROOM_A], vec![])]
+#[case::unassigned_excluded(false, &[ROOM_B], vec![])]
+fn the_thread_view_lists_the_stewards_of_its_room(
+    #[case] revoked: bool,
+    #[case] rooms: &[RoomId],
+    #[case] expected: Vec<AccountId>,
+) {
+    let machine = directory_of(vec![steward_profile(STEWARD_A, "Scribe", rooms, revoked)]);
+    let (machine, _) = step_all(machine, vec![open_thread(1, 0)]);
+    assert_eq!(
+        mentionable_ids(&machine.thread_snapshot().mentionable_stewards),
+        expected
+    );
+}
+
+#[test]
+fn the_thread_view_follows_assignment_changes() {
+    let machine = directory_of(vec![steward_profile(STEWARD_A, "Scribe", &[ROOM_A], false)]);
+    let (machine, _) = step_all(
+        machine,
+        vec![
+            open_thread(1, 0),
+            received(steward_changed_frame(steward_profile(
+                STEWARD_A,
+                "Scribe",
+                &[ROOM_B],
+                false,
+            ))),
+        ],
+    );
+    assert!(machine.thread_snapshot().mentionable_stewards.is_empty());
+}
+
+#[rstest]
+#[case::manager_live(true, false, true)]
+#[case::manager_revoked(true, true, false)]
+#[case::non_manager_live(false, false, false)]
+#[case::non_manager_revoked(false, true, false)]
+fn manageable_needs_the_permission_and_a_live_steward(
+    #[case] can_manage: bool,
+    #[case] revoked: bool,
+    #[case] manageable: bool,
+) {
+    let machine = directory_of(vec![steward_profile(
+        STEWARD_A,
+        "Scribe",
+        &[ROOM_A],
+        revoked,
+    )]);
+    let flags = machine
+        .steward_snapshot_managed(can_manage)
+        .stewards
+        .iter()
+        .map(|entry| entry.manageable)
+        .collect::<Vec<_>>();
+    assert_eq!(flags, vec![manageable]);
 }

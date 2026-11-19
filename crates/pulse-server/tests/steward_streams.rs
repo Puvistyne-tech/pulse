@@ -834,6 +834,29 @@ async fn reply_streams_land_in_their_thread() {
     .expect("scenario deadline");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_unknown_thread_admission_failure_aborts_open_streams_as_rejected() {
+    timeout(SCENARIO_DEADLINE, async {
+        let mut rig = Rig::open().await;
+        let (open, doomed) = (StreamId::generate(), StreamId::generate());
+        let mut writer = rig.writer(open);
+        rig.push(writer.begin()).await;
+        rig.push(writer.delta("half")).await;
+        rig.await_sequence(open, 1).await;
+        let mut stray = StreamWriter::new(doomed, rig.room(), Some(MessageId::generate()));
+        rig.push(stray.begin()).await;
+        assert_eq!(rig.rejection(doomed).await, StreamRejection::UnknownThread);
+        let frames = rig.through_terminal(open).await;
+        assert_eq!(
+            aborted_with(&frames, open),
+            Some(StreamAbortReason::Rejected)
+        );
+        assert_eq!(rig.authored().await, 0);
+    })
+    .await
+    .expect("scenario deadline");
+}
+
 #[rstest]
 #[case::unknown_root(false)]
 #[case::reply_as_root(true)]
@@ -892,7 +915,7 @@ async fn pruning_the_assigned_rooms_aborts_streams_outside_them() {
         let frames = rig.through_terminal(stream_id).await;
         assert_eq!(
             aborted_with(&frames, stream_id),
-            Some(StreamAbortReason::Rejected)
+            Some(StreamAbortReason::Revoked)
         );
         rig.push(writer.delta("late")).await;
         assert_eq!(
